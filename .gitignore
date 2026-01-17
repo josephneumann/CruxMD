@@ -57,3 +57,7 @@ out/
 
 # Local Claude settings (don't commit to main repo)
 .claude/*.local.md
+
+# Session summaries from parallel agent workflow
+session_summaries/*
+!session_summaries/.gitkeep

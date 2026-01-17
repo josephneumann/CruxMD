@@ -149,11 +149,22 @@ Spawns multiple Claude Code workers for parallel task execution. Use from an orc
 **What it does:**
 1. Identifies tasks (from args or `bd ready`)
 2. Generates handoff context for each task
-3. Shows summary and asks for confirmation
-4. Runs `mp-spawn` for each task (creates worktrees, spawns workers in iTerm2 tabs)
+3. Shows summary and asks for confirmation (including skip-permissions option)
+4. Runs `mp-spawn` for each task (spawns workers in iTerm2 tabs)
 5. Provides guidance on attaching to workers
 
-**After dispatch:**
+**Note:** Worktrees are created by `/start-task`, not by `mp-spawn` or `/dispatch`.
+
+**Confirmation flow:**
+- Confirms dispatch of N workers
+- Asks whether to use `--skip-permissions` (recommended for ralph mode autonomous workers)
+
+**After dispatch (with skip-permissions):**
+1. Switch to iTerm2 (`Cmd+Tab`)
+2. Paste the command (`Cmd+V`) and press Enter
+3. Use `Cmd+1/2/3` to navigate between worker tabs
+
+**After dispatch (without skip-permissions):**
 1. Switch to iTerm2 (`Cmd+Tab`)
 2. Answer the trust prompt for each worktree
 3. Paste the command (`Cmd+V`) and press Enter
@@ -245,10 +256,15 @@ Closes out a task with full verification. **Work is NOT complete until git push 
 6. Syncs beads (`bd sync`), pushes to remote
 7. Closes task (`bd close <task-id>`)
 8. Creates PR (`gh pr create`)
-9. Offers to merge PR (squash) and cleanup worktree
+9. Offers to merge PR (squash) and cleanup worktree (using absolute paths)
 10. Outputs detailed session summary for orchestrating agents
+11. Persists summary to `session_summaries/<taskid>_YYMMDD-HHMMSS.txt`
 
 **Critical:** Tests must pass before closing. Never close a task with failing tests.
+
+**Worktree Cleanup:** Uses absolute paths to safely change to main repo before removing worktree, preventing "Path does not exist" errors.
+
+**Persistent Output:** Summary is written to `session_summaries/` in project root (gitignored). Orchestrators can read completed work context directly from disk.
 
 ---
 
@@ -286,8 +302,11 @@ Generates detailed summary without committing, pushing, or closing. Useful for p
 2. Identifies files created/modified
 3. Checks test status
 4. Outputs structured summary for orchestrating agents
+5. Persists summary to `session_summaries/<taskid>_YYMMDD-HHMMSS.txt`
 
 **Output includes:** Task overview, implementation summary, files changed, tests, git activity, dependencies unblocked, architectural notes, handoff context.
+
+**Persistent Output:** Summary is written to `session_summaries/` in project root (gitignored). Orchestrators can read completed work context directly from disk.
 
 ---
 
@@ -343,6 +362,8 @@ These shell utilities support the multi-agent workflow. They are installed via t
 
 Spawns a Claude Code worker in a new iTerm2 tab (via AppleScript).
 
+**Note:** `mp-spawn` does NOT create worktrees. It launches Claude in the main project directory, and `/start-task` handles worktree creation for task isolation.
+
 ```bash
 mp-spawn <task-id> [options]
 
@@ -351,23 +372,32 @@ Options:
   --handoff "text"        Handoff context from previous session
   --ralph                 Enable autonomous ralph-loop mode
   --max-iterations N      Max ralph iterations (default: 10)
+  --skip-permissions      Skip all permission prompts (uses --dangerously-skip-permissions)
+
+Note: --chrome is always enabled by default for all workers.
 ```
 
 **Examples:**
 ```bash
 mp-spawn MoneyPrinter-ajq --ralph
 mp-spawn MoneyPrinter-ajq --dir "$(pwd)" --handoff "Use PriceCache pattern"
+mp-spawn MoneyPrinter-ajq --ralph --skip-permissions  # Fully autonomous
 ```
 
-**After spawn:**
+**After spawn (with --skip-permissions):**
 1. Switch to iTerm2 (`Cmd+Tab`)
-2. Answer the trust prompt for the worktree directory
+2. Paste the command (`Cmd+V`) — it's already on your clipboard
+3. Press Enter — worker starts immediately without trust prompts
+
+**After spawn (without --skip-permissions):**
+1. Switch to iTerm2 (`Cmd+Tab`)
+2. Answer the trust prompt for the project directory
 3. Paste the command (`Cmd+V`) — it's already on your clipboard
-4. Press Enter to start the task
+4. Press Enter — `/start-task` will create the worktree and set up isolation
 
 ### iTerm2 Integration
 
 - Uses AppleScript to create new iTerm2 tabs directly
-- Copies `/start-task` command to clipboard (paste after trust prompt)
+- Copies `/start-task` command to clipboard (paste after worker starts)
 - Switch between workers with `Cmd+1/2/3` or `Cmd+Shift+[/]`
 - Each tab is named with the task short ID (e.g., "ajq")
