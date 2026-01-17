@@ -449,3 +449,357 @@ async def test_handles_missing_optional_fields(
     # Should not raise
     await graph.build_from_fhir(patient_id, [minimal_patient, minimal_condition])
     assert await graph.patient_exists(patient_id) is True
+
+
+# Additional test fixtures for inactive/stopped resources
+SAMPLE_CONDITION_INACTIVE = {
+    "resourceType": "Condition",
+    "id": "condition-fhir-inactive",
+    "code": {
+        "coding": [
+            {
+                "system": "http://snomed.info/sct",
+                "code": "38341003",
+                "display": "Hypertension",
+            }
+        ]
+    },
+    "clinicalStatus": {
+        "coding": [{"code": "inactive"}]
+    },
+    "onsetDateTime": "2019-03-01",
+}
+
+SAMPLE_MEDICATION_STOPPED = {
+    "resourceType": "MedicationRequest",
+    "id": "medication-fhir-stopped",
+    "medicationCodeableConcept": {
+        "coding": [
+            {
+                "system": "http://www.nlm.nih.gov/research/umls/rxnorm",
+                "code": "197361",
+                "display": "Lisinopril 10 MG",
+            }
+        ]
+    },
+    "status": "stopped",
+    "authoredOn": "2019-03-01",
+}
+
+SAMPLE_MEDICATION_ON_HOLD = {
+    "resourceType": "MedicationRequest",
+    "id": "medication-fhir-on-hold",
+    "medicationCodeableConcept": {
+        "coding": [
+            {
+                "system": "http://www.nlm.nih.gov/research/umls/rxnorm",
+                "code": "312961",
+                "display": "Aspirin 81 MG",
+            }
+        ]
+    },
+    "status": "on-hold",
+    "authoredOn": "2023-06-15",
+}
+
+SAMPLE_ALLERGY_INACTIVE = {
+    "resourceType": "AllergyIntolerance",
+    "id": "allergy-fhir-inactive",
+    "code": {
+        "coding": [
+            {
+                "system": "http://snomed.info/sct",
+                "code": "91936005",
+                "display": "Allergy to penicillin",
+            }
+        ]
+    },
+    "clinicalStatus": {
+        "coding": [{"code": "inactive"}]
+    },
+    "category": ["medication"],
+    "criticality": "low",
+}
+
+
+# Tests for get_verified_conditions
+@pytest.mark.asyncio
+async def test_get_verified_conditions_returns_active_conditions(
+    graph: KnowledgeGraph, patient_id: str
+):
+    """Test that get_verified_conditions returns only active conditions."""
+    await graph.build_from_fhir(patient_id, [SAMPLE_PATIENT, SAMPLE_CONDITION])
+
+    conditions = await graph.get_verified_conditions(patient_id)
+
+    assert len(conditions) == 1
+    assert conditions[0]["resourceType"] == "Condition"
+    assert conditions[0]["id"] == "condition-fhir-456"
+    # Verify the full FHIR resource is returned
+    assert conditions[0]["code"]["coding"][0]["display"] == "Type 2 diabetes mellitus"
+
+
+@pytest.mark.asyncio
+async def test_get_verified_conditions_excludes_inactive(
+    graph: KnowledgeGraph, patient_id: str
+):
+    """Test that get_verified_conditions excludes inactive conditions."""
+    await graph.build_from_fhir(
+        patient_id, [SAMPLE_PATIENT, SAMPLE_CONDITION, SAMPLE_CONDITION_INACTIVE]
+    )
+
+    conditions = await graph.get_verified_conditions(patient_id)
+
+    # Should only return the active condition
+    assert len(conditions) == 1
+    assert conditions[0]["id"] == "condition-fhir-456"
+
+
+@pytest.mark.asyncio
+async def test_get_verified_conditions_returns_empty_for_nonexistent_patient(
+    graph: KnowledgeGraph
+):
+    """Test that get_verified_conditions returns empty list for nonexistent patient."""
+    conditions = await graph.get_verified_conditions("nonexistent-patient-id")
+    assert conditions == []
+
+
+# Tests for get_verified_medications
+@pytest.mark.asyncio
+async def test_get_verified_medications_returns_active_medications(
+    graph: KnowledgeGraph, patient_id: str
+):
+    """Test that get_verified_medications returns active medications."""
+    await graph.build_from_fhir(patient_id, [SAMPLE_PATIENT, SAMPLE_MEDICATION])
+
+    medications = await graph.get_verified_medications(patient_id)
+
+    assert len(medications) == 1
+    assert medications[0]["resourceType"] == "MedicationRequest"
+    assert medications[0]["id"] == "medication-fhir-789"
+    # Verify the full FHIR resource is returned
+    assert (
+        medications[0]["medicationCodeableConcept"]["coding"][0]["display"]
+        == "Metformin 500 MG"
+    )
+
+
+@pytest.mark.asyncio
+async def test_get_verified_medications_includes_on_hold(
+    graph: KnowledgeGraph, patient_id: str
+):
+    """Test that get_verified_medications includes on-hold medications."""
+    await graph.build_from_fhir(
+        patient_id, [SAMPLE_PATIENT, SAMPLE_MEDICATION, SAMPLE_MEDICATION_ON_HOLD]
+    )
+
+    medications = await graph.get_verified_medications(patient_id)
+
+    # Should return both active and on-hold medications
+    assert len(medications) == 2
+    med_ids = {m["id"] for m in medications}
+    assert "medication-fhir-789" in med_ids  # active
+    assert "medication-fhir-on-hold" in med_ids  # on-hold
+
+
+@pytest.mark.asyncio
+async def test_get_verified_medications_excludes_stopped(
+    graph: KnowledgeGraph, patient_id: str
+):
+    """Test that get_verified_medications excludes stopped medications."""
+    await graph.build_from_fhir(
+        patient_id, [SAMPLE_PATIENT, SAMPLE_MEDICATION, SAMPLE_MEDICATION_STOPPED]
+    )
+
+    medications = await graph.get_verified_medications(patient_id)
+
+    # Should only return the active medication, not stopped
+    assert len(medications) == 1
+    assert medications[0]["id"] == "medication-fhir-789"
+
+
+@pytest.mark.asyncio
+async def test_get_verified_medications_returns_empty_for_nonexistent_patient(
+    graph: KnowledgeGraph
+):
+    """Test that get_verified_medications returns empty list for nonexistent patient."""
+    medications = await graph.get_verified_medications("nonexistent-patient-id")
+    assert medications == []
+
+
+# Tests for get_verified_allergies
+@pytest.mark.asyncio
+async def test_get_verified_allergies_returns_active_allergies(
+    graph: KnowledgeGraph, patient_id: str
+):
+    """Test that get_verified_allergies returns active allergies."""
+    await graph.build_from_fhir(patient_id, [SAMPLE_PATIENT, SAMPLE_ALLERGY])
+
+    allergies = await graph.get_verified_allergies(patient_id)
+
+    assert len(allergies) == 1
+    assert allergies[0]["resourceType"] == "AllergyIntolerance"
+    assert allergies[0]["id"] == "allergy-fhir-abc"
+    # Verify the full FHIR resource is returned
+    assert allergies[0]["code"]["coding"][0]["display"] == "Penicillin"
+
+
+@pytest.mark.asyncio
+async def test_get_verified_allergies_excludes_inactive(
+    graph: KnowledgeGraph, patient_id: str
+):
+    """Test that get_verified_allergies excludes inactive allergies."""
+    await graph.build_from_fhir(
+        patient_id, [SAMPLE_PATIENT, SAMPLE_ALLERGY, SAMPLE_ALLERGY_INACTIVE]
+    )
+
+    allergies = await graph.get_verified_allergies(patient_id)
+
+    # Should only return the active allergy
+    assert len(allergies) == 1
+    assert allergies[0]["id"] == "allergy-fhir-abc"
+
+
+@pytest.mark.asyncio
+async def test_get_verified_allergies_returns_empty_for_nonexistent_patient(
+    graph: KnowledgeGraph
+):
+    """Test that get_verified_allergies returns empty list for nonexistent patient."""
+    allergies = await graph.get_verified_allergies("nonexistent-patient-id")
+    assert allergies == []
+
+
+# Tests for get_verified_facts
+@pytest.mark.asyncio
+async def test_get_verified_facts_returns_all_verified_data(
+    graph: KnowledgeGraph, patient_id: str
+):
+    """Test that get_verified_facts returns aggregated verified data."""
+    await graph.build_from_fhir(
+        patient_id,
+        [
+            SAMPLE_PATIENT,
+            SAMPLE_CONDITION,
+            SAMPLE_CONDITION_INACTIVE,  # Should be excluded
+            SAMPLE_MEDICATION,
+            SAMPLE_MEDICATION_ON_HOLD,  # Should be included
+            SAMPLE_MEDICATION_STOPPED,  # Should be excluded
+            SAMPLE_ALLERGY,
+            SAMPLE_ALLERGY_INACTIVE,  # Should be excluded
+        ],
+    )
+
+    facts = await graph.get_verified_facts(patient_id)
+
+    # Verify structure
+    assert "conditions" in facts
+    assert "medications" in facts
+    assert "allergies" in facts
+
+    # Verify correct filtering
+    assert len(facts["conditions"]) == 1
+    assert facts["conditions"][0]["id"] == "condition-fhir-456"
+
+    assert len(facts["medications"]) == 2
+    med_ids = {m["id"] for m in facts["medications"]}
+    assert "medication-fhir-789" in med_ids
+    assert "medication-fhir-on-hold" in med_ids
+    assert "medication-fhir-stopped" not in med_ids
+
+    assert len(facts["allergies"]) == 1
+    assert facts["allergies"][0]["id"] == "allergy-fhir-abc"
+
+
+@pytest.mark.asyncio
+async def test_get_verified_facts_returns_empty_collections_for_new_patient(
+    graph: KnowledgeGraph, patient_id: str
+):
+    """Test that get_verified_facts returns empty collections for patient with no data."""
+    await graph.build_from_fhir(patient_id, [SAMPLE_PATIENT])
+
+    facts = await graph.get_verified_facts(patient_id)
+
+    assert facts["conditions"] == []
+    assert facts["medications"] == []
+    assert facts["allergies"] == []
+
+
+# Tests for fhir_resource storage
+@pytest.mark.asyncio
+async def test_fhir_resource_stored_on_condition_node(
+    graph: KnowledgeGraph, patient_id: str, neo4j_driver
+):
+    """Test that the full FHIR resource is stored on Condition nodes."""
+    await graph.build_from_fhir(patient_id, [SAMPLE_PATIENT, SAMPLE_CONDITION])
+
+    async with neo4j_driver.session() as session:
+        result = await session.run(
+            """
+            MATCH (p:Patient {id: $id})-[:HAS_CONDITION]->(c:Condition)
+            RETURN c.fhir_resource as fhir_resource
+            """,
+            id=patient_id,
+        )
+        record = await result.single()
+
+    assert record is not None
+    assert record["fhir_resource"] is not None
+    # Parse the stored JSON to verify it's the full resource
+    import json
+
+    stored_resource = json.loads(record["fhir_resource"])
+    assert stored_resource["resourceType"] == "Condition"
+    assert stored_resource["id"] == "condition-fhir-456"
+    assert stored_resource["code"]["coding"][0]["display"] == "Type 2 diabetes mellitus"
+
+
+@pytest.mark.asyncio
+async def test_fhir_resource_stored_on_medication_node(
+    graph: KnowledgeGraph, patient_id: str, neo4j_driver
+):
+    """Test that the full FHIR resource is stored on Medication nodes."""
+    await graph.build_from_fhir(patient_id, [SAMPLE_PATIENT, SAMPLE_MEDICATION])
+
+    async with neo4j_driver.session() as session:
+        result = await session.run(
+            """
+            MATCH (p:Patient {id: $id})-[:TAKES_MEDICATION]->(m:Medication)
+            RETURN m.fhir_resource as fhir_resource
+            """,
+            id=patient_id,
+        )
+        record = await result.single()
+
+    assert record is not None
+    assert record["fhir_resource"] is not None
+    import json
+
+    stored_resource = json.loads(record["fhir_resource"])
+    assert stored_resource["resourceType"] == "MedicationRequest"
+    assert stored_resource["id"] == "medication-fhir-789"
+
+
+@pytest.mark.asyncio
+async def test_fhir_resource_stored_on_allergy_node(
+    graph: KnowledgeGraph, patient_id: str, neo4j_driver
+):
+    """Test that the full FHIR resource is stored on Allergy nodes."""
+    await graph.build_from_fhir(patient_id, [SAMPLE_PATIENT, SAMPLE_ALLERGY])
+
+    async with neo4j_driver.session() as session:
+        result = await session.run(
+            """
+            MATCH (p:Patient {id: $id})-[:HAS_ALLERGY]->(a:Allergy)
+            RETURN a.fhir_resource as fhir_resource
+            """,
+            id=patient_id,
+        )
+        record = await result.single()
+
+    assert record is not None
+    assert record["fhir_resource"] is not None
+    import json
+
+    stored_resource = json.loads(record["fhir_resource"])
+    assert stored_resource["resourceType"] == "AllergyIntolerance"
+    assert stored_resource["id"] == "allergy-fhir-abc"

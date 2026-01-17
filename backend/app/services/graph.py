@@ -1,5 +1,6 @@
 """Neo4j Knowledge Graph service for FHIR resource relationships."""
 
+import json
 from typing import Any
 
 from neo4j import AsyncGraphDatabase, AsyncDriver
@@ -127,6 +128,7 @@ class KnowledgeGraph:
                     c.system = $system,
                     c.clinical_status = $clinical_status,
                     c.onset_date = $onset_date,
+                    c.fhir_resource = $fhir_resource,
                     c.updated_at = datetime()
                 MERGE (p)-[:HAS_CONDITION]->(c)
                 """,
@@ -137,6 +139,7 @@ class KnowledgeGraph:
                 system=first_coding.get("system"),
                 clinical_status=status_code,
                 onset_date=resource.get("onsetDateTime"),
+                fhir_resource=json.dumps(resource),
             )
 
     async def _upsert_medication(
@@ -162,6 +165,7 @@ class KnowledgeGraph:
                     m.system = $system,
                     m.status = $status,
                     m.authored_on = $authored_on,
+                    m.fhir_resource = $fhir_resource,
                     m.updated_at = datetime()
                 MERGE (p)-[:TAKES_MEDICATION]->(m)
                 """,
@@ -172,6 +176,7 @@ class KnowledgeGraph:
                 system=first_coding.get("system"),
                 status=resource.get("status"),
                 authored_on=resource.get("authoredOn"),
+                fhir_resource=json.dumps(resource),
             )
 
     async def _upsert_allergy(
@@ -203,6 +208,7 @@ class KnowledgeGraph:
                     a.clinical_status = $clinical_status,
                     a.category = $category,
                     a.criticality = $criticality,
+                    a.fhir_resource = $fhir_resource,
                     a.updated_at = datetime()
                 MERGE (p)-[:HAS_ALLERGY]->(a)
                 """,
@@ -214,6 +220,7 @@ class KnowledgeGraph:
                 clinical_status=status_code,
                 category=resource.get("category", [None])[0],
                 criticality=resource.get("criticality"),
+                fhir_resource=json.dumps(resource),
             )
 
     async def _upsert_observation(
@@ -307,6 +314,115 @@ class KnowledgeGraph:
                 period_start=period.get("start"),
                 period_end=period.get("end"),
             )
+
+    async def get_verified_conditions(self, patient_id: str) -> list[dict[str, Any]]:
+        """
+        Get FHIR Condition resources for graph-verified active conditions.
+
+        Returns actual FHIR resources, not extracted fields.
+
+        Args:
+            patient_id: The canonical patient UUID.
+
+        Returns:
+            List of FHIR Condition resources with clinical_status = 'active'.
+        """
+        async with self._driver.session() as session:
+            result = await session.run(
+                """
+                MATCH (p:Patient {id: $patient_id})-[:HAS_CONDITION]->(c:Condition)
+                WHERE c.clinical_status = 'active'
+                RETURN c.fhir_resource as resource
+                """,
+                patient_id=patient_id,
+            )
+            resources = []
+            async for record in result:
+                resource_json = record["resource"]
+                if resource_json:
+                    resources.append(json.loads(resource_json))
+            return resources
+
+    async def get_verified_medications(self, patient_id: str) -> list[dict[str, Any]]:
+        """
+        Get FHIR MedicationRequest resources for active medications.
+
+        Returns actual FHIR resources, not extracted fields.
+
+        Args:
+            patient_id: The canonical patient UUID.
+
+        Returns:
+            List of FHIR MedicationRequest resources with status in ['active', 'on-hold'].
+        """
+        async with self._driver.session() as session:
+            result = await session.run(
+                """
+                MATCH (p:Patient {id: $patient_id})-[:TAKES_MEDICATION]->(m:Medication)
+                WHERE m.status IN ['active', 'on-hold']
+                RETURN m.fhir_resource as resource
+                """,
+                patient_id=patient_id,
+            )
+            resources = []
+            async for record in result:
+                resource_json = record["resource"]
+                if resource_json:
+                    resources.append(json.loads(resource_json))
+            return resources
+
+    async def get_verified_allergies(self, patient_id: str) -> list[dict[str, Any]]:
+        """
+        Get FHIR AllergyIntolerance resources for known allergies.
+
+        Returns actual FHIR resources, not extracted fields.
+
+        Args:
+            patient_id: The canonical patient UUID.
+
+        Returns:
+            List of FHIR AllergyIntolerance resources with clinical_status = 'active'.
+        """
+        async with self._driver.session() as session:
+            result = await session.run(
+                """
+                MATCH (p:Patient {id: $patient_id})-[:HAS_ALLERGY]->(a:Allergy)
+                WHERE a.clinical_status = 'active'
+                RETURN a.fhir_resource as resource
+                """,
+                patient_id=patient_id,
+            )
+            resources = []
+            async for record in result:
+                resource_json = record["resource"]
+                if resource_json:
+                    resources.append(json.loads(resource_json))
+            return resources
+
+    async def get_verified_facts(
+        self, patient_id: str
+    ) -> dict[str, list[dict[str, Any]]]:
+        """
+        Get all verified clinical facts from graph for a patient.
+
+        Aggregates conditions, medications, and allergies into a single response.
+
+        Args:
+            patient_id: The canonical patient UUID.
+
+        Returns:
+            Dictionary with 'conditions', 'medications', and 'allergies' keys,
+            each containing a list of FHIR resources.
+        """
+        conditions = await self.get_verified_conditions(patient_id)
+        medications = await self.get_verified_medications(patient_id)
+        allergies = await self.get_verified_allergies(patient_id)
+
+        return {
+            "conditions": conditions,
+            "medications": medications,
+            "allergies": allergies,
+        }
 
     async def build_from_fhir(
         self, patient_id: str, resources: list[dict[str, Any]]
