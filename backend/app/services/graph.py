@@ -12,10 +12,11 @@ class KnowledgeGraph:
     """
     Neo4j graph service with FHIR-aware node creation.
 
-    Provides verified facts via explicit typed relationships:
+    Provides verified facts via explicit typed relationships.
+    Node labels match FHIR resource types exactly:
     - Patient HAS_CONDITION Condition
-    - Patient TAKES_MEDICATION MedicationRequest
-    - Patient HAS_ALLERGY AllergyIntolerance
+    - Patient HAS_MEDICATION_REQUEST MedicationRequest
+    - Patient HAS_ALLERGY_INTOLERANCE AllergyIntolerance
     - Patient HAS_OBSERVATION Observation
     - Patient HAS_ENCOUNTER Encounter
     """
@@ -142,11 +143,11 @@ class KnowledgeGraph:
                 fhir_resource=json.dumps(resource),
             )
 
-    async def _upsert_medication(
+    async def _upsert_medication_request(
         self, patient_id: str, resource: dict[str, Any]
     ) -> None:
         """
-        Create or update MedicationRequest node and TAKES_MEDICATION relationship.
+        Create or update MedicationRequest node and HAS_MEDICATION_REQUEST relationship.
 
         Uses MERGE for idempotency.
         """
@@ -159,7 +160,7 @@ class KnowledgeGraph:
             await session.run(
                 """
                 MATCH (p:Patient {id: $patient_id})
-                MERGE (m:Medication {fhir_id: $fhir_id})
+                MERGE (m:MedicationRequest {fhir_id: $fhir_id})
                 SET m.code = $code,
                     m.display = $display,
                     m.system = $system,
@@ -167,7 +168,7 @@ class KnowledgeGraph:
                     m.authored_on = $authored_on,
                     m.fhir_resource = $fhir_resource,
                     m.updated_at = datetime()
-                MERGE (p)-[:TAKES_MEDICATION]->(m)
+                MERGE (p)-[:HAS_MEDICATION_REQUEST]->(m)
                 """,
                 patient_id=patient_id,
                 fhir_id=resource.get("id"),
@@ -179,11 +180,11 @@ class KnowledgeGraph:
                 fhir_resource=json.dumps(resource),
             )
 
-    async def _upsert_allergy(
+    async def _upsert_allergy_intolerance(
         self, patient_id: str, resource: dict[str, Any]
     ) -> None:
         """
-        Create or update AllergyIntolerance node and HAS_ALLERGY relationship.
+        Create or update AllergyIntolerance node and HAS_ALLERGY_INTOLERANCE relationship.
 
         Uses MERGE for idempotency.
         """
@@ -201,7 +202,7 @@ class KnowledgeGraph:
             await session.run(
                 """
                 MATCH (p:Patient {id: $patient_id})
-                MERGE (a:Allergy {fhir_id: $fhir_id})
+                MERGE (a:AllergyIntolerance {fhir_id: $fhir_id})
                 SET a.code = $code,
                     a.display = $display,
                     a.system = $system,
@@ -210,7 +211,7 @@ class KnowledgeGraph:
                     a.criticality = $criticality,
                     a.fhir_resource = $fhir_resource,
                     a.updated_at = datetime()
-                MERGE (p)-[:HAS_ALLERGY]->(a)
+                MERGE (p)-[:HAS_ALLERGY_INTOLERANCE]->(a)
                 """,
                 patient_id=patient_id,
                 fhir_id=resource.get("id"),
@@ -358,7 +359,7 @@ class KnowledgeGraph:
         async with self._driver.session() as session:
             result = await session.run(
                 """
-                MATCH (p:Patient {id: $patient_id})-[:TAKES_MEDICATION]->(m:Medication)
+                MATCH (p:Patient {id: $patient_id})-[:HAS_MEDICATION_REQUEST]->(m:MedicationRequest)
                 WHERE m.status IN ['active', 'on-hold']
                 RETURN m.fhir_resource as resource
                 """,
@@ -386,7 +387,7 @@ class KnowledgeGraph:
         async with self._driver.session() as session:
             result = await session.run(
                 """
-                MATCH (p:Patient {id: $patient_id})-[:HAS_ALLERGY]->(a:Allergy)
+                MATCH (p:Patient {id: $patient_id})-[:HAS_ALLERGY_INTOLERANCE]->(a:AllergyIntolerance)
                 WHERE a.clinical_status = 'active'
                 RETURN a.fhir_resource as resource
                 """,
@@ -453,9 +454,9 @@ class KnowledgeGraph:
             if resource_type == "Condition":
                 await self._upsert_condition(patient_id, resource)
             elif resource_type == "MedicationRequest":
-                await self._upsert_medication(patient_id, resource)
+                await self._upsert_medication_request(patient_id, resource)
             elif resource_type == "AllergyIntolerance":
-                await self._upsert_allergy(patient_id, resource)
+                await self._upsert_allergy_intolerance(patient_id, resource)
             elif resource_type == "Observation":
                 await self._upsert_observation(patient_id, resource)
             elif resource_type == "Encounter":

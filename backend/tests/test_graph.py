@@ -235,13 +235,13 @@ async def test_build_from_fhir_creates_condition_with_relationship(
 async def test_build_from_fhir_creates_medication_with_relationship(
     graph: KnowledgeGraph, patient_id: str, neo4j_driver
 ):
-    """Test that build_from_fhir creates Medication node with TAKES_MEDICATION relationship."""
+    """Test that build_from_fhir creates MedicationRequest node with HAS_MEDICATION_REQUEST relationship."""
     await graph.build_from_fhir(patient_id, [SAMPLE_PATIENT, SAMPLE_MEDICATION])
 
     async with neo4j_driver.session() as session:
         result = await session.run(
             """
-            MATCH (p:Patient {id: $id})-[:TAKES_MEDICATION]->(m:Medication)
+            MATCH (p:Patient {id: $id})-[:HAS_MEDICATION_REQUEST]->(m:MedicationRequest)
             RETURN m
             """,
             id=patient_id,
@@ -260,13 +260,13 @@ async def test_build_from_fhir_creates_medication_with_relationship(
 async def test_build_from_fhir_creates_allergy_with_relationship(
     graph: KnowledgeGraph, patient_id: str, neo4j_driver
 ):
-    """Test that build_from_fhir creates Allergy node with HAS_ALLERGY relationship."""
+    """Test that build_from_fhir creates AllergyIntolerance node with HAS_ALLERGY_INTOLERANCE relationship."""
     await graph.build_from_fhir(patient_id, [SAMPLE_PATIENT, SAMPLE_ALLERGY])
 
     async with neo4j_driver.session() as session:
         result = await session.run(
             """
-            MATCH (p:Patient {id: $id})-[:HAS_ALLERGY]->(a:Allergy)
+            MATCH (p:Patient {id: $id})-[:HAS_ALLERGY_INTOLERANCE]->(a:AllergyIntolerance)
             RETURN a
             """,
             id=patient_id,
@@ -357,8 +357,8 @@ async def test_build_from_fhir_complete_patient(
             """
             MATCH (p:Patient {id: $id})
             OPTIONAL MATCH (p)-[:HAS_CONDITION]->(c:Condition)
-            OPTIONAL MATCH (p)-[:TAKES_MEDICATION]->(m:Medication)
-            OPTIONAL MATCH (p)-[:HAS_ALLERGY]->(a:Allergy)
+            OPTIONAL MATCH (p)-[:HAS_MEDICATION_REQUEST]->(m:MedicationRequest)
+            OPTIONAL MATCH (p)-[:HAS_ALLERGY_INTOLERANCE]->(a:AllergyIntolerance)
             OPTIONAL MATCH (p)-[:HAS_OBSERVATION]->(o:Observation)
             OPTIONAL MATCH (p)-[:HAS_ENCOUNTER]->(e:Encounter)
             RETURN p, c, m, a, o, e
@@ -757,13 +757,13 @@ async def test_fhir_resource_stored_on_condition_node(
 async def test_fhir_resource_stored_on_medication_node(
     graph: KnowledgeGraph, patient_id: str, neo4j_driver
 ):
-    """Test that the full FHIR resource is stored on Medication nodes."""
+    """Test that the full FHIR resource is stored on MedicationRequest nodes."""
     await graph.build_from_fhir(patient_id, [SAMPLE_PATIENT, SAMPLE_MEDICATION])
 
     async with neo4j_driver.session() as session:
         result = await session.run(
             """
-            MATCH (p:Patient {id: $id})-[:TAKES_MEDICATION]->(m:Medication)
+            MATCH (p:Patient {id: $id})-[:HAS_MEDICATION_REQUEST]->(m:MedicationRequest)
             RETURN m.fhir_resource as fhir_resource
             """,
             id=patient_id,
@@ -783,13 +783,13 @@ async def test_fhir_resource_stored_on_medication_node(
 async def test_fhir_resource_stored_on_allergy_node(
     graph: KnowledgeGraph, patient_id: str, neo4j_driver
 ):
-    """Test that the full FHIR resource is stored on Allergy nodes."""
+    """Test that the full FHIR resource is stored on AllergyIntolerance nodes."""
     await graph.build_from_fhir(patient_id, [SAMPLE_PATIENT, SAMPLE_ALLERGY])
 
     async with neo4j_driver.session() as session:
         result = await session.run(
             """
-            MATCH (p:Patient {id: $id})-[:HAS_ALLERGY]->(a:Allergy)
+            MATCH (p:Patient {id: $id})-[:HAS_ALLERGY_INTOLERANCE]->(a:AllergyIntolerance)
             RETURN a.fhir_resource as fhir_resource
             """,
             id=patient_id,
