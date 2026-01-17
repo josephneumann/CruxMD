@@ -51,3 +51,9 @@ Thumbs.db
 node_modules/
 .next/
 out/
+
+# Docker
+.docker/
+
+# Local Claude settings (don't commit to main repo)
+.claude/*.local.md
