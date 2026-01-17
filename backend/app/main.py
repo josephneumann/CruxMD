@@ -4,6 +4,7 @@ from fastapi import FastAPI
 from fastapi.middleware.cors import CORSMiddleware
 
 from app.config import settings
+from app.routes import fhir, patients
 
 app = FastAPI(
     title="CruxMD",
@@ -19,6 +20,10 @@ app.add_middleware(
     allow_methods=["*"],
     allow_headers=["*"],
 )
+
+# Include API routers
+app.include_router(patients.router, prefix="/api")
+app.include_router(fhir.router, prefix="/api")
 
 
 @app.get("/health")
