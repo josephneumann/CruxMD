@@ -102,7 +102,7 @@ This project uses a specific approach to AI-assisted development:
 
 3. **Task isolation** — Each task gets its own branch/worktree, preventing conflicts and enabling clean PRs.
 
-4. **Bounded autonomy** — Claude can work autonomously (ralph mode) but within bounds: clear acceptance criteria, test-driven completion, iteration limits.
+4. **Bounded autonomy** — Claude works autonomously but within bounds: clear acceptance criteria, test-driven completion.
 
 5. **Handoffs over context bloat** — When context grows large, hand off to a fresh session rather than degrading quality.
 
@@ -120,7 +120,7 @@ This project uses a specific approach to AI-assisted development:
 
 ## Agent Workflow Skills
 
-This project uses custom Claude Code skills for multi-agent task management with beads (`bd`). Tasks can run in **manual mode** (interactive) or **ralph mode** (autonomous iteration until tests pass).
+This project uses custom Claude Code skills for multi-agent task management with beads (`bd`).
 
 ---
 
@@ -140,24 +140,26 @@ Spawns multiple Claude Code workers for parallel task execution. Use from an orc
 
 **Usage:**
 ```bash
-/dispatch --count 3                              # Auto-select 3 ready tasks
+/dispatch                                        # Auto-select 3 ready tasks (default)
+/dispatch --count 5                              # Auto-select 5 ready tasks
 /dispatch MoneyPrinter-ajq MoneyPrinter-4b3      # Specific tasks
 /dispatch MoneyPrinter-ajq:"Use PriceCache"      # With custom handoff context
-/dispatch MoneyPrinter-ajq --no-ralph            # Manual mode (no ralph-loop)
+/dispatch --count 2 --no-chrome                  # Without Chrome tools
 ```
 
 **What it does:**
 1. Identifies tasks (from args or `bd ready`)
 2. Generates handoff context for each task
-3. Shows summary and asks for confirmation (including skip-permissions option)
-4. Runs `mp-spawn` for each task (spawns workers in iTerm2 tabs)
-5. Provides guidance on attaching to workers
+3. Shows summary and asks for confirmation
+4. Asks for worker options (chrome tools, skip-permissions)
+5. Runs `mp-spawn` for each task (spawns workers in iTerm2 tabs)
+6. Provides guidance on attaching to workers
 
 **Note:** Worktrees are created by `/start-task`, not by `mp-spawn` or `/dispatch`.
 
 **Confirmation flow:**
 - Confirms dispatch of N workers
-- Asks whether to use `--skip-permissions` (recommended for ralph mode autonomous workers)
+- Asks for worker options: Chrome tools (recommended), Skip permissions (recommended)
 
 **After dispatch (with skip-permissions):**
 1. Switch to iTerm2 (`Cmd+Tab`)
@@ -172,16 +174,43 @@ Spawns multiple Claude Code workers for parallel task execution. Use from an orc
 
 ---
 
+### `/init-prd [path]` — Initialize Project from PRD
+
+Sets up a new project and bootstraps beads tasks from a PROJECT_SPEC.md document.
+
+**Usage:**
+```bash
+/init-prd                    # Full setup + parse PROJECT_SPEC.md
+/init-prd docs/SPEC.md       # Custom PRD path
+/init-prd --dry-run          # Preview tasks without creating
+/init-prd --append           # Add to existing beads tasks
+/init-prd --skip-setup       # Skip CLAUDE.md and bd init checks
+```
+
+**What it does:**
+1. Checks for CLAUDE.md (offers to copy template if missing)
+2. Checks beads initialization (offers to run `bd init` if needed)
+3. Finds and reads the PRD document
+4. Asks clarifying questions to resolve ambiguities in the PRD
+5. Extracts epics, features, tasks, and research items
+6. Infers dependencies from document structure and language
+7. Shows proposed tasks for user approval
+8. Creates tasks via beads CLI (`bd create`)
+9. Establishes dependency relationships (`bd dep add`)
+
+**New project workflow:**
+1. Create PROJECT_SPEC.md with features/tasks/research items
+2. Run `/init-prd` — sets up CLAUDE.md, bd init, parses PRD, creates tasks
+3. Run `/orient` to see ready work
+4. Run `/dispatch` to start parallel workers
+
+---
+
 ### `/start-task <task-id> [flags]` — Start Working on a Task
 
-Sets up isolated environment for a beads task. Two modes available:
+Sets up isolated environment for a beads task.
 
-| Mode | Command | Behavior |
-|------|---------|----------|
-| **Manual** | `/start-task <id>` | Interactive implementation with human guidance |
-| **Ralph** | `/start-task <id> --ralph` | Autonomous loop until tests pass |
-
-**Setup (both modes):**
+**Setup:**
 1. Validates task, creates git worktree, sets `BEADS_NO_DAEMON=1`
 2. Claims task (`bd update --status in_progress`)
 3. Asks clarifying questions before implementation
@@ -191,56 +220,12 @@ Sets up isolated environment for a beads task. Two modes available:
 | Flag | Description |
 |------|-------------|
 | `--handoff "<text>"` | Context from previous session |
-| `--ralph` | Enable autonomous ralph-loop mode |
-| `--max-iterations N` | Ralph iteration limit (default: 10) |
 
 **Examples:**
 ```bash
-/start-task 46j.1                                       # Manual mode
-/start-task 46j.1 --handoff "Use PriceCache for OHLCV"  # Manual + handoff context
-/start-task 46j.1 --ralph                               # Ralph mode (10 iterations max)
-/start-task 46j.1 --ralph --max-iterations 50           # Ralph mode (50 iterations)
-/start-task 46j.1 --ralph --handoff "Use 3% tolerance"  # Ralph + handoff context
+/start-task 46j.1                                       # Standard start
+/start-task 46j.1 --handoff "Use PriceCache for OHLCV"  # With handoff context
 ```
-
----
-
-### Ralph-Loop Mode (Autonomous Implementation)
-
-When `--ralph` is used, after setup and Q&A confirmation:
-
-1. **Loop activates** — Claude implements iteratively, running tests frequently
-2. **Success** — When all tests pass, outputs `<promise>ALL TESTS PASSING</promise>`
-3. **Exit** — Loop ends, prompts "Run `/finish-task <id>`"
-4. **Max iterations** — If limit reached, outputs handoff command for new session
-
-**Best Practices for Ralph Mode:**
-
-| Do | Don't |
-|----|-------|
-| Use for well-defined implementation tasks | Use for research or exploration |
-| Ensure task has clear acceptance criteria | Use for tasks requiring design decisions |
-| Start with existing test patterns to follow | Use for greenfield without test examples |
-| Set realistic `--max-iterations` (10-30) | Set unlimited iterations |
-| Answer clarifying questions thoroughly | Rush through the Q&A step |
-
-**Good ralph candidates:**
-- Adding a new module following existing patterns
-- Implementing a feature with clear spec
-- Bug fixes with reproducible test cases
-- Database schema additions with defined fields
-
-**Poor ralph candidates:**
-- Research tasks (no clear "done" state)
-- UI/UX work (subjective success criteria)
-- Architecture decisions (need human judgment)
-- Tasks requiring external API exploration
-
-**Completion signal:**
-```
-<promise>ALL TESTS PASSING</promise>
-```
-Only output when tests show 0 failures. Never output false promises to escape the loop.
 
 ---
 
@@ -312,44 +297,32 @@ Generates detailed summary without committing, pushing, or closing. Useful for p
 
 ### Workflow Examples
 
-**Manual parallel workflow:**
+**Parallel workflow:**
 ```
 Session A (Orchestrator):   /orient → identifies 46j.1, 46j.2, 46j.3
 Session B (Worker):         /start-task 46j.1 → implement → /finish-task 46j.1
 Session C (Worker):         /start-task 46j.2 → implement → /finish-task 46j.2
 ```
 
-**Ralph autonomous workflow:**
-```
-Session B (Worker):
-  /start-task 46j.1 --ralph
-  → Setup completes, Q&A answered
-  → "Ready to begin?" confirmed
-  → Ralph loop runs autonomously
-  → Tests pass → "Run /finish-task 46j.1"
-  /finish-task 46j.1
-```
-
-**Ralph with handoff (max iterations reached):**
-```
-Session B:
-  /start-task 46j.1 --ralph --max-iterations 20
-  → Loop hits 20 iterations without tests passing
-  → Outputs: /start-task 46j.1 --ralph --handoff "Continued from ralph-loop..."
-
-Session C (new session):
-  /start-task 46j.1 --ralph --handoff "Continued from ralph-loop..."
-  → Continues work with previous context
-```
-
 **Orchestrator dispatch workflow:**
 ```
 Session A (Orchestrator):
   /orient                           # Identify ready work
-  /dispatch --count 3 --ralph       # Spawn 3 workers
+  /dispatch --count 3               # Spawn 3 workers
   → Workers spawn in iTerm2 tabs
   → Switch to iTerm2, paste commands, answer trust prompts
   → Use Cmd+1/2/3 to switch between worker tabs
+```
+
+**Handoff workflow:**
+```
+Session B (context full):
+  /handoff-task 46j.1               # Generate handoff context
+  → Outputs: /start-task 46j.1 --handoff "..."
+
+Session C (fresh session):
+  /start-task 46j.1 --handoff "..." # Continue with context
+  → Continues work with previous context
 ```
 
 ---
@@ -370,18 +343,16 @@ mp-spawn <task-id> [options]
 Options:
   --dir /path/to/project  Project directory (default: current directory)
   --handoff "text"        Handoff context from previous session
-  --ralph                 Enable autonomous ralph-loop mode
-  --max-iterations N      Max ralph iterations (default: 10)
   --skip-permissions      Skip all permission prompts (uses --dangerously-skip-permissions)
-
-Note: --chrome is always enabled by default for all workers.
+  --chrome                Enable Chrome browser tools
+  --no-chrome             Disable Chrome browser tools
 ```
 
 **Examples:**
 ```bash
-mp-spawn MoneyPrinter-ajq --ralph
+mp-spawn MoneyPrinter-ajq
 mp-spawn MoneyPrinter-ajq --dir "$(pwd)" --handoff "Use PriceCache pattern"
-mp-spawn MoneyPrinter-ajq --ralph --skip-permissions  # Fully autonomous
+mp-spawn MoneyPrinter-ajq --skip-permissions --chrome  # Fully autonomous with browser
 ```
 
 **After spawn (with --skip-permissions):**
