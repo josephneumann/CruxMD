@@ -13,8 +13,10 @@ COPY pyproject.toml uv.lock ./
 # Install dependencies
 RUN uv sync --frozen --no-dev
 
-# Copy application code
+# Copy application code and alembic migrations
 COPY app ./app
+COPY alembic ./alembic
+COPY alembic.ini ./
 
 # Set environment variables
 ENV PYTHONUNBUFFERED=1
