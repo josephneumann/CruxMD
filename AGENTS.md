@@ -38,3 +38,61 @@ bd sync               # Sync with git
 - NEVER say "ready to push when you are" - YOU must push
 - If push fails, resolve and retry until it succeeds
 
+## Session Startup (Pre-flight Check)
+
+Before starting work, run `bd doctor` to catch issues early:
+
+```bash
+bd doctor              # Check for sync problems, repo mismatches
+bd ready               # Find available work
+```
+
+If `bd doctor` reports issues, resolve them before proceeding.
+
+## Troubleshooting
+
+### DATABASE MISMATCH DETECTED
+
+**Symptom:** Beads commands show warnings about repository ID mismatch:
+```
+DATABASE MISMATCH DETECTED!
+  Database repo ID:  xxxxxxxx
+  Current repo ID:   yyyyyyyy
+```
+
+**Cause:** This typically happens after:
+- `bd` was upgraded and URL canonicalization changed
+- Git remote URL changed (HTTPS ↔ SSH)
+- `.beads/` directory was copied from another repo
+
+**Fix:** If you're the only clone (or coordinating with other users):
+```bash
+echo "y" | bd migrate --update-repo-id
+```
+
+**Prevention:**
+- Run `bd doctor` at session start
+- Pin beads version during active sprints (`bd version` to check)
+- Don't copy `.beads/` directories between repos
+
+### Daemon Errors
+
+**Symptom:** `.beads/daemon-error` file appears, commands show daemon warnings.
+
+**Fix:**
+```bash
+rm .beads/daemon-error
+bd sync  # Restart daemon
+```
+
+### Sync Conflicts
+
+**Symptom:** `bd sync` fails with merge conflicts.
+
+**Fix:**
+```bash
+bd sync --status       # Check what's out of sync
+git pull --rebase      # Get latest changes
+bd sync                # Retry sync
+```
+
