@@ -241,11 +241,14 @@ Closes out a task with full verification. **Work is NOT complete until git push 
 6. Syncs beads (`bd sync`), pushes to remote
 7. Closes task (`bd close <task-id>`)
 8. Creates PR (`gh pr create`)
-9. Offers to merge PR (squash) and cleanup worktree (using absolute paths)
-10. Outputs detailed session summary for orchestrating agents
-11. Persists summary to `session_summaries/<taskid>_YYMMDD-HHMMSS.txt`
+9. Runs automated code review (`/code-review`) and auto-fixes issues
+10. Offers to merge PR (squash) and cleanup worktree (using absolute paths)
+11. Outputs detailed session summary for orchestrating agents
+12. Persists summary to `session_summaries/<taskid>_YYMMDD-HHMMSS.txt`
 
 **Critical:** Tests must pass before closing. Never close a task with failing tests.
+
+**Code Review:** After PR creation, runs `/code-review` which posts findings to the PR. High-confidence issues (≥80) are automatically fixed, committed, and pushed. Maximum 3 review cycles before asking user for guidance.
 
 **Worktree Cleanup:** Uses absolute paths to safely change to main repo before removing worktree, preventing "Path does not exist" errors.
 

@@ -14,9 +14,11 @@ bd sync               # Sync with git
 
 ## Landing the Plane (Session Completion)
 
-**When ending a work session**, you MUST complete ALL steps below. Work is NOT complete until `git push` succeeds.
+**Preferred:** Use `/finish-task <task-id>` which handles all steps automatically, including tests, commit, push, PR creation, code review, and cleanup.
 
-**MANDATORY WORKFLOW:**
+**Manual workflow** (if not using skills):
+
+When ending a work session, you MUST complete ALL steps below. Work is NOT complete until `git push` succeeds.
 
 1. **File issues for remaining work** - Create issues for anything that needs follow-up
 2. **Run quality gates** (if code changed) - Tests, linters, builds
