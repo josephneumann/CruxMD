@@ -1,72 +1,36 @@
 /**
- * API client configuration and helpers for CruxMD.
+ * API client configuration for CruxMD.
  *
- * This module provides a configured fetch client for making API requests
- * to the backend. It handles base URL configuration and authentication.
+ * Server-side only configuration for making authenticated API requests.
+ * The generated SDK in lib/generated/ should be used for type-safe API calls.
  */
 
 /**
  * Base URL for API requests.
- * In development, this points to the local FastAPI backend.
- * In production, it can be overridden via NEXT_PUBLIC_API_URL.
+ * Uses NEXT_PUBLIC_ for client components that need to know the API origin.
  */
 export const API_BASE_URL =
   process.env.NEXT_PUBLIC_API_URL || "http://localhost:8000";
 
 /**
- * API key for authenticating requests.
- * This should be set in environment variables for production.
+ * API key for server-side requests only.
+ * This is NOT exposed to the client (no NEXT_PUBLIC_ prefix).
  */
-const API_KEY = process.env.NEXT_PUBLIC_API_KEY || "dev-api-key";
-
-/**
- * Default headers for API requests.
- */
-export const defaultHeaders: HeadersInit = {
-  "Content-Type": "application/json",
-  "X-API-Key": API_KEY,
-};
-
-/**
- * Configured fetch function for making API requests.
- * Automatically includes authentication and base URL.
- */
-export async function apiFetch<T>(
-  path: string,
-  options: RequestInit = {}
-): Promise<T> {
-  const url = `${API_BASE_URL}${path}`;
-
-  const response = await fetch(url, {
-    ...options,
-    headers: {
-      ...defaultHeaders,
-      ...options.headers,
-    },
-  });
-
-  if (!response.ok) {
-    const error = await response.json().catch(() => ({}));
-    throw new ApiError(
-      response.status,
-      error.detail || response.statusText,
-      error
-    );
+export function getApiKey(): string {
+  const key = process.env.API_KEY;
+  if (!key) {
+    throw new Error("API_KEY environment variable is required");
   }
-
-  return response.json();
+  return key;
 }
 
 /**
- * Custom error class for API errors with status code and details.
+ * Get default headers for authenticated API requests.
+ * Server-side only - do not use in client components.
  */
-export class ApiError extends Error {
-  constructor(
-    public status: number,
-    message: string,
-    public details?: unknown
-  ) {
-    super(message);
-    this.name = "ApiError";
-  }
+export function getAuthHeaders(): HeadersInit {
+  return {
+    "Content-Type": "application/json",
+    "X-API-Key": getApiKey(),
+  };
 }
