@@ -1,6 +1,6 @@
 """add_embedding_columns
 
-Revision ID: add_embedding_cols
+Revision ID: add_embedding_columns
 Revises: add_fhir_id_idx
 Create Date: 2026-01-24
 
@@ -14,7 +14,7 @@ from pgvector.sqlalchemy import Vector
 
 
 # revision identifiers, used by Alembic.
-revision: str = "add_embedding_cols"
+revision: str = "add_embedding_columns"
 down_revision: Union[str, Sequence[str], None] = "add_fhir_id_idx"
 branch_labels: Union[str, Sequence[str], None] = None
 depends_on: Union[str, Sequence[str], None] = None
