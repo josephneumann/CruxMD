@@ -1,6 +1,7 @@
 """FHIR Bundle loader service for PostgreSQL and Neo4j storage."""
 
 import json
+import logging
 import uuid
 from typing import Any
 
@@ -8,7 +9,10 @@ from sqlalchemy import select, or_, and_
 from sqlalchemy.ext.asyncio import AsyncSession
 
 from app.models import FhirResource
+from app.services.embeddings import EmbeddingService, resource_to_text
 from app.services.graph import KnowledgeGraph
+
+logger = logging.getLogger(__name__)
 
 # FHIR extension URL for patient narrative profiles
 PROFILE_EXTENSION_URL = (
@@ -69,6 +73,9 @@ async def load_bundle(
         (r.fhir_id, r.resource_type): r for r in existing_resources
     }
 
+    # Track all FhirResource objects for embedding generation
+    all_fhir_resources: list[FhirResource] = []
+
     # Process all resources with batch lookup results
     for resource in resources_data:
         resource_type = resource.get("resourceType", "")
@@ -84,6 +91,7 @@ async def load_bundle(
             # Update existing resource
             existing.data = resource
             existing.patient_id = resource_patient_id
+            all_fhir_resources.append(existing)
         else:
             # Create new resource
             if resource_type == "Patient":
@@ -104,9 +112,13 @@ async def load_bundle(
                     data=resource,
                 )
             db.add(fhir_resource)
+            all_fhir_resources.append(fhir_resource)
 
     # Flush to get IDs assigned
     await db.flush()
+
+    # Generate embeddings for embeddable resource types
+    await _generate_embeddings(all_fhir_resources)
 
     # Build Neo4j graph from FHIR resources
     await graph.build_from_fhir(str(patient_id), resources_data)
@@ -157,6 +169,54 @@ async def _find_existing_resources_batch(
         select(FhirResource).where(or_(*conditions))
     )
     return list(result.scalars().all())
+
+
+async def _generate_embeddings(fhir_resources: list[FhirResource]) -> None:
+    """
+    Generate embeddings for FHIR resources that support embedding.
+
+    Updates the embedding and embedding_text columns on each FhirResource.
+    Failures are logged but do not block bundle loading (graceful degradation).
+
+    Args:
+        fhir_resources: List of FhirResource objects to generate embeddings for.
+    """
+    if not fhir_resources:
+        return
+
+    # Build mapping from resource data to FhirResource for later update
+    # Filter to only embeddable resources and generate text
+    embeddable: list[tuple[FhirResource, str]] = []
+    for fhir_resource in fhir_resources:
+        text = resource_to_text(fhir_resource.data)
+        if text is not None:
+            embeddable.append((fhir_resource, text))
+
+    if not embeddable:
+        return
+
+    try:
+        embedding_service = EmbeddingService()
+        try:
+            # Extract texts for batch embedding
+            texts = [text for _, text in embeddable]
+
+            # Generate embeddings in batch
+            embeddings = await embedding_service.embed_texts(texts)
+
+            # Update FhirResource objects with embeddings
+            for (fhir_resource, text), embedding in zip(embeddable, embeddings):
+                fhir_resource.embedding = embedding
+                fhir_resource.embedding_text = text
+
+            logger.info(f"Generated embeddings for {len(embeddings)} resources")
+
+        finally:
+            await embedding_service.close()
+
+    except Exception as e:
+        # Log error but don't fail bundle loading
+        logger.warning(f"Failed to generate embeddings: {e}")
 
 
 async def load_bundle_with_profile(
