@@ -12,12 +12,22 @@ export type { BundleLoadResponse } from "./generated";
 
 /**
  * Patient list item from API response.
- * Represents the shape returned by /api/patients endpoint.
+ * Represents a single patient in the paginated response.
  */
 export interface PatientListItem {
   id: string;
   fhir_id: string;
   data: FhirPatient;
+}
+
+/**
+ * Paginated response for patient list.
+ */
+export interface PaginatedPatientList {
+  items: PatientListItem[];
+  total: number;
+  skip: number;
+  limit: number;
 }
 
 /**
@@ -35,9 +45,33 @@ export function isPatientListItem(obj: unknown): obj is PatientListItem {
 }
 
 /**
+ * Type guard to check if an object is a valid PaginatedPatientList.
+ */
+export function isPaginatedPatientList(
+  obj: unknown
+): obj is PaginatedPatientList {
+  if (typeof obj !== "object" || obj === null) return false;
+  const data = obj as Record<string, unknown>;
+  return (
+    Array.isArray(data.items) &&
+    typeof data.total === "number" &&
+    typeof data.skip === "number" &&
+    typeof data.limit === "number"
+  );
+}
+
+/**
  * Parse and validate patient list from API response.
+ * Handles both paginated response (new) and legacy array response (deprecated).
  */
 export function parsePatientList(data: unknown): PatientListItem[] {
-  if (!Array.isArray(data)) return [];
-  return data.filter(isPatientListItem);
+  // Handle paginated response (new format)
+  if (isPaginatedPatientList(data)) {
+    return data.items.filter(isPatientListItem);
+  }
+  // Handle legacy array response (deprecated)
+  if (Array.isArray(data)) {
+    return data.filter(isPatientListItem);
+  }
+  return [];
 }

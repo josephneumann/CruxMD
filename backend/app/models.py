@@ -46,6 +46,8 @@ class FhirResource(Base):
     __table_args__ = (
         Index("idx_fhir_type_patient", "resource_type", "patient_id"),
         Index("idx_fhir_data_gin", "data", postgresql_using="gin"),
+        # Index for idempotency checks during bundle loading
+        Index("idx_fhir_id_type", "fhir_id", "resource_type"),
     )
 
     def __repr__(self) -> str:

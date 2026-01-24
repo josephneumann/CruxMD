@@ -73,11 +73,26 @@ uv run alembic upgrade head          # Run migrations
 uv run python -m app.scripts.seed_database  # Seed with Synthea fixtures
 uv run uvicorn app.main:app --reload # Start dev server
 
-# Frontend
+# Frontend (in another terminal, with backend running)
 cd frontend
 pnpm install                         # Install dependencies
+pnpm generate-api                    # Generate TypeScript client from OpenAPI
 pnpm dev                             # Start dev server (http://localhost:3000)
 ```
+
+### API Client Generation
+
+The frontend uses `@hey-api/openapi-ts` to generate a type-safe API client from the FastAPI OpenAPI schema. After making backend API changes:
+
+```bash
+# Ensure backend is running
+cd backend && uv run uvicorn app.main:app --reload
+
+# In another terminal, regenerate the client
+cd frontend && pnpm generate-api
+```
+
+This creates TypeScript types and functions in `frontend/lib/generated/`.
 
 ### Full Stack (Docker)
 

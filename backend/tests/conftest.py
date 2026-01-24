@@ -17,7 +17,7 @@ from neo4j import AsyncGraphDatabase
 from sqlalchemy.ext.asyncio import AsyncSession, async_sessionmaker, create_async_engine
 
 from app.config import settings
-from app.database import Base
+from app.database import Base, get_db
 from app.main import app
 from app.services.graph import KnowledgeGraph
 
@@ -28,13 +28,39 @@ from app.services.graph import KnowledgeGraph
 
 
 @pytest_asyncio.fixture
-async def client():
-    """Async test client for FastAPI app."""
+async def client(test_engine):
+    """Async test client for FastAPI app with test database.
+
+    Overrides the app's get_db dependency to use the test database,
+    ensuring API tests use the same database as other test fixtures.
+    """
+    # Create session maker for test database
+    test_session_maker = async_sessionmaker(
+        test_engine,
+        class_=AsyncSession,
+        expire_on_commit=False,
+    )
+
+    async def override_get_db():
+        async with test_session_maker() as session:
+            try:
+                yield session
+                await session.commit()
+            except Exception:
+                await session.rollback()
+                raise
+
+    # Override the dependency
+    app.dependency_overrides[get_db] = override_get_db
+
     async with AsyncClient(
         transport=ASGITransport(app=app),
         base_url="http://test",
     ) as ac:
         yield ac
+
+    # Clean up override
+    app.dependency_overrides.pop(get_db, None)
 
 
 @pytest.fixture
