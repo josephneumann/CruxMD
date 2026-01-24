@@ -223,7 +223,6 @@ async def generate_profile_for_patient(
         gender=gender,
         conditions=format_conditions(conditions),
         encounters=format_encounters(encounters),
-        schema=json.dumps(PatientProfile.model_json_schema(), indent=2),
     )
 
     response = await client.chat.completions.create(
@@ -250,7 +249,7 @@ async def generate_all_profiles(fixtures_dir: Path) -> dict[str, dict[str, Any]]
     if not settings.openai_api_key:
         raise ValueError(
             "OPENAI_API_KEY environment variable not set. "
-            "Set it in .env or export OPENAI_API_KEY=sk-..."
+            "Configure the API key before running this script."
         )
 
     client = AsyncOpenAI(api_key=settings.openai_api_key)
