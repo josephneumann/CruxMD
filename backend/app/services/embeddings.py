@@ -1,6 +1,7 @@
 """Embedding service for FHIR resources using OpenAI text-embedding-3-small."""
 
 import logging
+from collections.abc import Callable
 from typing import Any
 
 from openai import AsyncOpenAI
@@ -370,7 +371,7 @@ def _template_care_plan(resource: dict[str, Any]) -> str:
 
 
 # Mapping of FHIR resource types to their template functions
-RESOURCE_TEMPLATES: dict[str, callable] = {
+RESOURCE_TEMPLATES: dict[str, Callable[[dict[str, Any]], str]] = {
     "Condition": _template_condition,
     "Observation": _template_observation,
     "MedicationRequest": _template_medication_request,
@@ -442,12 +443,19 @@ class EmbeddingService:
         """
         if client is not None:
             self._client = client
-            self._owns_client = False
         else:
             self._client = AsyncOpenAI(api_key=settings.openai_api_key)
-            self._owns_client = True
 
         self._model = model
+
+    async def close(self) -> None:
+        """Close the OpenAI client connection.
+
+        Note: AsyncOpenAI manages its own connection pool and doesn't strictly
+        require explicit cleanup, but this method is provided for consistency
+        with other services (e.g., KnowledgeGraph).
+        """
+        await self._client.close()
 
     async def embed_texts(
         self,
