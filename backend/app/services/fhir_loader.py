@@ -75,8 +75,7 @@ async def load_bundle(
         fhir_id = resource.get("id", "")
 
         # Determine patient_id for this resource
-        # Patient resource gets patient_id = its own id
-        # Other resources get linked to the patient
+        # All resources get linked to the patient
         resource_patient_id = patient_id
 
         # Check if resource already exists using batch lookup results
@@ -87,12 +86,23 @@ async def load_bundle(
             existing.patient_id = resource_patient_id
         else:
             # Create new resource
-            fhir_resource = FhirResource(
-                fhir_id=fhir_id,
-                resource_type=resource_type,
-                patient_id=resource_patient_id,
-                data=resource,
-            )
+            if resource_type == "Patient":
+                # Patient's id = patient_id for consistency
+                fhir_resource = FhirResource(
+                    id=patient_id,
+                    fhir_id=fhir_id,
+                    resource_type=resource_type,
+                    patient_id=resource_patient_id,
+                    data=resource,
+                )
+            else:
+                # Other resources get auto-generated id
+                fhir_resource = FhirResource(
+                    fhir_id=fhir_id,
+                    resource_type=resource_type,
+                    patient_id=resource_patient_id,
+                    data=resource,
+                )
             db.add(fhir_resource)
 
     # Flush to get IDs assigned
