@@ -3,7 +3,7 @@
 import uuid
 from typing import Any
 
-from sqlalchemy import select
+from sqlalchemy import select, update
 from sqlalchemy.ext.asyncio import AsyncSession
 
 from app.models import FhirResource
@@ -149,6 +149,44 @@ def _extract_patient_reference(
     return default_patient_id
 
 
+async def load_bundle_with_profile(
+    db: AsyncSession,
+    graph: KnowledgeGraph,
+    bundle: dict[str, Any],
+    profile: dict[str, Any] | None = None,
+    generate_embeddings: bool = True,
+) -> uuid.UUID:
+    """
+    Load a FHIR bundle and attach a profile to the Patient resource.
+
+    This wraps load_bundle() and adds profile data to the Patient resource.
+    Profiles are LLM-generated narratives that add personality context for demos.
+
+    Args:
+        db: Async SQLAlchemy session.
+        graph: KnowledgeGraph instance for Neo4j operations.
+        bundle: FHIR Bundle dict with "entry" array of resources.
+        profile: Optional PatientProfile data to attach to the Patient resource.
+        generate_embeddings: Whether to generate embeddings (stubbed for now).
+
+    Returns:
+        The canonical patient UUID (PostgreSQL-generated).
+    """
+    patient_id = await load_bundle(db, graph, bundle, generate_embeddings)
+
+    if profile:
+        await db.execute(
+            update(FhirResource)
+            .where(
+                FhirResource.patient_id == patient_id,
+                FhirResource.resource_type == "Patient",
+            )
+            .values(profile=profile)
+        )
+
+    return patient_id
+
+
 async def get_patient_resources(
     db: AsyncSession, patient_id: uuid.UUID
 ) -> list[dict[str, Any]]:
@@ -167,3 +205,25 @@ async def get_patient_resources(
     )
     resources = result.scalars().all()
     return [r.data for r in resources]
+
+
+async def get_patient_with_profile(
+    db: AsyncSession, patient_id: uuid.UUID
+) -> FhirResource | None:
+    """
+    Get Patient FHIR resource with attached profile.
+
+    Args:
+        db: Async SQLAlchemy session.
+        patient_id: The canonical patient UUID.
+
+    Returns:
+        FhirResource with Patient data and profile, or None if not found.
+    """
+    result = await db.execute(
+        select(FhirResource).where(
+            FhirResource.id == patient_id,
+            FhirResource.resource_type == "Patient",
+        )
+    )
+    return result.scalar_one_or_none()
