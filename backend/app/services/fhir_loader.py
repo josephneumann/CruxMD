@@ -1,5 +1,7 @@
 """FHIR Bundle loader service for PostgreSQL and Neo4j storage."""
 
+import asyncio
+import copy
 import json
 import logging
 import uuid
@@ -117,11 +119,11 @@ async def load_bundle(
     # Flush to get IDs assigned
     await db.flush()
 
-    # Generate embeddings for embeddable resource types
-    await _generate_embeddings(all_fhir_resources)
-
-    # Build Neo4j graph from FHIR resources
-    await graph.build_from_fhir(str(patient_id), resources_data)
+    # Generate embeddings and build graph in parallel (they're independent operations)
+    await asyncio.gather(
+        _generate_embeddings(all_fhir_resources),
+        graph.build_from_fhir(str(patient_id), resources_data),
+    )
 
     return patient_id
 
@@ -171,7 +173,10 @@ async def _find_existing_resources_batch(
     return list(result.scalars().all())
 
 
-async def _generate_embeddings(fhir_resources: list[FhirResource]) -> None:
+async def _generate_embeddings(
+    fhir_resources: list[FhirResource],
+    embedding_service: EmbeddingService | None = None,
+) -> None:
     """
     Generate embeddings for FHIR resources that support embedding.
 
@@ -180,11 +185,9 @@ async def _generate_embeddings(fhir_resources: list[FhirResource]) -> None:
 
     Args:
         fhir_resources: List of FhirResource objects to generate embeddings for.
+        embedding_service: Optional EmbeddingService instance. If not provided,
+            a new instance is created and closed after use.
     """
-    if not fhir_resources:
-        return
-
-    # Build mapping from resource data to FhirResource for later update
     # Filter to only embeddable resources and generate text
     embeddable: list[tuple[FhirResource, str]] = []
     for fhir_resource in fhir_resources:
@@ -195,28 +198,33 @@ async def _generate_embeddings(fhir_resources: list[FhirResource]) -> None:
     if not embeddable:
         return
 
-    try:
+    # Create service if not provided (for dependency injection support)
+    owns_service = embedding_service is None
+    if owns_service:
         embedding_service = EmbeddingService()
-        try:
-            # Extract texts for batch embedding
-            texts = [text for _, text in embeddable]
 
-            # Generate embeddings in batch
-            embeddings = await embedding_service.embed_texts(texts)
+    try:
+        # Extract texts for batch embedding
+        texts = [text for _, text in embeddable]
 
-            # Update FhirResource objects with embeddings
-            for (fhir_resource, text), embedding in zip(embeddable, embeddings):
-                fhir_resource.embedding = embedding
-                fhir_resource.embedding_text = text
+        # Generate embeddings in batch
+        embeddings = await embedding_service.embed_texts(texts)
 
-            logger.info(f"Generated embeddings for {len(embeddings)} resources")
+        # Update FhirResource objects with embeddings
+        for (fhir_resource, text), embedding in zip(embeddable, embeddings):
+            fhir_resource.embedding = embedding
+            fhir_resource.embedding_text = text
 
-        finally:
-            await embedding_service.close()
+        logger.info(f"Generated embeddings for {len(embeddings)} resources")
 
     except Exception as e:
         # Log error but don't fail bundle loading
-        logger.warning(f"Failed to generate embeddings: {e}")
+        logger.warning("Failed to generate embeddings: %s", e)
+
+    finally:
+        # Only close if we created the service
+        if owns_service:
+            await embedding_service.close()
 
 
 async def load_bundle_with_profile(
@@ -257,8 +265,6 @@ def _add_profile_extension(
     Creates a copy of the bundle with the profile embedded as a FHIR extension
     on the Patient resource. This maintains FHIR-native architecture.
     """
-    import copy
-
     bundle = copy.deepcopy(bundle)
 
     for entry in bundle.get("entry", []):
@@ -303,7 +309,11 @@ def get_patient_profile(patient_data: dict[str, Any]) -> dict[str, Any] | None:
         if ext.get("url") == PROFILE_EXTENSION_URL:
             value = ext.get("valueString")
             if value:
-                return json.loads(value)
+                try:
+                    return json.loads(value)
+                except json.JSONDecodeError:
+                    logger.warning("Failed to parse patient profile JSON")
+                    return None
     return None
 
 
