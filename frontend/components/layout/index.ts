@@ -1,0 +1,1 @@
+export { MedicalDisclaimer } from "./MedicalDisclaimer";

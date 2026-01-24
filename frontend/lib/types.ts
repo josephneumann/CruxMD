@@ -5,5 +5,39 @@
  * This file contains only app-specific types that extend the generated ones.
  */
 
+import type { FhirPatient } from "./utils";
+
 // Re-export generated types for convenience
 export type { BundleLoadResponse } from "./generated";
+
+/**
+ * Patient list item from API response.
+ * Represents the shape returned by /api/patients endpoint.
+ */
+export interface PatientListItem {
+  id: string;
+  fhir_id: string;
+  data: FhirPatient;
+}
+
+/**
+ * Type guard to check if an object is a valid PatientListItem.
+ */
+export function isPatientListItem(obj: unknown): obj is PatientListItem {
+  if (typeof obj !== "object" || obj === null) return false;
+  const item = obj as Record<string, unknown>;
+  return (
+    typeof item.id === "string" &&
+    typeof item.fhir_id === "string" &&
+    typeof item.data === "object" &&
+    item.data !== null
+  );
+}
+
+/**
+ * Parse and validate patient list from API response.
+ */
+export function parsePatientList(data: unknown): PatientListItem[] {
+  if (!Array.isArray(data)) return [];
+  return data.filter(isPatientListItem);
+}
