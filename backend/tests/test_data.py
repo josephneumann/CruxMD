@@ -795,13 +795,17 @@ class TestGetPatientTimeline:
 
         response = await client.get(
             f"/patients/{patient_id}/timeline",
-            params={"limit": 1, "offset": 0},
+            params={"limit": 1, "skip": 0},
             headers={"X-API-Key": settings.api_key},
         )
         assert response.status_code == 200
         data = response.json()
         assert data["total"] == 2
         assert len(data["items"]) == 1
+        # Verify pagination response fields use 'skip' (not 'offset')
+        assert "skip" in data
+        assert data["skip"] == 0
+        assert data["limit"] == 1
 
 
 # =============================================================================
