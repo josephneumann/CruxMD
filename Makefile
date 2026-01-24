@@ -1,4 +1,4 @@
-.PHONY: help install dev dev-detached test test-verbose lint format format-check build build-no-cache generate-fixtures seed migrate migrate-generate generate-api clean clean-fixtures
+.PHONY: help install dev dev-detached test test-verbose lint format format-check build build-no-cache deploy generate-fixtures seed migrate migrate-generate generate-api clean clean-fixtures
 
 # Default target
 .DEFAULT_GOAL := help
@@ -17,6 +17,7 @@ help:
 	@echo ""
 	@echo "Build & Deploy:"
 	@echo "  make build            Build Docker images for production"
+	@echo "  make deploy           Deploy latest code to production (app.cruxmd.ai)"
 	@echo ""
 	@echo "Data & Database:"
 	@echo "  make generate-fixtures  Generate Synthea patient fixtures"
@@ -85,6 +86,10 @@ build:
 
 build-no-cache:
 	docker compose build --no-cache
+
+deploy:
+	@echo "Deploying to production (app.cruxmd.ai)..."
+	ssh cruxmd "cd CruxMD && git pull && ./deploy.sh"
 
 # =============================================================================
 # Data & Database
