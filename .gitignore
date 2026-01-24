@@ -62,3 +62,7 @@ out/
 # Session summaries from parallel agent workflow
 session_summaries/*
 !session_summaries/.gitkeep
+
+# Pending handoffs for automated worker dispatch
+pending_handoffs/*
+!pending_handoffs/.gitkeep
