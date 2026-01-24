@@ -1,14 +1,22 @@
 """Neo4j Knowledge Graph service for FHIR resource relationships."""
 
 import json
-from typing import Any
+import logging
+from typing import Any, TypedDict
 
-from neo4j import AsyncGraphDatabase, AsyncDriver
+from neo4j import AsyncGraphDatabase, AsyncDriver, AsyncSession
 
 from app.config import settings
 
+logger = logging.getLogger(__name__)
 
-def _extract_reference_id(reference: str) -> str | None:
+
+# =============================================================================
+# Helper Functions for FHIR Parsing (reduces code duplication)
+# =============================================================================
+
+
+def _extract_reference_id(reference: str | None) -> str | None:
     """
     Extract FHIR ID from a reference string.
 
@@ -29,6 +37,113 @@ def _extract_reference_id(reference: str) -> str | None:
     elif "/" in reference:
         return reference.split("/")[-1]
     return reference
+
+
+def _extract_reference_ids(refs: list[dict[str, Any]]) -> list[str]:
+    """
+    Extract list of FHIR IDs from reference objects.
+
+    Args:
+        refs: List of FHIR reference objects with 'reference' keys
+
+    Returns:
+        List of extracted IDs (None values filtered out)
+    """
+    ids = [_extract_reference_id(ref.get("reference")) for ref in refs if ref.get("reference")]
+    return [id for id in ids if id]
+
+
+def _extract_first_coding(codeable_concept: dict[str, Any]) -> dict[str, Any]:
+    """
+    Extract first coding from a FHIR CodeableConcept.
+
+    Args:
+        codeable_concept: FHIR CodeableConcept structure
+
+    Returns:
+        First coding dict or empty dict if none
+    """
+    codings = codeable_concept.get("coding", [])
+    return codings[0] if codings else {}
+
+
+def _extract_clinical_status(resource: dict[str, Any]) -> str:
+    """
+    Extract clinical status code from FHIR resource.
+
+    Args:
+        resource: FHIR resource with clinicalStatus field
+
+    Returns:
+        Status code string or empty string
+    """
+    clinical_status = resource.get("clinicalStatus", {})
+    status_codings = clinical_status.get("coding", [])
+    return status_codings[0].get("code", "") if status_codings else ""
+
+
+def _extract_encounter_fhir_id(resource: dict[str, Any]) -> str | None:
+    """
+    Extract encounter FHIR ID from resource.encounter.reference.
+
+    Args:
+        resource: FHIR resource with optional encounter reference
+
+    Returns:
+        Encounter FHIR ID or None
+    """
+    encounter_ref = resource.get("encounter", {}).get("reference")
+    return _extract_reference_id(encounter_ref) if encounter_ref else None
+
+
+def _extract_observation_value(resource: dict[str, Any]) -> tuple[Any, str | None]:
+    """
+    Extract value and unit from FHIR Observation.
+
+    Handles valueQuantity, valueCodeableConcept, and valueString.
+
+    Args:
+        resource: FHIR Observation resource
+
+    Returns:
+        Tuple of (value, unit) where unit may be None
+    """
+    if "valueQuantity" in resource:
+        return resource["valueQuantity"].get("value"), resource["valueQuantity"].get("unit")
+    elif "valueCodeableConcept" in resource:
+        value_codings = resource["valueCodeableConcept"].get("coding", [])
+        return (value_codings[0].get("display") if value_codings else None), None
+    elif "valueString" in resource:
+        return resource["valueString"], None
+    return None, None
+
+
+# =============================================================================
+# Type Definitions
+# =============================================================================
+
+
+class VerifiedFacts(TypedDict):
+    """Type for get_verified_facts return value."""
+
+    conditions: list[dict[str, Any]]
+    medications: list[dict[str, Any]]
+    allergies: list[dict[str, Any]]
+
+
+class EncounterEvents(TypedDict):
+    """Type for get_encounter_events return value."""
+
+    conditions: list[dict[str, Any]]
+    medications: list[dict[str, Any]]
+    observations: list[dict[str, Any]]
+    procedures: list[dict[str, Any]]
+    diagnostic_reports: list[dict[str, Any]]
+
+
+# =============================================================================
+# Knowledge Graph Service
+# =============================================================================
 
 
 class KnowledgeGraph:
@@ -59,6 +174,16 @@ class KnowledgeGraph:
     - DiagnosticReport CONTAINS_RESULT Observation
     """
 
+    # Relationship configuration for encounter-centric edges
+    # Format: (node_label, patient_relationship, encounter_relationship, alias)
+    _ENCOUNTER_RELATIONSHIPS = [
+        ("Condition", "HAS_CONDITION", "DIAGNOSED", "c"),
+        ("MedicationRequest", "HAS_MEDICATION_REQUEST", "PRESCRIBED", "m"),
+        ("Observation", "HAS_OBSERVATION", "RECORDED", "o"),
+        ("Procedure", "HAS_PROCEDURE", "PERFORMED", "pr"),
+        ("DiagnosticReport", "HAS_DIAGNOSTIC_REPORT", "REPORTED", "dr"),
+    ]
+
     def __init__(self, driver: AsyncDriver | None = None):
         """
         Initialize KnowledgeGraph.
@@ -74,6 +199,7 @@ class KnowledgeGraph:
             self._driver = AsyncGraphDatabase.driver(
                 settings.neo4j_uri,
                 auth=(settings.neo4j_user, settings.neo4j_password),
+                max_transaction_retry_time=30,  # 30 second timeout
             )
             self._owns_driver = True
 
@@ -87,8 +213,72 @@ class KnowledgeGraph:
         try:
             await self._driver.verify_connectivity()
             return True
-        except Exception:
+        except Exception as e:
+            logger.warning(f"Neo4j connectivity check failed: {e}")
             return False
+
+    async def ensure_indexes(self) -> None:
+        """
+        Create Neo4j indexes and constraints for optimal query performance.
+
+        Should be called during application startup or database migrations.
+        Creates indexes on:
+        - Primary identifiers (fhir_id, id)
+        - Foreign key equivalents (encounter_fhir_id)
+        - Commonly filtered fields (clinical_status, status)
+        """
+        async with self._driver.session() as session:
+            # Primary node identification (unique constraints also create indexes)
+            constraints = [
+                ("patient_id_unique", "Patient", "id"),
+                ("condition_fhir_id_unique", "Condition", "fhir_id"),
+                ("medication_fhir_id_unique", "MedicationRequest", "fhir_id"),
+                ("allergy_fhir_id_unique", "AllergyIntolerance", "fhir_id"),
+                ("observation_fhir_id_unique", "Observation", "fhir_id"),
+                ("encounter_fhir_id_unique", "Encounter", "fhir_id"),
+                ("procedure_fhir_id_unique", "Procedure", "fhir_id"),
+                ("diagnostic_report_fhir_id_unique", "DiagnosticReport", "fhir_id"),
+            ]
+
+            for name, label, prop in constraints:
+                try:
+                    await session.run(
+                        f"CREATE CONSTRAINT {name} IF NOT EXISTS FOR (n:{label}) REQUIRE n.{prop} IS UNIQUE"
+                    )
+                except Exception as e:
+                    logger.debug(f"Constraint {name} may already exist: {e}")
+
+            # Indexes for relationship building (WHERE clause properties)
+            relationship_indexes = [
+                ("condition_encounter", "Condition", "encounter_fhir_id"),
+                ("medication_encounter", "MedicationRequest", "encounter_fhir_id"),
+                ("observation_encounter", "Observation", "encounter_fhir_id"),
+                ("procedure_encounter", "Procedure", "encounter_fhir_id"),
+                ("diagnostic_report_encounter", "DiagnosticReport", "encounter_fhir_id"),
+            ]
+
+            for name, label, prop in relationship_indexes:
+                try:
+                    await session.run(
+                        f"CREATE INDEX {name} IF NOT EXISTS FOR (n:{label}) ON (n.{prop})"
+                    )
+                except Exception as e:
+                    logger.debug(f"Index {name} may already exist: {e}")
+
+            # Indexes for filtering queries
+            filter_indexes = [
+                ("condition_status", "Condition", "clinical_status"),
+                ("medication_status", "MedicationRequest", "status"),
+                ("allergy_status", "AllergyIntolerance", "clinical_status"),
+            ]
+
+            for name, label, prop in filter_indexes:
+                try:
+                    await session.run(
+                        f"CREATE INDEX {name} IF NOT EXISTS FOR (n:{label}) ON (n.{prop})"
+                    )
+                except Exception as e:
+                    logger.debug(f"Index {name} may already exist: {e}")
 
     async def patient_exists(self, patient_id: str) -> bool:
         """
@@ -108,405 +298,290 @@ class KnowledgeGraph:
             record = await result.single()
             return record is not None
 
-    async def _upsert_patient(self, patient_id: str, resource: dict[str, Any]) -> None:
-        """
-        Create or update Patient node with FHIR data.
+    # =========================================================================
+    # Node Upsert Methods (with session parameter for batching)
+    # =========================================================================
 
-        Uses MERGE for idempotency.
-        """
+    async def _upsert_patient(
+        self, session: AsyncSession, patient_id: str, resource: dict[str, Any]
+    ) -> None:
+        """Create or update Patient node with FHIR data."""
         name_parts = resource.get("name", [{}])[0]
         given = name_parts.get("given", [""])[0] if name_parts.get("given") else ""
         family = name_parts.get("family", "")
 
-        async with self._driver.session() as session:
-            await session.run(
-                """
-                MERGE (p:Patient {id: $id})
-                SET p.given_name = $given_name,
-                    p.family_name = $family_name,
-                    p.birth_date = $birth_date,
-                    p.gender = $gender,
-                    p.fhir_id = $fhir_id,
-                    p.updated_at = datetime()
-                """,
-                id=patient_id,
-                given_name=given,
-                family_name=family,
-                birth_date=resource.get("birthDate"),
-                gender=resource.get("gender"),
-                fhir_id=resource.get("id"),
-            )
+        await session.run(
+            """
+            MERGE (p:Patient {id: $id})
+            SET p.given_name = $given_name,
+                p.family_name = $family_name,
+                p.birth_date = $birth_date,
+                p.gender = $gender,
+                p.fhir_id = $fhir_id,
+                p.updated_at = datetime()
+            """,
+            id=patient_id,
+            given_name=given,
+            family_name=family,
+            birth_date=resource.get("birthDate"),
+            gender=resource.get("gender"),
+            fhir_id=resource.get("id"),
+        )
 
     async def _upsert_condition(
-        self, patient_id: str, resource: dict[str, Any]
+        self, session: AsyncSession, patient_id: str, resource: dict[str, Any]
     ) -> None:
-        """
-        Create or update Condition node and HAS_CONDITION relationship.
+        """Create or update Condition node and HAS_CONDITION relationship."""
+        first_coding = _extract_first_coding(resource.get("code", {}))
+        status_code = _extract_clinical_status(resource)
+        encounter_fhir_id = _extract_encounter_fhir_id(resource)
 
-        Also stores encounter_fhir_id for later relationship building.
-
-        Uses MERGE for idempotency.
-        """
-        # Extract condition code (first coding if available)
-        code_obj = resource.get("code", {})
-        codings = code_obj.get("coding", [{}])
-        first_coding = codings[0] if codings else {}
-
-        # Get clinical status
-        clinical_status = resource.get("clinicalStatus", {})
-        status_codings = clinical_status.get("coding", [{}])
-        status_code = status_codings[0].get("code", "") if status_codings else ""
-
-        # Extract encounter reference for later relationship building
-        encounter_ref = resource.get("encounter", {}).get("reference")
-        encounter_fhir_id = _extract_reference_id(encounter_ref) if encounter_ref else None
-
-        async with self._driver.session() as session:
-            await session.run(
-                """
-                MATCH (p:Patient {id: $patient_id})
-                MERGE (c:Condition {fhir_id: $fhir_id})
-                SET c.code = $code,
-                    c.display = $display,
-                    c.system = $system,
-                    c.clinical_status = $clinical_status,
-                    c.onset_date = $onset_date,
-                    c.encounter_fhir_id = $encounter_fhir_id,
-                    c.fhir_resource = $fhir_resource,
-                    c.updated_at = datetime()
-                MERGE (p)-[:HAS_CONDITION]->(c)
-                """,
-                patient_id=patient_id,
-                fhir_id=resource.get("id"),
-                code=first_coding.get("code"),
-                display=first_coding.get("display"),
-                system=first_coding.get("system"),
-                clinical_status=status_code,
-                onset_date=resource.get("onsetDateTime"),
-                encounter_fhir_id=encounter_fhir_id,
-                fhir_resource=json.dumps(resource),
-            )
+        await session.run(
+            """
+            MATCH (p:Patient {id: $patient_id})
+            MERGE (c:Condition {fhir_id: $fhir_id})
+            SET c.code = $code,
+                c.display = $display,
+                c.system = $system,
+                c.clinical_status = $clinical_status,
+                c.onset_date = $onset_date,
+                c.encounter_fhir_id = $encounter_fhir_id,
+                c.fhir_resource = $fhir_resource,
+                c.updated_at = datetime()
+            MERGE (p)-[:HAS_CONDITION]->(c)
+            """,
+            patient_id=patient_id,
+            fhir_id=resource.get("id"),
+            code=first_coding.get("code"),
+            display=first_coding.get("display"),
+            system=first_coding.get("system"),
+            clinical_status=status_code,
+            onset_date=resource.get("onsetDateTime"),
+            encounter_fhir_id=encounter_fhir_id,
+            fhir_resource=json.dumps(resource),
+        )
 
     async def _upsert_medication_request(
-        self, patient_id: str, resource: dict[str, Any]
+        self, session: AsyncSession, patient_id: str, resource: dict[str, Any]
     ) -> None:
-        """
-        Create or update MedicationRequest node and HAS_MEDICATION_REQUEST relationship.
+        """Create or update MedicationRequest node and HAS_MEDICATION_REQUEST relationship."""
+        first_coding = _extract_first_coding(resource.get("medicationCodeableConcept", {}))
+        encounter_fhir_id = _extract_encounter_fhir_id(resource)
+        reason_fhir_ids = _extract_reference_ids(resource.get("reasonReference", []))
 
-        Stores encounter_fhir_id and reason_fhir_ids for later relationship building.
-
-        Uses MERGE for idempotency.
-        """
-        # Extract medication code
-        med_codeable = resource.get("medicationCodeableConcept", {})
-        codings = med_codeable.get("coding", [{}])
-        first_coding = codings[0] if codings else {}
-
-        # Extract encounter reference
-        encounter_ref = resource.get("encounter", {}).get("reference")
-        encounter_fhir_id = _extract_reference_id(encounter_ref) if encounter_ref else None
-
-        # Extract reasonReference (conditions this medication treats)
-        reason_refs = resource.get("reasonReference", [])
-        reason_fhir_ids = [
-            _extract_reference_id(ref.get("reference"))
-            for ref in reason_refs
-            if ref.get("reference")
-        ]
-        reason_fhir_ids = [r for r in reason_fhir_ids if r]  # Filter None values
-
-        async with self._driver.session() as session:
-            await session.run(
-                """
-                MATCH (p:Patient {id: $patient_id})
-                MERGE (m:MedicationRequest {fhir_id: $fhir_id})
-                SET m.code = $code,
-                    m.display = $display,
-                    m.system = $system,
-                    m.status = $status,
-                    m.authored_on = $authored_on,
-                    m.encounter_fhir_id = $encounter_fhir_id,
-                    m.reason_fhir_ids = $reason_fhir_ids,
-                    m.fhir_resource = $fhir_resource,
-                    m.updated_at = datetime()
-                MERGE (p)-[:HAS_MEDICATION_REQUEST]->(m)
-                """,
-                patient_id=patient_id,
-                fhir_id=resource.get("id"),
-                code=first_coding.get("code"),
-                display=first_coding.get("display"),
-                system=first_coding.get("system"),
-                status=resource.get("status"),
-                authored_on=resource.get("authoredOn"),
-                encounter_fhir_id=encounter_fhir_id,
-                reason_fhir_ids=reason_fhir_ids,
-                fhir_resource=json.dumps(resource),
-            )
+        await session.run(
+            """
+            MATCH (p:Patient {id: $patient_id})
+            MERGE (m:MedicationRequest {fhir_id: $fhir_id})
+            SET m.code = $code,
+                m.display = $display,
+                m.system = $system,
+                m.status = $status,
+                m.authored_on = $authored_on,
+                m.encounter_fhir_id = $encounter_fhir_id,
+                m.reason_fhir_ids = $reason_fhir_ids,
+                m.fhir_resource = $fhir_resource,
+                m.updated_at = datetime()
+            MERGE (p)-[:HAS_MEDICATION_REQUEST]->(m)
+            """,
+            patient_id=patient_id,
+            fhir_id=resource.get("id"),
+            code=first_coding.get("code"),
+            display=first_coding.get("display"),
+            system=first_coding.get("system"),
+            status=resource.get("status"),
+            authored_on=resource.get("authoredOn"),
+            encounter_fhir_id=encounter_fhir_id,
+            reason_fhir_ids=reason_fhir_ids,
+            fhir_resource=json.dumps(resource),
+        )
 
     async def _upsert_allergy_intolerance(
-        self, patient_id: str, resource: dict[str, Any]
+        self, session: AsyncSession, patient_id: str, resource: dict[str, Any]
     ) -> None:
-        """
-        Create or update AllergyIntolerance node and HAS_ALLERGY_INTOLERANCE relationship.
+        """Create or update AllergyIntolerance node and HAS_ALLERGY_INTOLERANCE relationship."""
+        first_coding = _extract_first_coding(resource.get("code", {}))
+        status_code = _extract_clinical_status(resource)
 
-        Uses MERGE for idempotency.
-        """
-        # Extract allergy code
-        code_obj = resource.get("code", {})
-        codings = code_obj.get("coding", [{}])
-        first_coding = codings[0] if codings else {}
-
-        # Get clinical status
-        clinical_status = resource.get("clinicalStatus", {})
-        status_codings = clinical_status.get("coding", [{}])
-        status_code = status_codings[0].get("code", "") if status_codings else ""
-
-        async with self._driver.session() as session:
-            await session.run(
-                """
-                MATCH (p:Patient {id: $patient_id})
-                MERGE (a:AllergyIntolerance {fhir_id: $fhir_id})
-                SET a.code = $code,
-                    a.display = $display,
-                    a.system = $system,
-                    a.clinical_status = $clinical_status,
-                    a.category = $category,
-                    a.criticality = $criticality,
-                    a.fhir_resource = $fhir_resource,
-                    a.updated_at = datetime()
-                MERGE (p)-[:HAS_ALLERGY_INTOLERANCE]->(a)
-                """,
-                patient_id=patient_id,
-                fhir_id=resource.get("id"),
-                code=first_coding.get("code"),
-                display=first_coding.get("display"),
-                system=first_coding.get("system"),
-                clinical_status=status_code,
-                category=resource.get("category", [None])[0],
-                criticality=resource.get("criticality"),
-                fhir_resource=json.dumps(resource),
-            )
+        await session.run(
+            """
+            MATCH (p:Patient {id: $patient_id})
+            MERGE (a:AllergyIntolerance {fhir_id: $fhir_id})
+            SET a.code = $code,
+                a.display = $display,
+                a.system = $system,
+                a.clinical_status = $clinical_status,
+                a.category = $category,
+                a.criticality = $criticality,
+                a.fhir_resource = $fhir_resource,
+                a.updated_at = datetime()
+            MERGE (p)-[:HAS_ALLERGY_INTOLERANCE]->(a)
+            """,
+            patient_id=patient_id,
+            fhir_id=resource.get("id"),
+            code=first_coding.get("code"),
+            display=first_coding.get("display"),
+            system=first_coding.get("system"),
+            clinical_status=status_code,
+            category=resource.get("category", [None])[0],
+            criticality=resource.get("criticality"),
+            fhir_resource=json.dumps(resource),
+        )
 
     async def _upsert_observation(
-        self, patient_id: str, resource: dict[str, Any]
+        self, session: AsyncSession, patient_id: str, resource: dict[str, Any]
     ) -> None:
-        """
-        Create or update Observation node and HAS_OBSERVATION relationship.
+        """Create or update Observation node and HAS_OBSERVATION relationship."""
+        first_coding = _extract_first_coding(resource.get("code", {}))
+        value, value_unit = _extract_observation_value(resource)
+        encounter_fhir_id = _extract_encounter_fhir_id(resource)
 
-        Stores encounter_fhir_id for later relationship building.
-
-        Uses MERGE for idempotency.
-        """
-        # Extract observation code
-        code_obj = resource.get("code", {})
-        codings = code_obj.get("coding", [{}])
-        first_coding = codings[0] if codings else {}
-
-        # Extract value (handle different value types)
-        value = None
-        value_unit = None
-        if "valueQuantity" in resource:
-            value = resource["valueQuantity"].get("value")
-            value_unit = resource["valueQuantity"].get("unit")
-        elif "valueCodeableConcept" in resource:
-            value_codings = resource["valueCodeableConcept"].get("coding", [{}])
-            value = value_codings[0].get("display") if value_codings else None
-        elif "valueString" in resource:
-            value = resource["valueString"]
-
-        # Extract encounter reference
-        encounter_ref = resource.get("encounter", {}).get("reference")
-        encounter_fhir_id = _extract_reference_id(encounter_ref) if encounter_ref else None
-
-        async with self._driver.session() as session:
-            await session.run(
-                """
-                MATCH (p:Patient {id: $patient_id})
-                MERGE (o:Observation {fhir_id: $fhir_id})
-                SET o.code = $code,
-                    o.display = $display,
-                    o.system = $system,
-                    o.status = $status,
-                    o.effective_date = $effective_date,
-                    o.value = $value,
-                    o.value_unit = $value_unit,
-                    o.encounter_fhir_id = $encounter_fhir_id,
-                    o.updated_at = datetime()
-                MERGE (p)-[:HAS_OBSERVATION]->(o)
-                """,
-                patient_id=patient_id,
-                fhir_id=resource.get("id"),
-                code=first_coding.get("code"),
-                display=first_coding.get("display"),
-                system=first_coding.get("system"),
-                status=resource.get("status"),
-                effective_date=resource.get("effectiveDateTime"),
-                value=value,
-                value_unit=value_unit,
-                encounter_fhir_id=encounter_fhir_id,
-            )
+        await session.run(
+            """
+            MATCH (p:Patient {id: $patient_id})
+            MERGE (o:Observation {fhir_id: $fhir_id})
+            SET o.code = $code,
+                o.display = $display,
+                o.system = $system,
+                o.status = $status,
+                o.effective_date = $effective_date,
+                o.value = $value,
+                o.value_unit = $value_unit,
+                o.encounter_fhir_id = $encounter_fhir_id,
+                o.fhir_resource = $fhir_resource,
+                o.updated_at = datetime()
+            MERGE (p)-[:HAS_OBSERVATION]->(o)
+            """,
+            patient_id=patient_id,
+            fhir_id=resource.get("id"),
+            code=first_coding.get("code"),
+            display=first_coding.get("display"),
+            system=first_coding.get("system"),
+            status=resource.get("status"),
+            effective_date=resource.get("effectiveDateTime"),
+            value=value,
+            value_unit=value_unit,
+            encounter_fhir_id=encounter_fhir_id,
+            fhir_resource=json.dumps(resource),
+        )
 
     async def _upsert_encounter(
-        self, patient_id: str, resource: dict[str, Any]
+        self, session: AsyncSession, patient_id: str, resource: dict[str, Any]
     ) -> None:
-        """
-        Create or update Encounter node and HAS_ENCOUNTER relationship.
-
-        Uses MERGE for idempotency.
-        """
-        # Extract encounter type
+        """Create or update Encounter node and HAS_ENCOUNTER relationship."""
         types = resource.get("type", [{}])
         first_type = types[0] if types else {}
-        type_codings = first_type.get("coding", [{}])
-        first_coding = type_codings[0] if type_codings else {}
-
-        # Extract period
+        first_coding = _extract_first_coding(first_type)
         period = resource.get("period", {})
 
-        async with self._driver.session() as session:
-            await session.run(
-                """
-                MATCH (p:Patient {id: $patient_id})
-                MERGE (e:Encounter {fhir_id: $fhir_id})
-                SET e.type_code = $type_code,
-                    e.type_display = $type_display,
-                    e.status = $status,
-                    e.class_code = $class_code,
-                    e.period_start = $period_start,
-                    e.period_end = $period_end,
-                    e.updated_at = datetime()
-                MERGE (p)-[:HAS_ENCOUNTER]->(e)
-                """,
-                patient_id=patient_id,
-                fhir_id=resource.get("id"),
-                type_code=first_coding.get("code"),
-                type_display=first_coding.get("display"),
-                status=resource.get("status"),
-                class_code=resource.get("class", {}).get("code"),
-                period_start=period.get("start"),
-                period_end=period.get("end"),
-            )
+        await session.run(
+            """
+            MATCH (p:Patient {id: $patient_id})
+            MERGE (e:Encounter {fhir_id: $fhir_id})
+            SET e.type_code = $type_code,
+                e.type_display = $type_display,
+                e.status = $status,
+                e.class_code = $class_code,
+                e.period_start = $period_start,
+                e.period_end = $period_end,
+                e.updated_at = datetime()
+            MERGE (p)-[:HAS_ENCOUNTER]->(e)
+            """,
+            patient_id=patient_id,
+            fhir_id=resource.get("id"),
+            type_code=first_coding.get("code"),
+            type_display=first_coding.get("display"),
+            status=resource.get("status"),
+            class_code=resource.get("class", {}).get("code"),
+            period_start=period.get("start"),
+            period_end=period.get("end"),
+        )
 
     async def _upsert_procedure(
-        self, patient_id: str, resource: dict[str, Any]
+        self, session: AsyncSession, patient_id: str, resource: dict[str, Any]
     ) -> None:
-        """
-        Create or update Procedure node and HAS_PROCEDURE relationship.
-
-        Stores encounter_fhir_id and reason_fhir_ids for later relationship building.
-
-        Uses MERGE for idempotency.
-        """
-        # Extract procedure code
-        code_obj = resource.get("code", {})
-        codings = code_obj.get("coding", [{}])
-        first_coding = codings[0] if codings else {}
-
-        # Extract encounter reference
-        encounter_ref = resource.get("encounter", {}).get("reference")
-        encounter_fhir_id = _extract_reference_id(encounter_ref) if encounter_ref else None
-
-        # Extract reasonReference (conditions this procedure treats)
-        reason_refs = resource.get("reasonReference", [])
-        reason_fhir_ids = [
-            _extract_reference_id(ref.get("reference"))
-            for ref in reason_refs
-            if ref.get("reference")
-        ]
-        reason_fhir_ids = [r for r in reason_fhir_ids if r]
-
-        # Extract performed date
+        """Create or update Procedure node and HAS_PROCEDURE relationship."""
+        first_coding = _extract_first_coding(resource.get("code", {}))
+        encounter_fhir_id = _extract_encounter_fhir_id(resource)
+        reason_fhir_ids = _extract_reference_ids(resource.get("reasonReference", []))
         performed = resource.get("performedDateTime") or resource.get("performedPeriod", {}).get("start")
 
-        async with self._driver.session() as session:
-            await session.run(
-                """
-                MATCH (p:Patient {id: $patient_id})
-                MERGE (pr:Procedure {fhir_id: $fhir_id})
-                SET pr.code = $code,
-                    pr.display = $display,
-                    pr.system = $system,
-                    pr.status = $status,
-                    pr.performed_date = $performed_date,
-                    pr.encounter_fhir_id = $encounter_fhir_id,
-                    pr.reason_fhir_ids = $reason_fhir_ids,
-                    pr.fhir_resource = $fhir_resource,
-                    pr.updated_at = datetime()
-                MERGE (p)-[:HAS_PROCEDURE]->(pr)
-                """,
-                patient_id=patient_id,
-                fhir_id=resource.get("id"),
-                code=first_coding.get("code"),
-                display=first_coding.get("display"),
-                system=first_coding.get("system"),
-                status=resource.get("status"),
-                performed_date=performed,
-                encounter_fhir_id=encounter_fhir_id,
-                reason_fhir_ids=reason_fhir_ids,
-                fhir_resource=json.dumps(resource),
-            )
+        await session.run(
+            """
+            MATCH (p:Patient {id: $patient_id})
+            MERGE (pr:Procedure {fhir_id: $fhir_id})
+            SET pr.code = $code,
+                pr.display = $display,
+                pr.system = $system,
+                pr.status = $status,
+                pr.performed_date = $performed_date,
+                pr.encounter_fhir_id = $encounter_fhir_id,
+                pr.reason_fhir_ids = $reason_fhir_ids,
+                pr.fhir_resource = $fhir_resource,
+                pr.updated_at = datetime()
+            MERGE (p)-[:HAS_PROCEDURE]->(pr)
+            """,
+            patient_id=patient_id,
+            fhir_id=resource.get("id"),
+            code=first_coding.get("code"),
+            display=first_coding.get("display"),
+            system=first_coding.get("system"),
+            status=resource.get("status"),
+            performed_date=performed,
+            encounter_fhir_id=encounter_fhir_id,
+            reason_fhir_ids=reason_fhir_ids,
+            fhir_resource=json.dumps(resource),
+        )
 
     async def _upsert_diagnostic_report(
-        self, patient_id: str, resource: dict[str, Any]
+        self, session: AsyncSession, patient_id: str, resource: dict[str, Any]
+    ) -> None:
+        """Create or update DiagnosticReport node and HAS_DIAGNOSTIC_REPORT relationship."""
+        first_coding = _extract_first_coding(resource.get("code", {}))
+        encounter_fhir_id = _extract_encounter_fhir_id(resource)
+        result_fhir_ids = _extract_reference_ids(resource.get("result", []))
+
+        await session.run(
+            """
+            MATCH (p:Patient {id: $patient_id})
+            MERGE (dr:DiagnosticReport {fhir_id: $fhir_id})
+            SET dr.code = $code,
+                dr.display = $display,
+                dr.system = $system,
+                dr.status = $status,
+                dr.effective_date = $effective_date,
+                dr.issued = $issued,
+                dr.encounter_fhir_id = $encounter_fhir_id,
+                dr.result_fhir_ids = $result_fhir_ids,
+                dr.fhir_resource = $fhir_resource,
+                dr.updated_at = datetime()
+            MERGE (p)-[:HAS_DIAGNOSTIC_REPORT]->(dr)
+            """,
+            patient_id=patient_id,
+            fhir_id=resource.get("id"),
+            code=first_coding.get("code"),
+            display=first_coding.get("display"),
+            system=first_coding.get("system"),
+            status=resource.get("status"),
+            effective_date=resource.get("effectiveDateTime"),
+            issued=resource.get("issued"),
+            encounter_fhir_id=encounter_fhir_id,
+            result_fhir_ids=result_fhir_ids,
+            fhir_resource=json.dumps(resource),
+        )
+
+    # =========================================================================
+    # Relationship Building (patient-scoped, optimized queries)
+    # =========================================================================
+
+    async def _build_encounter_relationships(
+        self, session: AsyncSession, patient_id: str
     ) -> None:
         """
-        Create or update DiagnosticReport node and HAS_DIAGNOSTIC_REPORT relationship.
+        Build Encounter-centric relationships for a specific patient.
 
-        Stores encounter_fhir_id and result_fhir_ids for later relationship building.
-
-        Uses MERGE for idempotency.
-        """
-        # Extract code
-        code_obj = resource.get("code", {})
-        codings = code_obj.get("coding", [{}])
-        first_coding = codings[0] if codings else {}
-
-        # Extract encounter reference
-        encounter_ref = resource.get("encounter", {}).get("reference")
-        encounter_fhir_id = _extract_reference_id(encounter_ref) if encounter_ref else None
-
-        # Extract result references (observations this report contains)
-        result_refs = resource.get("result", [])
-        result_fhir_ids = [
-            _extract_reference_id(ref.get("reference"))
-            for ref in result_refs
-            if ref.get("reference")
-        ]
-        result_fhir_ids = [r for r in result_fhir_ids if r]
-
-        async with self._driver.session() as session:
-            await session.run(
-                """
-                MATCH (p:Patient {id: $patient_id})
-                MERGE (dr:DiagnosticReport {fhir_id: $fhir_id})
-                SET dr.code = $code,
-                    dr.display = $display,
-                    dr.system = $system,
-                    dr.status = $status,
-                    dr.effective_date = $effective_date,
-                    dr.issued = $issued,
-                    dr.encounter_fhir_id = $encounter_fhir_id,
-                    dr.result_fhir_ids = $result_fhir_ids,
-                    dr.fhir_resource = $fhir_resource,
-                    dr.updated_at = datetime()
-                MERGE (p)-[:HAS_DIAGNOSTIC_REPORT]->(dr)
-                """,
-                patient_id=patient_id,
-                fhir_id=resource.get("id"),
-                code=first_coding.get("code"),
-                display=first_coding.get("display"),
-                system=first_coding.get("system"),
-                status=resource.get("status"),
-                effective_date=resource.get("effectiveDateTime"),
-                issued=resource.get("issued"),
-                encounter_fhir_id=encounter_fhir_id,
-                result_fhir_ids=result_fhir_ids,
-                fhir_resource=json.dumps(resource),
-            )
-
-    async def _build_encounter_relationships(self) -> None:
-        """
-        Build Encounter-centric relationships in second pass.
+        CRITICAL: Scoped to patient to avoid affecting other patients' data
+        and to use indexed lookups instead of Cartesian products.
 
         Creates relationships:
         - Encounter -[:DIAGNOSED]-> Condition
@@ -515,88 +590,71 @@ class KnowledgeGraph:
         - Encounter -[:PERFORMED]-> Procedure
         - Encounter -[:REPORTED]-> DiagnosticReport
         """
-        async with self._driver.session() as session:
-            # Encounter -> Condition (DIAGNOSED)
+        for node_label, patient_rel, encounter_rel, alias in self._ENCOUNTER_RELATIONSHIPS:
+            # Optimized query: starts from patient, uses indexed encounter_fhir_id
             await session.run(
-                """
-                MATCH (e:Encounter), (c:Condition)
-                WHERE c.encounter_fhir_id = e.fhir_id
-                MERGE (e)-[:DIAGNOSED]->(c)
-                """
+                f"""
+                MATCH (p:Patient {{id: $patient_id}})-[:HAS_ENCOUNTER]->(e:Encounter)
+                MATCH (p)-[:{patient_rel}]->({alias}:{node_label})
+                WHERE {alias}.encounter_fhir_id IS NOT NULL
+                  AND {alias}.encounter_fhir_id = e.fhir_id
+                MERGE (e)-[:{encounter_rel}]->({alias})
+                """,
+                patient_id=patient_id,
             )
 
-            # Encounter -> MedicationRequest (PRESCRIBED)
-            await session.run(
-                """
-                MATCH (e:Encounter), (m:MedicationRequest)
-                WHERE m.encounter_fhir_id = e.fhir_id
-                MERGE (e)-[:PRESCRIBED]->(m)
-                """
-            )
-
-            # Encounter -> Observation (RECORDED)
-            await session.run(
-                """
-                MATCH (e:Encounter), (o:Observation)
-                WHERE o.encounter_fhir_id = e.fhir_id
-                MERGE (e)-[:RECORDED]->(o)
-                """
-            )
-
-            # Encounter -> Procedure (PERFORMED)
-            await session.run(
-                """
-                MATCH (e:Encounter), (pr:Procedure)
-                WHERE pr.encounter_fhir_id = e.fhir_id
-                MERGE (e)-[:PERFORMED]->(pr)
-                """
-            )
-
-            # Encounter -> DiagnosticReport (REPORTED)
-            await session.run(
-                """
-                MATCH (e:Encounter), (dr:DiagnosticReport)
-                WHERE dr.encounter_fhir_id = e.fhir_id
-                MERGE (e)-[:REPORTED]->(dr)
-                """
-            )
-
-    async def _build_clinical_reasoning_relationships(self) -> None:
+    async def _build_clinical_reasoning_relationships(
+        self, session: AsyncSession, patient_id: str
+    ) -> None:
         """
-        Build clinical reasoning relationships in second pass.
+        Build clinical reasoning relationships for a specific patient.
+
+        CRITICAL: Scoped to patient and uses UNWIND for efficient array lookups.
 
         Creates relationships:
         - MedicationRequest -[:TREATS]-> Condition
         - Procedure -[:TREATS]-> Condition
         - DiagnosticReport -[:CONTAINS_RESULT]-> Observation
         """
-        async with self._driver.session() as session:
-            # MedicationRequest -> Condition (TREATS)
-            await session.run(
-                """
-                MATCH (m:MedicationRequest), (c:Condition)
-                WHERE c.fhir_id IN m.reason_fhir_ids
-                MERGE (m)-[:TREATS]->(c)
-                """
-            )
+        # MedicationRequest -> Condition (TREATS)
+        await session.run(
+            """
+            MATCH (p:Patient {id: $patient_id})-[:HAS_MEDICATION_REQUEST]->(m:MedicationRequest)
+            WHERE m.reason_fhir_ids IS NOT NULL AND size(m.reason_fhir_ids) > 0
+            UNWIND m.reason_fhir_ids AS condition_id
+            MATCH (p)-[:HAS_CONDITION]->(c:Condition {fhir_id: condition_id})
+            MERGE (m)-[:TREATS]->(c)
+            """,
+            patient_id=patient_id,
+        )
 
-            # Procedure -> Condition (TREATS)
-            await session.run(
-                """
-                MATCH (pr:Procedure), (c:Condition)
-                WHERE c.fhir_id IN pr.reason_fhir_ids
-                MERGE (pr)-[:TREATS]->(c)
-                """
-            )
+        # Procedure -> Condition (TREATS)
+        await session.run(
+            """
+            MATCH (p:Patient {id: $patient_id})-[:HAS_PROCEDURE]->(pr:Procedure)
+            WHERE pr.reason_fhir_ids IS NOT NULL AND size(pr.reason_fhir_ids) > 0
+            UNWIND pr.reason_fhir_ids AS condition_id
+            MATCH (p)-[:HAS_CONDITION]->(c:Condition {fhir_id: condition_id})
+            MERGE (pr)-[:TREATS]->(c)
+            """,
+            patient_id=patient_id,
+        )
 
-            # DiagnosticReport -> Observation (CONTAINS_RESULT)
-            await session.run(
-                """
-                MATCH (dr:DiagnosticReport), (o:Observation)
-                WHERE o.fhir_id IN dr.result_fhir_ids
-                MERGE (dr)-[:CONTAINS_RESULT]->(o)
-                """
-            )
+        # DiagnosticReport -> Observation (CONTAINS_RESULT)
+        await session.run(
+            """
+            MATCH (p:Patient {id: $patient_id})-[:HAS_DIAGNOSTIC_REPORT]->(dr:DiagnosticReport)
+            WHERE dr.result_fhir_ids IS NOT NULL AND size(dr.result_fhir_ids) > 0
+            UNWIND dr.result_fhir_ids AS obs_id
+            MATCH (p)-[:HAS_OBSERVATION]->(o:Observation {fhir_id: obs_id})
+            MERGE (dr)-[:CONTAINS_RESULT]->(o)
+            """,
+            patient_id=patient_id,
+        )
+
+    # =========================================================================
+    # Query Methods
+    # =========================================================================
 
     async def get_verified_conditions(self, patient_id: str) -> list[dict[str, Any]]:
         """
@@ -682,9 +740,7 @@ class KnowledgeGraph:
                     resources.append(json.loads(resource_json))
             return resources
 
-    async def get_verified_facts(
-        self, patient_id: str
-    ) -> dict[str, list[dict[str, Any]]]:
+    async def get_verified_facts(self, patient_id: str) -> VerifiedFacts:
         """
         Get all verified clinical facts from graph for a patient.
 
@@ -694,7 +750,7 @@ class KnowledgeGraph:
             patient_id: The canonical patient UUID.
 
         Returns:
-            Dictionary with 'conditions', 'medications', and 'allergies' keys,
+            TypedDict with 'conditions', 'medications', and 'allergies' keys,
             each containing a list of FHIR resources.
         """
         conditions = await self.get_verified_conditions(patient_id)
@@ -707,9 +763,7 @@ class KnowledgeGraph:
             "allergies": allergies,
         }
 
-    async def get_encounter_events(
-        self, encounter_fhir_id: str
-    ) -> dict[str, list[dict[str, Any]]]:
+    async def get_encounter_events(self, encounter_fhir_id: str) -> EncounterEvents:
         """
         Get all clinical events that occurred during an encounter.
 
@@ -724,7 +778,7 @@ class KnowledgeGraph:
             encounter_fhir_id: The FHIR ID of the encounter.
 
         Returns:
-            Dictionary with keys for each resource type, containing lists of
+            TypedDict with keys for each resource type, containing lists of
             node property dictionaries (not full FHIR resources for performance).
         """
         async with self._driver.session() as session:
@@ -841,52 +895,61 @@ class KnowledgeGraph:
                     observations.append(dict(record["o"]))
             return observations
 
+    # =========================================================================
+    # Main Entry Points
+    # =========================================================================
+
     async def build_from_fhir(
         self, patient_id: str, resources: list[dict[str, Any]]
     ) -> None:
         """
         Build graph nodes and relationships from FHIR resources.
 
-        Uses two-pass approach:
+        Uses two-pass approach with single session for efficiency:
         1. First pass: Create all nodes with Patient relationships
         2. Second pass: Build inter-resource relationships (Encounter-centric, TREATS, etc.)
+
+        All operations are scoped to the specific patient for correctness
+        and performance (avoids global graph scans).
 
         Args:
             patient_id: The canonical patient UUID (PostgreSQL-generated).
             resources: List of FHIR resources belonging to this patient.
         """
-        # First pass: find and create Patient node
-        patient_resource = None
-        for resource in resources:
-            if resource.get("resourceType") == "Patient":
-                patient_resource = resource
-                break
+        # Use single session for all operations (efficient batching)
+        async with self._driver.session() as session:
+            # First pass: find and create Patient node
+            patient_resource = None
+            for resource in resources:
+                if resource.get("resourceType") == "Patient":
+                    patient_resource = resource
+                    break
 
-        if patient_resource:
-            await self._upsert_patient(patient_id, patient_resource)
+            if patient_resource:
+                await self._upsert_patient(session, patient_id, patient_resource)
 
-        # First pass: create all resource nodes with Patient relationships
-        for resource in resources:
-            resource_type = resource.get("resourceType")
+            # First pass: create all resource nodes with Patient relationships
+            for resource in resources:
+                resource_type = resource.get("resourceType")
 
-            if resource_type == "Condition":
-                await self._upsert_condition(patient_id, resource)
-            elif resource_type == "MedicationRequest":
-                await self._upsert_medication_request(patient_id, resource)
-            elif resource_type == "AllergyIntolerance":
-                await self._upsert_allergy_intolerance(patient_id, resource)
-            elif resource_type == "Observation":
-                await self._upsert_observation(patient_id, resource)
-            elif resource_type == "Encounter":
-                await self._upsert_encounter(patient_id, resource)
-            elif resource_type == "Procedure":
-                await self._upsert_procedure(patient_id, resource)
-            elif resource_type == "DiagnosticReport":
-                await self._upsert_diagnostic_report(patient_id, resource)
+                if resource_type == "Condition":
+                    await self._upsert_condition(session, patient_id, resource)
+                elif resource_type == "MedicationRequest":
+                    await self._upsert_medication_request(session, patient_id, resource)
+                elif resource_type == "AllergyIntolerance":
+                    await self._upsert_allergy_intolerance(session, patient_id, resource)
+                elif resource_type == "Observation":
+                    await self._upsert_observation(session, patient_id, resource)
+                elif resource_type == "Encounter":
+                    await self._upsert_encounter(session, patient_id, resource)
+                elif resource_type == "Procedure":
+                    await self._upsert_procedure(session, patient_id, resource)
+                elif resource_type == "DiagnosticReport":
+                    await self._upsert_diagnostic_report(session, patient_id, resource)
 
-        # Second pass: build inter-resource relationships
-        await self._build_encounter_relationships()
-        await self._build_clinical_reasoning_relationships()
+            # Second pass: build inter-resource relationships (patient-scoped)
+            await self._build_encounter_relationships(session, patient_id)
+            await self._build_clinical_reasoning_relationships(session, patient_id)
 
     async def clear_patient_graph(self, patient_id: str) -> None:
         """

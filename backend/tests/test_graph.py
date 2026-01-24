@@ -8,7 +8,15 @@ import json
 
 import pytest
 
-from app.services.graph import KnowledgeGraph, _extract_reference_id
+from app.services.graph import (
+    KnowledgeGraph,
+    _extract_reference_id,
+    _extract_reference_ids,
+    _extract_first_coding,
+    _extract_clinical_status,
+    _extract_encounter_fhir_id,
+    _extract_observation_value,
+)
 
 # All tests in this module require Neo4j
 pytestmark = pytest.mark.integration
@@ -49,6 +57,112 @@ class TestExtractReferenceId:
     def test_handles_empty_string(self):
         """Test handling of empty string input."""
         assert _extract_reference_id("") is None
+
+
+class TestExtractReferenceIds:
+    """Unit tests for _extract_reference_ids helper function."""
+
+    def test_extracts_multiple_references(self):
+        """Test extraction from list of reference objects."""
+        refs = [
+            {"reference": "Condition/cond-1"},
+            {"reference": "Condition/cond-2"},
+        ]
+        assert _extract_reference_ids(refs) == ["cond-1", "cond-2"]
+
+    def test_handles_empty_list(self):
+        """Test handling of empty list."""
+        assert _extract_reference_ids([]) == []
+
+    def test_filters_none_values(self):
+        """Test that None values are filtered out."""
+        refs = [
+            {"reference": "Condition/cond-1"},
+            {"other": "field"},  # No reference key
+            {"reference": ""},  # Empty reference
+        ]
+        assert _extract_reference_ids(refs) == ["cond-1"]
+
+
+class TestExtractFirstCoding:
+    """Unit tests for _extract_first_coding helper function."""
+
+    def test_extracts_first_coding(self):
+        """Test extraction of first coding."""
+        codeable = {
+            "coding": [
+                {"code": "123", "display": "Test", "system": "http://test.org"},
+                {"code": "456", "display": "Other"},
+            ]
+        }
+        result = _extract_first_coding(codeable)
+        assert result["code"] == "123"
+        assert result["display"] == "Test"
+
+    def test_handles_empty_coding(self):
+        """Test handling of empty coding list."""
+        assert _extract_first_coding({"coding": []}) == {}
+
+    def test_handles_missing_coding(self):
+        """Test handling of missing coding key."""
+        assert _extract_first_coding({}) == {}
+
+
+class TestExtractClinicalStatus:
+    """Unit tests for _extract_clinical_status helper function."""
+
+    def test_extracts_active_status(self):
+        """Test extraction of active status."""
+        resource = {"clinicalStatus": {"coding": [{"code": "active"}]}}
+        assert _extract_clinical_status(resource) == "active"
+
+    def test_handles_missing_status(self):
+        """Test handling of missing clinicalStatus."""
+        assert _extract_clinical_status({}) == ""
+
+
+class TestExtractEncounterFhirId:
+    """Unit tests for _extract_encounter_fhir_id helper function."""
+
+    def test_extracts_encounter_reference(self):
+        """Test extraction of encounter reference."""
+        resource = {"encounter": {"reference": "Encounter/enc-123"}}
+        assert _extract_encounter_fhir_id(resource) == "enc-123"
+
+    def test_handles_missing_encounter(self):
+        """Test handling of missing encounter."""
+        assert _extract_encounter_fhir_id({}) is None
+
+
+class TestExtractObservationValue:
+    """Unit tests for _extract_observation_value helper function."""
+
+    def test_extracts_quantity_value(self):
+        """Test extraction of valueQuantity."""
+        resource = {"valueQuantity": {"value": 120, "unit": "mmHg"}}
+        value, unit = _extract_observation_value(resource)
+        assert value == 120
+        assert unit == "mmHg"
+
+    def test_extracts_codeable_concept_value(self):
+        """Test extraction of valueCodeableConcept."""
+        resource = {"valueCodeableConcept": {"coding": [{"display": "Positive"}]}}
+        value, unit = _extract_observation_value(resource)
+        assert value == "Positive"
+        assert unit is None
+
+    def test_extracts_string_value(self):
+        """Test extraction of valueString."""
+        resource = {"valueString": "Normal"}
+        value, unit = _extract_observation_value(resource)
+        assert value == "Normal"
+        assert unit is None
+
+    def test_handles_no_value(self):
+        """Test handling of resource with no value."""
+        value, unit = _extract_observation_value({})
+        assert value is None
+        assert unit is None
 
 
 @pytest.mark.asyncio
