@@ -13,27 +13,58 @@ from app.models import FhirResource
 router = APIRouter(prefix="/patients", tags=["patients"])
 
 
+# Pagination defaults
+DEFAULT_PAGE_SIZE = 50
+MAX_PAGE_SIZE = 100
+
+
 @router.get("")
 async def list_patients(
     db: AsyncSession = Depends(get_db),
     _api_key: str = Depends(verify_api_key),
-) -> list[dict]:
-    """List all patients.
+    skip: int = 0,
+    limit: int = DEFAULT_PAGE_SIZE,
+) -> dict:
+    """List patients with pagination.
 
-    Returns a list of patient resources with basic info.
+    Args:
+        skip: Number of records to skip (for pagination).
+        limit: Maximum number of records to return (max 100).
+
+    Returns:
+        Paginated list of patient resources with metadata.
     """
-    stmt = select(FhirResource).where(FhirResource.resource_type == "Patient")
+    # Enforce max page size
+    limit = min(limit, MAX_PAGE_SIZE)
+
+    # Get total count for pagination metadata
+    count_stmt = select(FhirResource).where(FhirResource.resource_type == "Patient")
+    count_result = await db.execute(count_stmt)
+    total = len(count_result.scalars().all())
+
+    # Get paginated results
+    stmt = (
+        select(FhirResource)
+        .where(FhirResource.resource_type == "Patient")
+        .offset(skip)
+        .limit(limit)
+    )
     result = await db.execute(stmt)
     patients = result.scalars().all()
 
-    return [
-        {
-            "id": str(patient.id),
-            "fhir_id": patient.fhir_id,
-            "data": patient.data,
-        }
-        for patient in patients
-    ]
+    return {
+        "items": [
+            {
+                "id": str(patient.id),
+                "fhir_id": patient.fhir_id,
+                "data": patient.data,
+            }
+            for patient in patients
+        ],
+        "total": total,
+        "skip": skip,
+        "limit": limit,
+    }
 
 
 @router.get("/{patient_id}")

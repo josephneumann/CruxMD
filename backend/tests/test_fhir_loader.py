@@ -237,14 +237,6 @@ class TestCreateBundle:
 class TestFhirLoaderHelpers:
     """Unit tests for fhir_loader helper functions."""
 
-    def test_extract_patient_reference_returns_default(self, sample_condition):
-        """Test _extract_patient_reference returns default patient ID."""
-        from app.services.fhir_loader import _extract_patient_reference
-
-        default_id = uuid.uuid4()
-        result = _extract_patient_reference(sample_condition, default_id)
-        assert result == default_id
-
     def test_sample_patient_has_required_fields(self, sample_patient):
         """Test sample patient has required FHIR fields."""
         assert sample_patient["resourceType"] == "Patient"

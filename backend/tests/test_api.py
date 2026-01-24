@@ -82,7 +82,9 @@ class TestPatientsApiIntegration:
         """Should return empty list when no patients exist."""
         response = await client.get("/api/patients", headers=auth_headers)
         assert response.status_code == 200
-        assert response.json() == []
+        data = response.json()
+        assert data["items"] == []
+        assert data["total"] == 0
 
     @pytest.mark.asyncio
     async def test_list_patients_after_load(
@@ -105,8 +107,10 @@ class TestPatientsApiIntegration:
         # Now list patients
         response = await client.get("/api/patients", headers=auth_headers)
         assert response.status_code == 200
-        patients = response.json()
+        data = response.json()
+        patients = data["items"]
         assert len(patients) >= 1
+        assert data["total"] >= 1
         # Find our patient
         patient = next(
             (p for p in patients if p["fhir_id"] == sample_patient["id"]), None

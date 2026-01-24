@@ -9,7 +9,8 @@ from sqlalchemy.ext.asyncio import AsyncSession
 
 from app.auth import verify_api_key
 from app.database import get_db
-from app.models import FhirResource
+from app.services.fhir_loader import load_bundle as load_bundle_service
+from app.services.graph import KnowledgeGraph
 
 router = APIRouter(prefix="/fhir", tags=["fhir"])
 
@@ -28,11 +29,10 @@ async def load_bundle(
     db: AsyncSession = Depends(get_db),
     _api_key: str = Depends(verify_api_key),
 ) -> BundleLoadResponse:
-    """Load a FHIR Bundle into the database.
+    """Load a FHIR Bundle into PostgreSQL and Neo4j.
 
-    Extracts all resources from the bundle and stores them.
-    Patient resources are stored first to get the patient_id
-    for linking other resources.
+    Uses the fhir_loader service to store resources in PostgreSQL (source of truth)
+    and build the knowledge graph in Neo4j (derived view).
 
     Args:
         bundle: A FHIR Bundle resource.
@@ -43,7 +43,7 @@ async def load_bundle(
     Raises:
         HTTPException: 400 if bundle is invalid.
     """
-    # Validate bundle structure
+    # Validate bundle structure (fast-fail before service layer)
     if bundle.get("resourceType") != "Bundle":
         raise HTTPException(
             status_code=status.HTTP_400_BAD_REQUEST,
@@ -57,49 +57,33 @@ async def load_bundle(
             detail="Invalid bundle: no entries found",
         )
 
-    # Extract resources from bundle entries
-    resources = []
-    for entry in entries:
-        resource = entry.get("resource")
-        if resource and "resourceType" in resource:
-            resources.append(resource)
+    # Count valid resources for response
+    resource_count = sum(
+        1
+        for entry in entries
+        if entry.get("resource") and "resourceType" in entry.get("resource", {})
+    )
 
-    if not resources:
+    if resource_count == 0:
         raise HTTPException(
             status_code=status.HTTP_400_BAD_REQUEST,
             detail="Invalid bundle: no valid resources found",
         )
 
-    # Sort resources so Patient comes first
-    resources.sort(key=lambda r: 0 if r["resourceType"] == "Patient" else 1)
-
-    # Track the patient ID for linking
-    patient_db_id: uuid.UUID | None = None
-    loaded_count = 0
-
-    for resource in resources:
-        resource_type = resource["resourceType"]
-        fhir_id = resource.get("id", str(uuid.uuid4()))
-
-        # Create the database record
-        fhir_resource = FhirResource(
-            fhir_id=fhir_id,
-            resource_type=resource_type,
-            patient_id=patient_db_id if resource_type != "Patient" else None,
-            data=resource,
+    # Delegate to service layer (handles PostgreSQL and Neo4j)
+    graph = KnowledgeGraph()
+    try:
+        patient_id = await load_bundle_service(db, graph, bundle)
+    except ValueError as e:
+        raise HTTPException(
+            status_code=status.HTTP_400_BAD_REQUEST,
+            detail=str(e),
         )
-
-        db.add(fhir_resource)
-        await db.flush()  # Get the generated ID
-
-        # Capture patient ID for linking subsequent resources
-        if resource_type == "Patient":
-            patient_db_id = fhir_resource.id
-
-        loaded_count += 1
+    finally:
+        await graph.close()
 
     return BundleLoadResponse(
         message="Bundle loaded successfully",
-        resources_loaded=loaded_count,
-        patient_id=patient_db_id,
+        resources_loaded=resource_count,
+        patient_id=patient_id,
     )

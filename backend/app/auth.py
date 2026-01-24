@@ -1,5 +1,7 @@
 """API key authentication."""
 
+import secrets
+
 from fastapi import Depends, HTTPException, status
 from fastapi.security import APIKeyHeader
 
@@ -10,6 +12,8 @@ api_key_header = APIKeyHeader(name="X-API-Key", auto_error=False)
 
 async def verify_api_key(api_key: str | None = Depends(api_key_header)) -> str:
     """Verify the API key from request header.
+
+    Uses constant-time comparison to prevent timing attacks.
 
     Args:
         api_key: The API key from X-API-Key header.
@@ -25,7 +29,8 @@ async def verify_api_key(api_key: str | None = Depends(api_key_header)) -> str:
             status_code=status.HTTP_401_UNAUTHORIZED,
             detail="Missing API key",
         )
-    if api_key != settings.api_key:
+    # Use constant-time comparison to prevent timing attacks
+    if not secrets.compare_digest(api_key.encode(), settings.api_key.encode()):
         raise HTTPException(
             status_code=status.HTTP_401_UNAUTHORIZED,
             detail="Invalid API key",
