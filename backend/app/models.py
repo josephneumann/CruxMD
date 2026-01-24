@@ -2,8 +2,10 @@
 
 import uuid
 from datetime import datetime
+from typing import Any
 
-from sqlalchemy import DateTime, Index, String, text
+from pgvector.sqlalchemy import Vector
+from sqlalchemy import DateTime, Index, String, Text, text
 from sqlalchemy.dialects.postgresql import JSONB, UUID
 from sqlalchemy.orm import Mapped, mapped_column
 
@@ -37,6 +39,12 @@ class FhirResource(Base):
     # The actual FHIR resource - stored as raw JSON per CLAUDE.md
     data: Mapped[dict] = mapped_column(JSONB, nullable=False)
 
+    # Embedding for vector similarity search (OpenAI text-embedding-3-small = 1536 dimensions)
+    embedding: Mapped[Any | None] = mapped_column(Vector(1536), nullable=True)
+
+    # Text used to generate the embedding (for debugging/inspection)
+    embedding_text: Mapped[str | None] = mapped_column(Text, nullable=True)
+
     # Metadata
     created_at: Mapped[datetime] = mapped_column(
         DateTime(timezone=True),
@@ -48,6 +56,14 @@ class FhirResource(Base):
         Index("idx_fhir_data_gin", "data", postgresql_using="gin"),
         # Index for idempotency checks during bundle loading
         Index("idx_fhir_id_type", "fhir_id", "resource_type"),
+        # HNSW index for cosine similarity searches on embeddings
+        Index(
+            "idx_fhir_embedding_hnsw",
+            "embedding",
+            postgresql_using="hnsw",
+            postgresql_with={"m": 16, "ef_construction": 64},
+            postgresql_ops={"embedding": "vector_cosine_ops"},
+        ),
     )
 
     def __repr__(self) -> str:
