@@ -23,50 +23,6 @@ from app.services.graph import KnowledgeGraph
 
 
 # =============================================================================
-# Test Configuration
-# =============================================================================
-
-
-def get_test_database_url() -> str:
-    """Get test database URL.
-
-    Priority:
-    1. DATABASE_TEST_URL environment variable (for CI/CD)
-    2. Derived from settings.database_url with '_test' suffix
-    """
-    if url := os.environ.get("DATABASE_TEST_URL"):
-        return url
-
-    # Derive test URL from main settings by appending _test to database name
-    base_url = settings.database_url
-    if base_url.endswith("/cruxmd"):
-        return base_url + "_test"
-    return base_url.rsplit("/", 1)[0] + "/cruxmd_test"
-
-
-def get_neo4j_test_uri() -> str:
-    """Get Neo4j URI for tests.
-
-    Priority:
-    1. NEO4J_TEST_URI environment variable (for CI/CD)
-    2. settings.neo4j_uri (same instance, different approach for isolation)
-    """
-    return os.environ.get("NEO4J_TEST_URI", settings.neo4j_uri)
-
-
-def get_neo4j_test_auth() -> tuple[str, str]:
-    """Get Neo4j auth credentials for tests.
-
-    Priority:
-    1. NEO4J_TEST_USER/NEO4J_TEST_PASSWORD environment variables
-    2. settings.neo4j_user/settings.neo4j_password
-    """
-    user = os.environ.get("NEO4J_TEST_USER", settings.neo4j_user)
-    password = os.environ.get("NEO4J_TEST_PASSWORD", settings.neo4j_password)
-    return (user, password)
-
-
-# =============================================================================
 # HTTP Client Fixtures
 # =============================================================================
 
@@ -91,8 +47,15 @@ async def test_engine():
     """Create test database engine with automatic schema management.
 
     Creates all tables before tests, drops them after.
+    Uses DATABASE_TEST_URL env var if set, otherwise derives from settings.
     """
-    engine = create_async_engine(get_test_database_url(), echo=False)
+    # Use env var if set (for CI/CD), otherwise derive from settings
+    db_url = os.environ.get("DATABASE_TEST_URL")
+    if not db_url:
+        base_url = settings.database_url
+        db_url = base_url + "_test" if base_url.endswith("/cruxmd") else base_url.rsplit("/", 1)[0] + "/cruxmd_test"
+
+    engine = create_async_engine(db_url, echo=False)
 
     async with engine.begin() as conn:
         await conn.run_sync(Base.metadata.create_all)
@@ -129,11 +92,16 @@ async def db_session(test_engine) -> AsyncSession:
 
 @pytest_asyncio.fixture
 async def neo4j_driver():
-    """Create test Neo4j driver with connectivity verification."""
-    driver = AsyncGraphDatabase.driver(
-        get_neo4j_test_uri(),
-        auth=get_neo4j_test_auth(),
+    """Create test Neo4j driver with connectivity verification.
+
+    Uses NEO4J_TEST_* env vars if set, otherwise uses settings.
+    """
+    uri = os.environ.get("NEO4J_TEST_URI", settings.neo4j_uri)
+    auth = (
+        os.environ.get("NEO4J_TEST_USER", settings.neo4j_user),
+        os.environ.get("NEO4J_TEST_PASSWORD", settings.neo4j_password),
     )
+    driver = AsyncGraphDatabase.driver(uri, auth=auth)
     await driver.verify_connectivity()
     yield driver
     await driver.close()
