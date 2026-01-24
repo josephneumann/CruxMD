@@ -24,6 +24,8 @@ class TestFhirResourceModel:
             "patient_id",
             "data",
             "created_at",
+            "embedding",
+            "embedding_text",
         }
         assert expected == column_names
 
@@ -35,9 +37,10 @@ class TestFhirResourceModel:
     def test_fhir_resource_indexes(self):
         """FhirResource should have required indexes."""
         index_names = {idx.name for idx in FhirResource.__table__.indexes}
-        # Should have composite index and GIN index
+        # Should have composite index, GIN index, and HNSW embedding index
         assert "idx_fhir_type_patient" in index_names
         assert "idx_fhir_data_gin" in index_names
+        assert "idx_fhir_embedding_hnsw" in index_names
 
     def test_fhir_resource_repr(self):
         """FhirResource repr should include key identifiers."""
