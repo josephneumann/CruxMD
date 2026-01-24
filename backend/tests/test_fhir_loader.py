@@ -1,6 +1,7 @@
 """Tests for FHIR loader service."""
 
 import uuid
+from unittest.mock import AsyncMock, MagicMock, patch
 
 import pytest
 from sqlalchemy import select
@@ -13,6 +14,7 @@ from app.services.fhir_loader import (
     load_bundle,
     load_bundle_with_profile,
     _add_profile_extension,
+    _generate_embeddings,
     PROFILE_EXTENSION_URL,
 )
 from tests.conftest import create_bundle
@@ -489,3 +491,158 @@ class TestGetPatientResource:
         # Trying to get a Patient with a Condition ID should return None
         resource = await get_patient_resource(db_session, condition_resource.id)
         assert resource is None
+
+
+class TestGenerateEmbeddings:
+    """Unit tests for _generate_embeddings helper function."""
+
+    def _create_mock_embedding(self, dimension: int = 1536) -> list[float]:
+        """Create a mock embedding vector."""
+        return [0.1] * dimension
+
+    def _create_mock_fhir_resource(
+        self,
+        resource_type: str,
+        fhir_id: str,
+        data: dict,
+    ) -> FhirResource:
+        """Create a mock FhirResource for testing."""
+        resource = FhirResource(
+            id=uuid.uuid4(),
+            fhir_id=fhir_id,
+            resource_type=resource_type,
+            patient_id=uuid.uuid4(),
+            data=data,
+        )
+        return resource
+
+    @pytest.mark.asyncio
+    async def test_generate_embeddings_updates_resources(
+        self, sample_condition, sample_observation
+    ):
+        """Test that _generate_embeddings updates FhirResource objects."""
+        # Create mock FhirResource objects
+        condition_resource = self._create_mock_fhir_resource(
+            "Condition", "cond-1", sample_condition
+        )
+        observation_resource = self._create_mock_fhir_resource(
+            "Observation", "obs-1", sample_observation
+        )
+
+        # Create mock embedding service
+        mock_client = AsyncMock()
+        mock_response = MagicMock()
+        mock_response.data = [
+            MagicMock(embedding=self._create_mock_embedding()),
+            MagicMock(embedding=self._create_mock_embedding()),
+        ]
+        mock_client.embeddings.create = AsyncMock(return_value=mock_response)
+        mock_client.close = AsyncMock()
+
+        with patch(
+            "app.services.fhir_loader.EmbeddingService"
+        ) as mock_service_class:
+            mock_service = MagicMock()
+            mock_service.embed_texts = AsyncMock(
+                return_value=[
+                    self._create_mock_embedding(),
+                    self._create_mock_embedding(),
+                ]
+            )
+            mock_service.close = AsyncMock()
+            mock_service_class.return_value = mock_service
+
+            await _generate_embeddings([condition_resource, observation_resource])
+
+            # Verify embeddings were set
+            assert condition_resource.embedding is not None
+            assert condition_resource.embedding_text is not None
+            assert observation_resource.embedding is not None
+            assert observation_resource.embedding_text is not None
+
+            # Verify embedding text contains expected content
+            assert "Condition:" in condition_resource.embedding_text
+            assert "Observation:" in observation_resource.embedding_text
+
+    @pytest.mark.asyncio
+    async def test_generate_embeddings_skips_non_embeddable(self, sample_patient):
+        """Test that _generate_embeddings skips non-embeddable resource types."""
+        # Patient is not an embeddable type
+        patient_resource = self._create_mock_fhir_resource(
+            "Patient", "pat-1", sample_patient
+        )
+
+        with patch(
+            "app.services.fhir_loader.EmbeddingService"
+        ) as mock_service_class:
+            mock_service = MagicMock()
+            mock_service.embed_texts = AsyncMock(return_value=[])
+            mock_service.close = AsyncMock()
+            mock_service_class.return_value = mock_service
+
+            await _generate_embeddings([patient_resource])
+
+            # embed_texts should not be called since Patient is not embeddable
+            mock_service.embed_texts.assert_not_called()
+
+            # Patient should not have embedding
+            assert patient_resource.embedding is None
+            assert patient_resource.embedding_text is None
+
+    @pytest.mark.asyncio
+    async def test_generate_embeddings_handles_empty_list(self):
+        """Test that _generate_embeddings handles empty resource list."""
+        with patch(
+            "app.services.fhir_loader.EmbeddingService"
+        ) as mock_service_class:
+            await _generate_embeddings([])
+
+            # EmbeddingService should not be instantiated for empty list
+            mock_service_class.assert_not_called()
+
+    @pytest.mark.asyncio
+    async def test_generate_embeddings_graceful_degradation(
+        self, sample_condition
+    ):
+        """Test that _generate_embeddings handles API errors gracefully."""
+        condition_resource = self._create_mock_fhir_resource(
+            "Condition", "cond-1", sample_condition
+        )
+
+        with patch(
+            "app.services.fhir_loader.EmbeddingService"
+        ) as mock_service_class:
+            mock_service = MagicMock()
+            mock_service.embed_texts = AsyncMock(
+                side_effect=Exception("API Error")
+            )
+            mock_service.close = AsyncMock()
+            mock_service_class.return_value = mock_service
+
+            # Should not raise, just log warning
+            await _generate_embeddings([condition_resource])
+
+            # Embedding should not be set due to error
+            assert condition_resource.embedding is None
+
+    @pytest.mark.asyncio
+    async def test_generate_embeddings_closes_service(self, sample_condition):
+        """Test that _generate_embeddings closes the embedding service."""
+        condition_resource = self._create_mock_fhir_resource(
+            "Condition", "cond-1", sample_condition
+        )
+
+        with patch(
+            "app.services.fhir_loader.EmbeddingService"
+        ) as mock_service_class:
+            mock_service = MagicMock()
+            mock_service.embed_texts = AsyncMock(
+                return_value=[self._create_mock_embedding()]
+            )
+            mock_service.close = AsyncMock()
+            mock_service_class.return_value = mock_service
+
+            await _generate_embeddings([condition_resource])
+
+            # Verify close was called
+            mock_service.close.assert_called_once()

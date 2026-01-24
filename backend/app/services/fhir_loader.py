@@ -1,6 +1,9 @@
 """FHIR Bundle loader service for PostgreSQL and Neo4j storage."""
 
+import asyncio
+import copy
 import json
+import logging
 import uuid
 from typing import Any
 
@@ -8,7 +11,10 @@ from sqlalchemy import select, or_, and_
 from sqlalchemy.ext.asyncio import AsyncSession
 
 from app.models import FhirResource
+from app.services.embeddings import EmbeddingService, resource_to_text
 from app.services.graph import KnowledgeGraph
+
+logger = logging.getLogger(__name__)
 
 # FHIR extension URL for patient narrative profiles
 PROFILE_EXTENSION_URL = (
@@ -69,6 +75,9 @@ async def load_bundle(
         (r.fhir_id, r.resource_type): r for r in existing_resources
     }
 
+    # Track all FhirResource objects for embedding generation
+    all_fhir_resources: list[FhirResource] = []
+
     # Process all resources with batch lookup results
     for resource in resources_data:
         resource_type = resource.get("resourceType", "")
@@ -84,6 +93,7 @@ async def load_bundle(
             # Update existing resource
             existing.data = resource
             existing.patient_id = resource_patient_id
+            all_fhir_resources.append(existing)
         else:
             # Create new resource
             if resource_type == "Patient":
@@ -104,12 +114,16 @@ async def load_bundle(
                     data=resource,
                 )
             db.add(fhir_resource)
+            all_fhir_resources.append(fhir_resource)
 
     # Flush to get IDs assigned
     await db.flush()
 
-    # Build Neo4j graph from FHIR resources
-    await graph.build_from_fhir(str(patient_id), resources_data)
+    # Generate embeddings and build graph in parallel (they're independent operations)
+    await asyncio.gather(
+        _generate_embeddings(all_fhir_resources),
+        graph.build_from_fhir(str(patient_id), resources_data),
+    )
 
     return patient_id
 
@@ -159,6 +173,60 @@ async def _find_existing_resources_batch(
     return list(result.scalars().all())
 
 
+async def _generate_embeddings(
+    fhir_resources: list[FhirResource],
+    embedding_service: EmbeddingService | None = None,
+) -> None:
+    """
+    Generate embeddings for FHIR resources that support embedding.
+
+    Updates the embedding and embedding_text columns on each FhirResource.
+    Failures are logged but do not block bundle loading (graceful degradation).
+
+    Args:
+        fhir_resources: List of FhirResource objects to generate embeddings for.
+        embedding_service: Optional EmbeddingService instance. If not provided,
+            a new instance is created and closed after use.
+    """
+    # Filter to only embeddable resources and generate text
+    embeddable: list[tuple[FhirResource, str]] = []
+    for fhir_resource in fhir_resources:
+        text = resource_to_text(fhir_resource.data)
+        if text is not None:
+            embeddable.append((fhir_resource, text))
+
+    if not embeddable:
+        return
+
+    # Create service if not provided (for dependency injection support)
+    owns_service = embedding_service is None
+    if owns_service:
+        embedding_service = EmbeddingService()
+
+    try:
+        # Extract texts for batch embedding
+        texts = [text for _, text in embeddable]
+
+        # Generate embeddings in batch
+        embeddings = await embedding_service.embed_texts(texts)
+
+        # Update FhirResource objects with embeddings
+        for (fhir_resource, text), embedding in zip(embeddable, embeddings):
+            fhir_resource.embedding = embedding
+            fhir_resource.embedding_text = text
+
+        logger.info(f"Generated embeddings for {len(embeddings)} resources")
+
+    except Exception as e:
+        # Log error but don't fail bundle loading
+        logger.warning("Failed to generate embeddings: %s", e)
+
+    finally:
+        # Only close if we created the service
+        if owns_service:
+            await embedding_service.close()
+
+
 async def load_bundle_with_profile(
     db: AsyncSession,
     graph: KnowledgeGraph,
@@ -197,8 +265,6 @@ def _add_profile_extension(
     Creates a copy of the bundle with the profile embedded as a FHIR extension
     on the Patient resource. This maintains FHIR-native architecture.
     """
-    import copy
-
     bundle = copy.deepcopy(bundle)
 
     for entry in bundle.get("entry", []):
@@ -243,7 +309,11 @@ def get_patient_profile(patient_data: dict[str, Any]) -> dict[str, Any] | None:
         if ext.get("url") == PROFILE_EXTENSION_URL:
             value = ext.get("valueString")
             if value:
-                return json.loads(value)
+                try:
+                    return json.loads(value)
+                except json.JSONDecodeError:
+                    logger.warning("Failed to parse patient profile JSON")
+                    return None
     return None
 
 
