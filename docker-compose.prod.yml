@@ -18,6 +18,8 @@ services:
 
   backend:
     build: ./backend
+    volumes:
+      - ./fixtures:/fixtures:ro
     environment:
       - DATABASE_URL=postgresql+asyncpg://postgres:${DB_PASSWORD}@db:5432/cruxmd
       - NEO4J_URI=bolt://neo4j:7687
