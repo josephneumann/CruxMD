@@ -105,7 +105,6 @@ async def seed_database(fixtures_dir: Path) -> dict[str, int]:
                     graph=graph,
                     bundle=bundle,
                     profile=profile,
-                    generate_embeddings=False,  # Embeddings not implemented yet
                 )
                 await session.commit()
 

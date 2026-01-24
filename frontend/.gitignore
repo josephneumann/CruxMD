@@ -40,5 +40,6 @@ yarn-error.log*
 *.tsbuildinfo
 next-env.d.ts
 
-# generated API client (run `pnpm generate-api` to regenerate)
-/lib/generated/
+# NOTE: Generated API client is now committed to git for Docker builds.
+# Regenerate with `pnpm generate-api` when backend API changes.
+# /lib/generated/
