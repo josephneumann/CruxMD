@@ -37,6 +37,12 @@ async def client():
         yield ac
 
 
+@pytest.fixture
+def auth_headers() -> dict[str, str]:
+    """Authentication headers for API requests."""
+    return {"X-API-Key": settings.api_key}
+
+
 # =============================================================================
 # Database Fixtures
 # =============================================================================

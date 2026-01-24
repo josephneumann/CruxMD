@@ -45,7 +45,7 @@ uv run alembic upgrade head              # Apply migrations
 uv run alembic revision --autogenerate   # Generate migration
 
 # Load test data
-uv run python -m app.scripts.load_synthea  # Load Synthea patient bundles
+uv run python -m app.scripts.seed_database  # Seed database with Synthea fixtures + profiles
 ```
 
 ## Architecture
