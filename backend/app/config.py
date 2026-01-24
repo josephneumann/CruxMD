@@ -45,6 +45,9 @@ class Settings(BaseSettings):
     # OpenAI
     openai_api_key: str = ""
 
+    # Anthropic
+    anthropic_api_key: str = ""
+
     # Application
     debug: bool = False
 
