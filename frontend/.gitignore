@@ -39,3 +39,6 @@ yarn-error.log*
 # typescript
 *.tsbuildinfo
 next-env.d.ts
+
+# generated API client (run `pnpm generate-api` to regenerate)
+/lib/generated/
