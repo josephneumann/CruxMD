@@ -16,7 +16,7 @@ import {
   calculateAge,
   getPatientMRN,
 } from "@/lib/utils";
-import type { PatientListItem } from "./PatientSelector";
+import type { PatientListItem } from "@/lib/types";
 
 interface PatientHeaderProps {
   patient: PatientListItem;

@@ -14,20 +14,8 @@ import {
   SelectTrigger,
   SelectValue,
 } from "@/components/ui/select";
-import {
-  getPatientDisplayName,
-  formatFhirDate,
-  type FhirPatient,
-} from "@/lib/utils";
-
-/**
- * Patient list item from API response.
- */
-export interface PatientListItem {
-  id: string;
-  fhir_id: string;
-  data: FhirPatient;
-}
+import { getPatientDisplayName, formatFhirDate } from "@/lib/utils";
+import type { PatientListItem } from "@/lib/types";
 
 interface PatientSelectorProps {
   patients: PatientListItem[];

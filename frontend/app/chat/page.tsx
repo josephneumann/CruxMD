@@ -11,13 +11,10 @@
  * - Chat interface (placeholder for now)
  */
 
-import { useEffect, useState } from "react";
+import { useEffect, useState, useCallback } from "react";
 import { MedicalDisclaimer } from "@/components/layout";
-import {
-  PatientSelector,
-  PatientHeader,
-  type PatientListItem,
-} from "@/components/patient";
+import { PatientSelector, PatientHeader } from "@/components/patient";
+import { type PatientListItem, parsePatientList } from "@/lib/types";
 import { listPatientsApiPatientsGet } from "@/lib/generated";
 import { createClient, createConfig } from "@/lib/generated/client";
 
@@ -34,40 +31,40 @@ export default function ChatPage() {
   const [loading, setLoading] = useState(true);
   const [error, setError] = useState<string | null>(null);
 
+  // Fetch patients - memoized to satisfy exhaustive-deps
+  const fetchPatients = useCallback(async () => {
+    try {
+      setLoading(true);
+      setError(null);
+
+      const result = await listPatientsApiPatientsGet({
+        client: apiClient,
+      });
+
+      if (result.error) {
+        throw new Error("Failed to fetch patients");
+      }
+
+      // Validate and parse the response using type guard
+      const patientList = parsePatientList(result.data);
+      setPatients(patientList);
+
+      // Auto-select first patient if available and none selected
+      if (patientList.length > 0) {
+        setSelectedPatientId((current) => current ?? patientList[0].id);
+      }
+    } catch (err) {
+      console.error("Error fetching patients:", err);
+      setError(err instanceof Error ? err.message : "Failed to load patients");
+    } finally {
+      setLoading(false);
+    }
+  }, []);
+
   // Fetch patients on mount
   useEffect(() => {
-    async function fetchPatients() {
-      try {
-        setLoading(true);
-        setError(null);
-
-        const result = await listPatientsApiPatientsGet({
-          client: apiClient,
-        });
-
-        if (result.error) {
-          throw new Error("Failed to fetch patients");
-        }
-
-        // Cast the response to our expected type
-        // The API returns objects with id, fhir_id, data properties
-        const patientList = (result.data || []) as unknown as PatientListItem[];
-        setPatients(patientList);
-
-        // Auto-select first patient if available
-        if (patientList.length > 0 && !selectedPatientId) {
-          setSelectedPatientId(patientList[0].id);
-        }
-      } catch (err) {
-        console.error("Error fetching patients:", err);
-        setError(err instanceof Error ? err.message : "Failed to load patients");
-      } finally {
-        setLoading(false);
-      }
-    }
-
     fetchPatients();
-  }, []); // eslint-disable-line react-hooks/exhaustive-deps
+  }, [fetchPatients]);
 
   const selectedPatient = patients.find((p) => p.id === selectedPatientId);
 
