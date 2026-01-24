@@ -1,5 +1,6 @@
 """FHIR Bundle loader service for PostgreSQL and Neo4j storage."""
 
+import json
 import uuid
 from typing import Any
 
@@ -8,6 +9,9 @@ from sqlalchemy.ext.asyncio import AsyncSession
 
 from app.models import FhirResource
 from app.services.graph import KnowledgeGraph
+
+# FHIR extension URL for patient narrative profiles
+PROFILE_EXTENSION_URL = "http://cruxmd.ai/fhir/StructureDefinition/patient-narrative-profile"
 
 
 async def load_bundle(
@@ -149,6 +153,96 @@ def _extract_patient_reference(
     return default_patient_id
 
 
+async def load_bundle_with_profile(
+    db: AsyncSession,
+    graph: KnowledgeGraph,
+    bundle: dict[str, Any],
+    profile: dict[str, Any] | None = None,
+    generate_embeddings: bool = True,
+) -> uuid.UUID:
+    """
+    Load a FHIR bundle with an optional profile attached to the Patient resource.
+
+    Profiles are stored as FHIR extensions on the Patient resource, maintaining
+    FHIR-native architecture. The profile is embedded in the Patient's data
+    before loading, so it's stored within the existing `data` JSONB column.
+
+    Args:
+        db: Async SQLAlchemy session.
+        graph: KnowledgeGraph instance for Neo4j operations.
+        bundle: FHIR Bundle dict with "entry" array of resources.
+        profile: Optional PatientProfile data to attach as FHIR extension.
+        generate_embeddings: Whether to generate embeddings (stubbed for now).
+
+    Returns:
+        The canonical patient UUID (PostgreSQL-generated).
+    """
+    if profile:
+        # Embed profile as FHIR extension on Patient resource before loading
+        bundle = _add_profile_extension(bundle, profile)
+
+    return await load_bundle(db, graph, bundle, generate_embeddings)
+
+
+def _add_profile_extension(
+    bundle: dict[str, Any], profile: dict[str, Any]
+) -> dict[str, Any]:
+    """
+    Add profile as FHIR extension to Patient resource in bundle.
+
+    Creates a copy of the bundle with the profile embedded as a FHIR extension
+    on the Patient resource. This maintains FHIR-native architecture.
+    """
+    import copy
+
+    bundle = copy.deepcopy(bundle)
+
+    for entry in bundle.get("entry", []):
+        resource = entry.get("resource", {})
+        if resource.get("resourceType") == "Patient":
+            # Initialize extensions array if not present
+            if "extension" not in resource:
+                resource["extension"] = []
+
+            # Remove any existing profile extension
+            resource["extension"] = [
+                ext
+                for ext in resource["extension"]
+                if ext.get("url") != PROFILE_EXTENSION_URL
+            ]
+
+            # Add profile as FHIR extension
+            resource["extension"].append(
+                {
+                    "url": PROFILE_EXTENSION_URL,
+                    "valueString": json.dumps(profile),
+                }
+            )
+            break
+
+    return bundle
+
+
+def get_patient_profile(patient_data: dict[str, Any]) -> dict[str, Any] | None:
+    """
+    Extract patient profile from FHIR Patient resource.
+
+    Profiles are stored as FHIR extensions with a specific URL.
+
+    Args:
+        patient_data: FHIR Patient resource dict.
+
+    Returns:
+        Profile dict if present, None otherwise.
+    """
+    for ext in patient_data.get("extension", []):
+        if ext.get("url") == PROFILE_EXTENSION_URL:
+            value = ext.get("valueString")
+            if value:
+                return json.loads(value)
+    return None
+
+
 async def get_patient_resources(
     db: AsyncSession, patient_id: uuid.UUID
 ) -> list[dict[str, Any]]:
@@ -167,3 +261,25 @@ async def get_patient_resources(
     )
     resources = result.scalars().all()
     return [r.data for r in resources]
+
+
+async def get_patient_resource(
+    db: AsyncSession, patient_id: uuid.UUID
+) -> FhirResource | None:
+    """
+    Get Patient FHIR resource by canonical ID.
+
+    Args:
+        db: Async SQLAlchemy session.
+        patient_id: The canonical patient UUID.
+
+    Returns:
+        FhirResource for the Patient, or None if not found.
+    """
+    result = await db.execute(
+        select(FhirResource).where(
+            FhirResource.id == patient_id,
+            FhirResource.resource_type == "Patient",
+        )
+    )
+    return result.scalar_one_or_none()
