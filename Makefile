@@ -92,7 +92,7 @@ build-no-cache:
 
 generate-fixtures:
 	@echo "Generating Synthea fixtures..."
-	python scripts/generate_fixtures.py --count 5 --output fixtures/synthea
+	@python scripts/generate_fixtures.py --count 5 --output fixtures/synthea
 
 seed:
 	@echo "Loading fixtures into database..."
@@ -103,6 +103,9 @@ migrate:
 	cd backend && uv run alembic upgrade head
 
 migrate-generate:
+ifndef msg
+	$(error Usage: make migrate-generate msg="migration description")
+endif
 	@echo "Generating new migration..."
 	cd backend && uv run alembic revision --autogenerate -m "$(msg)"
 
