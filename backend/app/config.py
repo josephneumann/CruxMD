@@ -1,6 +1,7 @@
 """Application configuration using pydantic-settings."""
 
 import warnings
+from pathlib import Path
 
 from pydantic_settings import BaseSettings, SettingsConfigDict
 
@@ -9,6 +10,11 @@ from pydantic_settings import BaseSettings, SettingsConfigDict
 _UNCONFIGURED_DB = "postgresql+asyncpg://postgres:CHANGE_ME@localhost:5432/cruxmd"
 _UNCONFIGURED_NEO4J_PASSWORD = "CHANGE_ME"
 _UNCONFIGURED_API_KEY = "CHANGE_ME"
+
+# Find .env file: check backend dir first, then project root
+_BACKEND_DIR = Path(__file__).parent.parent
+_PROJECT_ROOT = _BACKEND_DIR.parent
+_ENV_FILE = _BACKEND_DIR / ".env" if (_BACKEND_DIR / ".env").exists() else _PROJECT_ROOT / ".env"
 
 
 class Settings(BaseSettings):
@@ -20,7 +26,7 @@ class Settings(BaseSettings):
     """
 
     model_config = SettingsConfigDict(
-        env_file=".env",
+        env_file=str(_ENV_FILE),
         env_file_encoding="utf-8",
         extra="ignore",
     )
