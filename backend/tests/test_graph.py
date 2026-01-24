@@ -8,10 +8,47 @@ import json
 
 import pytest
 
-from app.services.graph import KnowledgeGraph
+from app.services.graph import KnowledgeGraph, _extract_reference_id
 
 # All tests in this module require Neo4j
 pytestmark = pytest.mark.integration
+
+
+# =============================================================================
+# Unit tests for helper functions
+# =============================================================================
+
+
+class TestExtractReferenceId:
+    """Unit tests for _extract_reference_id helper function."""
+
+    def test_extracts_urn_uuid(self):
+        """Test extraction from urn:uuid format."""
+        ref = "urn:uuid:abc-123-def"
+        assert _extract_reference_id(ref) == "abc-123-def"
+
+    def test_extracts_slash_format(self):
+        """Test extraction from ResourceType/id format."""
+        ref = "Patient/patient-123"
+        assert _extract_reference_id(ref) == "patient-123"
+
+    def test_extracts_encounter_slash_format(self):
+        """Test extraction from Encounter/id format."""
+        ref = "Encounter/encounter-456"
+        assert _extract_reference_id(ref) == "encounter-456"
+
+    def test_handles_plain_id(self):
+        """Test handling of plain ID without prefix."""
+        ref = "plain-id-789"
+        assert _extract_reference_id(ref) == "plain-id-789"
+
+    def test_handles_none(self):
+        """Test handling of None input."""
+        assert _extract_reference_id(None) is None
+
+    def test_handles_empty_string(self):
+        """Test handling of empty string input."""
+        assert _extract_reference_id("") is None
 
 
 @pytest.mark.asyncio
@@ -671,3 +708,584 @@ async def test_fhir_resource_stored_on_allergy_node(
     stored_resource = json.loads(record["fhir_resource"])
     assert stored_resource["resourceType"] == "AllergyIntolerance"
     assert stored_resource["id"] == sample_allergy["id"]
+
+
+# =============================================================================
+# Tests for Procedure and DiagnosticReport nodes
+# =============================================================================
+
+
+@pytest.mark.asyncio
+async def test_build_from_fhir_creates_procedure_with_relationship(
+    graph: KnowledgeGraph,
+    patient_id: str,
+    neo4j_driver,
+    sample_patient,
+    sample_procedure,
+):
+    """Test that build_from_fhir creates Procedure node with HAS_PROCEDURE relationship."""
+    await graph.build_from_fhir(patient_id, [sample_patient, sample_procedure])
+
+    async with neo4j_driver.session() as session:
+        result = await session.run(
+            """
+            MATCH (p:Patient {id: $id})-[:HAS_PROCEDURE]->(pr:Procedure)
+            RETURN pr
+            """,
+            id=patient_id,
+        )
+        record = await result.single()
+
+    assert record is not None
+    proc_node = record["pr"]
+    assert proc_node["fhir_id"] == sample_procedure["id"]
+    assert proc_node["code"] == sample_procedure["code"]["coding"][0]["code"]
+    assert proc_node["display"] == sample_procedure["code"]["coding"][0]["display"]
+    assert proc_node["status"] == sample_procedure["status"]
+
+
+@pytest.mark.asyncio
+async def test_build_from_fhir_creates_diagnostic_report_with_relationship(
+    graph: KnowledgeGraph,
+    patient_id: str,
+    neo4j_driver,
+    sample_patient,
+    sample_diagnostic_report,
+):
+    """Test that build_from_fhir creates DiagnosticReport node with HAS_DIAGNOSTIC_REPORT relationship."""
+    await graph.build_from_fhir(patient_id, [sample_patient, sample_diagnostic_report])
+
+    async with neo4j_driver.session() as session:
+        result = await session.run(
+            """
+            MATCH (p:Patient {id: $id})-[:HAS_DIAGNOSTIC_REPORT]->(dr:DiagnosticReport)
+            RETURN dr
+            """,
+            id=patient_id,
+        )
+        record = await result.single()
+
+    assert record is not None
+    report_node = record["dr"]
+    assert report_node["fhir_id"] == sample_diagnostic_report["id"]
+    assert report_node["code"] == sample_diagnostic_report["code"]["coding"][0]["code"]
+    assert report_node["status"] == sample_diagnostic_report["status"]
+
+
+# =============================================================================
+# Tests for Encounter-centric relationships (Tier 1)
+# =============================================================================
+
+
+@pytest.mark.asyncio
+async def test_encounter_diagnosed_condition_relationship(
+    graph: KnowledgeGraph,
+    patient_id: str,
+    neo4j_driver,
+    sample_patient,
+    sample_encounter,
+    sample_condition_with_encounter,
+):
+    """Test Encounter -[:DIAGNOSED]-> Condition relationship is created."""
+    await graph.build_from_fhir(
+        patient_id, [sample_patient, sample_encounter, sample_condition_with_encounter]
+    )
+
+    async with neo4j_driver.session() as session:
+        result = await session.run(
+            """
+            MATCH (e:Encounter {fhir_id: $encounter_id})-[:DIAGNOSED]->(c:Condition)
+            RETURN c.fhir_id as condition_id
+            """,
+            encounter_id=sample_encounter["id"],
+        )
+        record = await result.single()
+
+    assert record is not None
+    assert record["condition_id"] == sample_condition_with_encounter["id"]
+
+
+@pytest.mark.asyncio
+async def test_encounter_prescribed_medication_relationship(
+    graph: KnowledgeGraph,
+    patient_id: str,
+    neo4j_driver,
+    sample_patient,
+    sample_encounter,
+    sample_condition_with_encounter,
+    sample_medication_with_encounter_and_reason,
+):
+    """Test Encounter -[:PRESCRIBED]-> MedicationRequest relationship is created."""
+    await graph.build_from_fhir(
+        patient_id,
+        [
+            sample_patient,
+            sample_encounter,
+            sample_condition_with_encounter,
+            sample_medication_with_encounter_and_reason,
+        ],
+    )
+
+    async with neo4j_driver.session() as session:
+        result = await session.run(
+            """
+            MATCH (e:Encounter {fhir_id: $encounter_id})-[:PRESCRIBED]->(m:MedicationRequest)
+            RETURN m.fhir_id as med_id
+            """,
+            encounter_id=sample_encounter["id"],
+        )
+        record = await result.single()
+
+    assert record is not None
+    assert record["med_id"] == sample_medication_with_encounter_and_reason["id"]
+
+
+@pytest.mark.asyncio
+async def test_encounter_recorded_observation_relationship(
+    graph: KnowledgeGraph,
+    patient_id: str,
+    neo4j_driver,
+    sample_patient,
+    sample_encounter,
+    sample_observation_with_encounter,
+):
+    """Test Encounter -[:RECORDED]-> Observation relationship is created."""
+    await graph.build_from_fhir(
+        patient_id, [sample_patient, sample_encounter, sample_observation_with_encounter]
+    )
+
+    async with neo4j_driver.session() as session:
+        result = await session.run(
+            """
+            MATCH (e:Encounter {fhir_id: $encounter_id})-[:RECORDED]->(o:Observation)
+            RETURN o.fhir_id as obs_id
+            """,
+            encounter_id=sample_encounter["id"],
+        )
+        record = await result.single()
+
+    assert record is not None
+    assert record["obs_id"] == sample_observation_with_encounter["id"]
+
+
+@pytest.mark.asyncio
+async def test_encounter_performed_procedure_relationship(
+    graph: KnowledgeGraph,
+    patient_id: str,
+    neo4j_driver,
+    sample_patient,
+    sample_encounter,
+    sample_condition_with_encounter,
+    sample_procedure_with_encounter_and_reason,
+):
+    """Test Encounter -[:PERFORMED]-> Procedure relationship is created."""
+    await graph.build_from_fhir(
+        patient_id,
+        [
+            sample_patient,
+            sample_encounter,
+            sample_condition_with_encounter,
+            sample_procedure_with_encounter_and_reason,
+        ],
+    )
+
+    async with neo4j_driver.session() as session:
+        result = await session.run(
+            """
+            MATCH (e:Encounter {fhir_id: $encounter_id})-[:PERFORMED]->(pr:Procedure)
+            RETURN pr.fhir_id as proc_id
+            """,
+            encounter_id=sample_encounter["id"],
+        )
+        record = await result.single()
+
+    assert record is not None
+    assert record["proc_id"] == sample_procedure_with_encounter_and_reason["id"]
+
+
+@pytest.mark.asyncio
+async def test_encounter_reported_diagnostic_report_relationship(
+    graph: KnowledgeGraph,
+    patient_id: str,
+    neo4j_driver,
+    sample_patient,
+    sample_encounter,
+    sample_observation_with_encounter,
+    sample_diagnostic_report_with_encounter_and_results,
+):
+    """Test Encounter -[:REPORTED]-> DiagnosticReport relationship is created."""
+    await graph.build_from_fhir(
+        patient_id,
+        [
+            sample_patient,
+            sample_encounter,
+            sample_observation_with_encounter,
+            sample_diagnostic_report_with_encounter_and_results,
+        ],
+    )
+
+    async with neo4j_driver.session() as session:
+        result = await session.run(
+            """
+            MATCH (e:Encounter {fhir_id: $encounter_id})-[:REPORTED]->(dr:DiagnosticReport)
+            RETURN dr.fhir_id as report_id
+            """,
+            encounter_id=sample_encounter["id"],
+        )
+        record = await result.single()
+
+    assert record is not None
+    assert record["report_id"] == sample_diagnostic_report_with_encounter_and_results["id"]
+
+
+# =============================================================================
+# Tests for clinical reasoning relationships (Tier 2)
+# =============================================================================
+
+
+@pytest.mark.asyncio
+async def test_medication_treats_condition_relationship(
+    graph: KnowledgeGraph,
+    patient_id: str,
+    neo4j_driver,
+    sample_patient,
+    sample_encounter,
+    sample_condition_with_encounter,
+    sample_medication_with_encounter_and_reason,
+):
+    """Test MedicationRequest -[:TREATS]-> Condition relationship is created."""
+    await graph.build_from_fhir(
+        patient_id,
+        [
+            sample_patient,
+            sample_encounter,
+            sample_condition_with_encounter,
+            sample_medication_with_encounter_and_reason,
+        ],
+    )
+
+    async with neo4j_driver.session() as session:
+        result = await session.run(
+            """
+            MATCH (m:MedicationRequest {fhir_id: $med_id})-[:TREATS]->(c:Condition)
+            RETURN c.fhir_id as condition_id
+            """,
+            med_id=sample_medication_with_encounter_and_reason["id"],
+        )
+        record = await result.single()
+
+    assert record is not None
+    assert record["condition_id"] == sample_condition_with_encounter["id"]
+
+
+@pytest.mark.asyncio
+async def test_procedure_treats_condition_relationship(
+    graph: KnowledgeGraph,
+    patient_id: str,
+    neo4j_driver,
+    sample_patient,
+    sample_encounter,
+    sample_condition_with_encounter,
+    sample_procedure_with_encounter_and_reason,
+):
+    """Test Procedure -[:TREATS]-> Condition relationship is created."""
+    await graph.build_from_fhir(
+        patient_id,
+        [
+            sample_patient,
+            sample_encounter,
+            sample_condition_with_encounter,
+            sample_procedure_with_encounter_and_reason,
+        ],
+    )
+
+    async with neo4j_driver.session() as session:
+        result = await session.run(
+            """
+            MATCH (pr:Procedure {fhir_id: $proc_id})-[:TREATS]->(c:Condition)
+            RETURN c.fhir_id as condition_id
+            """,
+            proc_id=sample_procedure_with_encounter_and_reason["id"],
+        )
+        record = await result.single()
+
+    assert record is not None
+    assert record["condition_id"] == sample_condition_with_encounter["id"]
+
+
+@pytest.mark.asyncio
+async def test_diagnostic_report_contains_result_relationship(
+    graph: KnowledgeGraph,
+    patient_id: str,
+    neo4j_driver,
+    sample_patient,
+    sample_encounter,
+    sample_observation_with_encounter,
+    sample_diagnostic_report_with_encounter_and_results,
+):
+    """Test DiagnosticReport -[:CONTAINS_RESULT]-> Observation relationship is created."""
+    await graph.build_from_fhir(
+        patient_id,
+        [
+            sample_patient,
+            sample_encounter,
+            sample_observation_with_encounter,
+            sample_diagnostic_report_with_encounter_and_results,
+        ],
+    )
+
+    async with neo4j_driver.session() as session:
+        result = await session.run(
+            """
+            MATCH (dr:DiagnosticReport {fhir_id: $report_id})-[:CONTAINS_RESULT]->(o:Observation)
+            RETURN o.fhir_id as obs_id
+            """,
+            report_id=sample_diagnostic_report_with_encounter_and_results["id"],
+        )
+        record = await result.single()
+
+    assert record is not None
+    assert record["obs_id"] == sample_observation_with_encounter["id"]
+
+
+# =============================================================================
+# Tests for urn:uuid reference handling
+# =============================================================================
+
+
+@pytest.mark.asyncio
+async def test_urn_uuid_encounter_reference_resolved(
+    graph: KnowledgeGraph,
+    patient_id: str,
+    neo4j_driver,
+    sample_patient,
+    sample_encounter,
+    sample_condition_with_urn_uuid_encounter,
+):
+    """Test that urn:uuid references are correctly resolved to create relationships."""
+    await graph.build_from_fhir(
+        patient_id,
+        [sample_patient, sample_encounter, sample_condition_with_urn_uuid_encounter],
+    )
+
+    async with neo4j_driver.session() as session:
+        result = await session.run(
+            """
+            MATCH (e:Encounter {fhir_id: $encounter_id})-[:DIAGNOSED]->(c:Condition)
+            RETURN c.fhir_id as condition_id
+            """,
+            encounter_id=sample_encounter["id"],
+        )
+        record = await result.single()
+
+    assert record is not None
+    assert record["condition_id"] == sample_condition_with_urn_uuid_encounter["id"]
+
+
+# =============================================================================
+# Tests for query methods
+# =============================================================================
+
+
+@pytest.mark.asyncio
+async def test_get_encounter_events(
+    graph: KnowledgeGraph,
+    patient_id: str,
+    sample_patient,
+    sample_encounter,
+    sample_condition_with_encounter,
+    sample_medication_with_encounter_and_reason,
+    sample_observation_with_encounter,
+    sample_procedure_with_encounter_and_reason,
+    sample_diagnostic_report_with_encounter_and_results,
+):
+    """Test get_encounter_events returns all clinical events for an encounter."""
+    await graph.build_from_fhir(
+        patient_id,
+        [
+            sample_patient,
+            sample_encounter,
+            sample_condition_with_encounter,
+            sample_medication_with_encounter_and_reason,
+            sample_observation_with_encounter,
+            sample_procedure_with_encounter_and_reason,
+            sample_diagnostic_report_with_encounter_and_results,
+        ],
+    )
+
+    events = await graph.get_encounter_events(sample_encounter["id"])
+
+    assert len(events["conditions"]) == 1
+    assert events["conditions"][0]["fhir_id"] == sample_condition_with_encounter["id"]
+
+    assert len(events["medications"]) == 1
+    assert events["medications"][0]["fhir_id"] == sample_medication_with_encounter_and_reason["id"]
+
+    assert len(events["observations"]) == 1
+    assert events["observations"][0]["fhir_id"] == sample_observation_with_encounter["id"]
+
+    assert len(events["procedures"]) == 1
+    assert events["procedures"][0]["fhir_id"] == sample_procedure_with_encounter_and_reason["id"]
+
+    assert len(events["diagnostic_reports"]) == 1
+    assert events["diagnostic_reports"][0]["fhir_id"] == sample_diagnostic_report_with_encounter_and_results["id"]
+
+
+@pytest.mark.asyncio
+async def test_get_encounter_events_empty_for_nonexistent(graph: KnowledgeGraph):
+    """Test get_encounter_events returns empty collections for nonexistent encounter."""
+    events = await graph.get_encounter_events("nonexistent-encounter")
+
+    assert events["conditions"] == []
+    assert events["medications"] == []
+    assert events["observations"] == []
+    assert events["procedures"] == []
+    assert events["diagnostic_reports"] == []
+
+
+@pytest.mark.asyncio
+async def test_get_medications_treating_condition(
+    graph: KnowledgeGraph,
+    patient_id: str,
+    sample_patient,
+    sample_encounter,
+    sample_condition_with_encounter,
+    sample_medication_with_encounter_and_reason,
+):
+    """Test get_medications_treating_condition returns medications linked to a condition."""
+    await graph.build_from_fhir(
+        patient_id,
+        [
+            sample_patient,
+            sample_encounter,
+            sample_condition_with_encounter,
+            sample_medication_with_encounter_and_reason,
+        ],
+    )
+
+    meds = await graph.get_medications_treating_condition(sample_condition_with_encounter["id"])
+
+    assert len(meds) == 1
+    assert meds[0]["fhir_id"] == sample_medication_with_encounter_and_reason["id"]
+
+
+@pytest.mark.asyncio
+async def test_get_procedures_for_condition(
+    graph: KnowledgeGraph,
+    patient_id: str,
+    sample_patient,
+    sample_encounter,
+    sample_condition_with_encounter,
+    sample_procedure_with_encounter_and_reason,
+):
+    """Test get_procedures_for_condition returns procedures linked to a condition."""
+    await graph.build_from_fhir(
+        patient_id,
+        [
+            sample_patient,
+            sample_encounter,
+            sample_condition_with_encounter,
+            sample_procedure_with_encounter_and_reason,
+        ],
+    )
+
+    procs = await graph.get_procedures_for_condition(sample_condition_with_encounter["id"])
+
+    assert len(procs) == 1
+    assert procs[0]["fhir_id"] == sample_procedure_with_encounter_and_reason["id"]
+
+
+@pytest.mark.asyncio
+async def test_get_diagnostic_report_results(
+    graph: KnowledgeGraph,
+    patient_id: str,
+    sample_patient,
+    sample_encounter,
+    sample_observation_with_encounter,
+    sample_diagnostic_report_with_encounter_and_results,
+):
+    """Test get_diagnostic_report_results returns observations in a report."""
+    await graph.build_from_fhir(
+        patient_id,
+        [
+            sample_patient,
+            sample_encounter,
+            sample_observation_with_encounter,
+            sample_diagnostic_report_with_encounter_and_results,
+        ],
+    )
+
+    obs = await graph.get_diagnostic_report_results(
+        sample_diagnostic_report_with_encounter_and_results["id"]
+    )
+
+    assert len(obs) == 1
+    assert obs[0]["fhir_id"] == sample_observation_with_encounter["id"]
+
+
+# =============================================================================
+# Tests for encounter_fhir_id stored on nodes
+# =============================================================================
+
+
+@pytest.mark.asyncio
+async def test_condition_stores_encounter_fhir_id(
+    graph: KnowledgeGraph,
+    patient_id: str,
+    neo4j_driver,
+    sample_patient,
+    sample_encounter,
+    sample_condition_with_encounter,
+):
+    """Test that Condition node stores encounter_fhir_id for relationship building."""
+    await graph.build_from_fhir(
+        patient_id, [sample_patient, sample_encounter, sample_condition_with_encounter]
+    )
+
+    async with neo4j_driver.session() as session:
+        result = await session.run(
+            """
+            MATCH (c:Condition {fhir_id: $condition_id})
+            RETURN c.encounter_fhir_id as encounter_id
+            """,
+            condition_id=sample_condition_with_encounter["id"],
+        )
+        record = await result.single()
+
+    assert record is not None
+    assert record["encounter_id"] == sample_encounter["id"]
+
+
+@pytest.mark.asyncio
+async def test_medication_stores_reason_fhir_ids(
+    graph: KnowledgeGraph,
+    patient_id: str,
+    neo4j_driver,
+    sample_patient,
+    sample_encounter,
+    sample_condition_with_encounter,
+    sample_medication_with_encounter_and_reason,
+):
+    """Test that MedicationRequest node stores reason_fhir_ids for TREATS relationship."""
+    await graph.build_from_fhir(
+        patient_id,
+        [
+            sample_patient,
+            sample_encounter,
+            sample_condition_with_encounter,
+            sample_medication_with_encounter_and_reason,
+        ],
+    )
+
+    async with neo4j_driver.session() as session:
+        result = await session.run(
+            """
+            MATCH (m:MedicationRequest {fhir_id: $med_id})
+            RETURN m.reason_fhir_ids as reason_ids
+            """,
+            med_id=sample_medication_with_encounter_and_reason["id"],
+        )
+        record = await result.single()
+
+    assert record is not None
+    assert sample_condition_with_encounter["id"] in record["reason_ids"]

@@ -376,6 +376,196 @@ def sample_allergy_inactive() -> dict:
 
 
 # =============================================================================
+# Inter-resource relationship test fixtures
+# =============================================================================
+
+
+@pytest.fixture
+def sample_procedure() -> dict:
+    """Sample FHIR Procedure resource for testing."""
+    return {
+        "resourceType": "Procedure",
+        "id": "procedure-test-001",
+        "subject": {"reference": "Patient/patient-test-123"},
+        "code": {
+            "coding": [
+                {
+                    "system": "http://snomed.info/sct",
+                    "code": "386638009",
+                    "display": "Physical therapy procedure",
+                }
+            ]
+        },
+        "status": "completed",
+        "performedDateTime": "2024-01-15T10:00:00Z",
+    }
+
+
+@pytest.fixture
+def sample_diagnostic_report() -> dict:
+    """Sample FHIR DiagnosticReport resource for testing."""
+    return {
+        "resourceType": "DiagnosticReport",
+        "id": "report-test-001",
+        "subject": {"reference": "Patient/patient-test-123"},
+        "code": {
+            "coding": [
+                {
+                    "system": "http://loinc.org",
+                    "code": "24323-8",
+                    "display": "Comprehensive metabolic panel",
+                }
+            ]
+        },
+        "status": "final",
+        "effectiveDateTime": "2024-01-15T09:00:00Z",
+        "issued": "2024-01-15T11:00:00Z",
+    }
+
+
+@pytest.fixture
+def sample_condition_with_encounter() -> dict:
+    """Sample FHIR Condition with encounter reference."""
+    return {
+        "resourceType": "Condition",
+        "id": "condition-with-encounter",
+        "subject": {"reference": "Patient/patient-test-123"},
+        "encounter": {"reference": "Encounter/encounter-test-ghi"},
+        "code": {
+            "coding": [
+                {
+                    "system": "http://snomed.info/sct",
+                    "code": "38341003",
+                    "display": "Hypertension",
+                }
+            ]
+        },
+        "clinicalStatus": {"coding": [{"code": "active"}]},
+        "onsetDateTime": "2024-01-15T09:15:00Z",
+    }
+
+
+@pytest.fixture
+def sample_medication_with_encounter_and_reason() -> dict:
+    """Sample FHIR MedicationRequest with encounter and reasonReference."""
+    return {
+        "resourceType": "MedicationRequest",
+        "id": "medication-with-encounter",
+        "subject": {"reference": "Patient/patient-test-123"},
+        "encounter": {"reference": "Encounter/encounter-test-ghi"},
+        "reasonReference": [
+            {"reference": "Condition/condition-with-encounter"}
+        ],
+        "medicationCodeableConcept": {
+            "coding": [
+                {
+                    "system": "http://www.nlm.nih.gov/research/umls/rxnorm",
+                    "code": "197361",
+                    "display": "Lisinopril 10 MG",
+                }
+            ]
+        },
+        "status": "active",
+        "authoredOn": "2024-01-15T09:20:00Z",
+    }
+
+
+@pytest.fixture
+def sample_observation_with_encounter() -> dict:
+    """Sample FHIR Observation with encounter reference."""
+    return {
+        "resourceType": "Observation",
+        "id": "observation-with-encounter",
+        "subject": {"reference": "Patient/patient-test-123"},
+        "encounter": {"reference": "Encounter/encounter-test-ghi"},
+        "code": {
+            "coding": [
+                {
+                    "system": "http://loinc.org",
+                    "code": "8480-6",
+                    "display": "Systolic blood pressure",
+                }
+            ]
+        },
+        "status": "final",
+        "effectiveDateTime": "2024-01-15T09:10:00Z",
+        "valueQuantity": {"value": 145, "unit": "mmHg"},
+    }
+
+
+@pytest.fixture
+def sample_procedure_with_encounter_and_reason() -> dict:
+    """Sample FHIR Procedure with encounter and reasonReference."""
+    return {
+        "resourceType": "Procedure",
+        "id": "procedure-with-encounter",
+        "subject": {"reference": "Patient/patient-test-123"},
+        "encounter": {"reference": "Encounter/encounter-test-ghi"},
+        "reasonReference": [
+            {"reference": "Condition/condition-with-encounter"}
+        ],
+        "code": {
+            "coding": [
+                {
+                    "system": "http://snomed.info/sct",
+                    "code": "386638009",
+                    "display": "Blood pressure monitoring",
+                }
+            ]
+        },
+        "status": "completed",
+        "performedDateTime": "2024-01-15T09:25:00Z",
+    }
+
+
+@pytest.fixture
+def sample_diagnostic_report_with_encounter_and_results() -> dict:
+    """Sample FHIR DiagnosticReport with encounter and result references."""
+    return {
+        "resourceType": "DiagnosticReport",
+        "id": "report-with-encounter",
+        "subject": {"reference": "Patient/patient-test-123"},
+        "encounter": {"reference": "Encounter/encounter-test-ghi"},
+        "result": [
+            {"reference": "Observation/observation-with-encounter"}
+        ],
+        "code": {
+            "coding": [
+                {
+                    "system": "http://loinc.org",
+                    "code": "24323-8",
+                    "display": "Comprehensive metabolic panel",
+                }
+            ]
+        },
+        "status": "final",
+        "effectiveDateTime": "2024-01-15T09:00:00Z",
+        "issued": "2024-01-15T11:00:00Z",
+    }
+
+
+@pytest.fixture
+def sample_condition_with_urn_uuid_encounter() -> dict:
+    """Sample FHIR Condition with urn:uuid encounter reference (Synthea style)."""
+    return {
+        "resourceType": "Condition",
+        "id": "condition-urn-uuid",
+        "subject": {"reference": "urn:uuid:patient-test-123"},
+        "encounter": {"reference": "urn:uuid:encounter-test-ghi"},
+        "code": {
+            "coding": [
+                {
+                    "system": "http://snomed.info/sct",
+                    "code": "44054006",
+                    "display": "Type 2 diabetes mellitus",
+                }
+            ]
+        },
+        "clinicalStatus": {"coding": [{"code": "active"}]},
+    }
+
+
+# =============================================================================
 # Helper Functions (available to tests)
 # =============================================================================
 
