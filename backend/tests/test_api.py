@@ -41,7 +41,13 @@ class TestFhirLoadBundleIntegration:
 
     @pytest.mark.asyncio
     async def test_loads_bundle_with_multiple_resources(
-        self, client, auth_headers, test_engine, sample_patient, sample_condition, sample_medication
+        self,
+        client,
+        auth_headers,
+        test_engine,
+        sample_patient,
+        sample_condition,
+        sample_medication,
     ):
         """Should load bundle with Patient and related resources."""
         bundle = {
@@ -141,6 +147,7 @@ class TestPatientsApiIntegration:
     async def test_get_patient_not_found(self, client, auth_headers, test_engine):
         """Should return 404 for nonexistent patient."""
         import uuid
+
         fake_id = uuid.uuid4()
         response = await client.get(
             f"/api/patients/{fake_id}",

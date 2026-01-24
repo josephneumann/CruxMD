@@ -70,9 +70,7 @@ class KnowledgeGraph:
             record = await result.single()
             return record is not None
 
-    async def _upsert_patient(
-        self, patient_id: str, resource: dict[str, Any]
-    ) -> None:
+    async def _upsert_patient(self, patient_id: str, resource: dict[str, Any]) -> None:
         """
         Create or update Patient node with FHIR data.
 

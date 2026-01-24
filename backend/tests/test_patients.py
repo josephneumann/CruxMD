@@ -3,11 +3,10 @@
 import uuid
 
 import pytest
-from fastapi import FastAPI, Depends
+from fastapi import FastAPI
 from httpx import ASGITransport, AsyncClient
-from unittest.mock import AsyncMock, MagicMock
+from unittest.mock import AsyncMock
 
-from app.auth import verify_api_key
 from app.config import settings
 from app.routes.patients import router
 
