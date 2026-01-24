@@ -1,0 +1,85 @@
+{
+  "5c9f20d5-8361-b331-9267-5303ca5b136a": {
+    "preferred_name": "Andr\u00e9s",
+    "pronouns": "he/him",
+    "occupation": "Mechanical Engineer",
+    "living_situation": "Lives in a suburban house with his wife and two adult children",
+    "family_summary": "Andr\u00e9s is married to Maria, and they have two children, Juan and Sofia, who are both in college.",
+    "hobbies": [
+      "Gardening",
+      "Reading historical novels",
+      "Cooking traditional Venezuelan dishes"
+    ],
+    "communication_style": "Prefers in-person consultations and values clear, direct communication with healthcare providers. Often brings a family member to appointments for support.",
+    "primary_motivation": "To stay healthy and active for his family, especially to be a strong role model for his children.",
+    "barriers": "Occasional language barriers and scheduling difficulties due to work commitments. Chronic pain sometimes limits his mobility.",
+    "support_system": "His wife Maria is a strong support, along with his children who help with household tasks and accompany him to medical appointments when needed."
+  },
+  "d545798e-09a4-ef89-abc5-9f62dc5a5095": {
+    "preferred_name": "Ash",
+    "pronouns": "she/her",
+    "occupation": "Marketing Specialist",
+    "living_situation": "Lives alone in a cozy apartment",
+    "family_summary": "Comes from a close-knit family with parents still residing in Nantucket; has one younger brother who she talks to regularly.",
+    "hobbies": [
+      "reading",
+      "yoga",
+      "hiking",
+      "photography"
+    ],
+    "communication_style": "Prefers clear, concise information and appreciates when doctors offer actionable steps; values empathy and patience.",
+    "primary_motivation": "Wants to maintain a healthy lifestyle to support her new journey into motherhood and to be active and present for her child.",
+    "barriers": "Struggles with stress management and occasionally feels overwhelmed balancing work and personal life; limited social interactions can make it difficult to build a support network.",
+    "support_system": "Relies on her family for emotional support and has a close friend who lives nearby; also participates in online forums for expectant mothers."
+  },
+  "eed8a921-eac8-0778-4113-255f4e35506a": {
+    "preferred_name": "Kimi",
+    "pronouns": "she/her",
+    "occupation": "Former administrative assistant",
+    "living_situation": "Lives alone in a small apartment in Boston, MA",
+    "family_summary": "Widowed, with one adult daughter who lives out of state. No siblings, and parents have passed away.",
+    "hobbies": [
+      "Gardening",
+      "Reading mystery novels",
+      "Watching classic films",
+      "Bird watching"
+    ],
+    "communication_style": "Prefers face-to-face communication and appreciates when healthcare providers explain things clearly and patiently. Values empathy and understanding.",
+    "primary_motivation": "Desire to stay healthy to maintain her independence and be active in her local community garden.",
+    "barriers": "Limited social contact and occasional feelings of loneliness, which sometimes affect her motivation. Financial constraints due to living on a fixed income.",
+    "support_system": "Her daughter, who checks in regularly by phone and visits occasionally. A close friend from her local community garden who offers companionship and support."
+  },
+  "3c4b499b-090b-c6fa-28d7-b56c6056d0a2": {
+    "preferred_name": "Lou",
+    "pronouns": "she/her",
+    "occupation": "Retired educator, currently part-time consultant",
+    "living_situation": "Lives with her husband in a cozy bungalow in South Yarmouth, MA",
+    "family_summary": "Married for over 50 years with two grown children and three grandchildren who visit often",
+    "hobbies": [
+      "Reading mystery novels",
+      "Gardening",
+      "Bird watching",
+      "Knitting"
+    ],
+    "communication_style": "Prefers face-to-face communication with a personal touch, values clear explanations and written summaries",
+    "primary_motivation": "Staying healthy to enjoy quality time with her grandchildren and continue her passion for gardening",
+    "barriers": "Mobility issues due to osteoarthritis and stress related to balancing work and health appointments",
+    "support_system": "Her husband, children, and a close-knit group of friends from a local book club"
+  },
+  "5393ea7f-1fea-4064-9df4-460a2f662d07": {
+    "preferred_name": "Miguel",
+    "pronouns": "he/him",
+    "occupation": "Mechanical Engineer",
+    "living_situation": "Lives in a suburban house with his wife",
+    "family_summary": "Married to his college sweetheart; no children",
+    "hobbies": [
+      "Reading science fiction",
+      "Building model airplanes",
+      "Gardening"
+    ],
+    "communication_style": "Prefers direct and detailed communication, appreciates written summaries",
+    "primary_motivation": "Wants to improve his health to enjoy retirement traveling with his wife",
+    "barriers": "Struggles with social isolation and managing stress, which affects his alcohol consumption",
+    "support_system": "His wife is his primary support, along with a close-knit group of college friends who stay in touch virtually"
+  }
+}
