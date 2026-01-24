@@ -65,7 +65,11 @@ async def test_build_from_fhir_creates_patient_node(
 
 @pytest.mark.asyncio
 async def test_build_from_fhir_creates_condition_with_relationship(
-    graph: KnowledgeGraph, patient_id: str, neo4j_driver, sample_patient, sample_condition
+    graph: KnowledgeGraph,
+    patient_id: str,
+    neo4j_driver,
+    sample_patient,
+    sample_condition,
 ):
     """Test that build_from_fhir creates Condition node with HAS_CONDITION relationship."""
     await graph.build_from_fhir(patient_id, [sample_patient, sample_condition])
@@ -90,7 +94,11 @@ async def test_build_from_fhir_creates_condition_with_relationship(
 
 @pytest.mark.asyncio
 async def test_build_from_fhir_creates_medication_with_relationship(
-    graph: KnowledgeGraph, patient_id: str, neo4j_driver, sample_patient, sample_medication
+    graph: KnowledgeGraph,
+    patient_id: str,
+    neo4j_driver,
+    sample_patient,
+    sample_medication,
 ):
     """Test that build_from_fhir creates MedicationRequest node with HAS_MEDICATION_REQUEST relationship."""
     await graph.build_from_fhir(patient_id, [sample_patient, sample_medication])
@@ -108,8 +116,14 @@ async def test_build_from_fhir_creates_medication_with_relationship(
     assert record is not None
     med_node = record["m"]
     assert med_node["fhir_id"] == sample_medication["id"]
-    assert med_node["code"] == sample_medication["medicationCodeableConcept"]["coding"][0]["code"]
-    assert med_node["display"] == sample_medication["medicationCodeableConcept"]["coding"][0]["display"]
+    assert (
+        med_node["code"]
+        == sample_medication["medicationCodeableConcept"]["coding"][0]["code"]
+    )
+    assert (
+        med_node["display"]
+        == sample_medication["medicationCodeableConcept"]["coding"][0]["display"]
+    )
     assert med_node["status"] == sample_medication["status"]
 
 
@@ -140,7 +154,11 @@ async def test_build_from_fhir_creates_allergy_with_relationship(
 
 @pytest.mark.asyncio
 async def test_build_from_fhir_creates_observation_with_relationship(
-    graph: KnowledgeGraph, patient_id: str, neo4j_driver, sample_patient, sample_observation
+    graph: KnowledgeGraph,
+    patient_id: str,
+    neo4j_driver,
+    sample_patient,
+    sample_observation,
 ):
     """Test that build_from_fhir creates Observation node with HAS_OBSERVATION relationship."""
     await graph.build_from_fhir(patient_id, [sample_patient, sample_observation])
@@ -166,7 +184,11 @@ async def test_build_from_fhir_creates_observation_with_relationship(
 
 @pytest.mark.asyncio
 async def test_build_from_fhir_creates_encounter_with_relationship(
-    graph: KnowledgeGraph, patient_id: str, neo4j_driver, sample_patient, sample_encounter
+    graph: KnowledgeGraph,
+    patient_id: str,
+    neo4j_driver,
+    sample_patient,
+    sample_encounter,
 ):
     """Test that build_from_fhir creates Encounter node with HAS_ENCOUNTER relationship."""
     await graph.build_from_fhir(patient_id, [sample_patient, sample_encounter])
@@ -184,8 +206,13 @@ async def test_build_from_fhir_creates_encounter_with_relationship(
     assert record is not None
     encounter_node = record["e"]
     assert encounter_node["fhir_id"] == sample_encounter["id"]
-    assert encounter_node["type_code"] == sample_encounter["type"][0]["coding"][0]["code"]
-    assert encounter_node["type_display"] == sample_encounter["type"][0]["coding"][0]["display"]
+    assert (
+        encounter_node["type_code"] == sample_encounter["type"][0]["coding"][0]["code"]
+    )
+    assert (
+        encounter_node["type_display"]
+        == sample_encounter["type"][0]["coding"][0]["display"]
+    )
     assert encounter_node["status"] == sample_encounter["status"]
     assert encounter_node["class_code"] == sample_encounter["class"]["code"]
 
@@ -243,7 +270,11 @@ async def test_build_from_fhir_complete_patient(
 
 @pytest.mark.asyncio
 async def test_upsert_is_idempotent(
-    graph: KnowledgeGraph, patient_id: str, neo4j_driver, sample_patient, sample_condition
+    graph: KnowledgeGraph,
+    patient_id: str,
+    neo4j_driver,
+    sample_patient,
+    sample_condition,
 ):
     """Test that calling build_from_fhir twice doesn't create duplicates."""
     resources = [sample_patient, sample_condition]
@@ -270,10 +301,17 @@ async def test_upsert_is_idempotent(
 
 @pytest.mark.asyncio
 async def test_clear_patient_graph(
-    graph: KnowledgeGraph, patient_id: str, neo4j_driver, sample_patient, sample_condition, sample_medication
+    graph: KnowledgeGraph,
+    patient_id: str,
+    neo4j_driver,
+    sample_patient,
+    sample_condition,
+    sample_medication,
 ):
     """Test that clear_patient_graph removes patient and related nodes."""
-    await graph.build_from_fhir(patient_id, [sample_patient, sample_condition, sample_medication])
+    await graph.build_from_fhir(
+        patient_id, [sample_patient, sample_condition, sample_medication]
+    )
     assert await graph.patient_exists(patient_id) is True
 
     await graph.clear_patient_graph(patient_id)
@@ -327,12 +365,19 @@ async def test_get_verified_conditions_returns_active_conditions(
     assert conditions[0]["resourceType"] == "Condition"
     assert conditions[0]["id"] == sample_condition["id"]
     # Verify the full FHIR resource is returned
-    assert conditions[0]["code"]["coding"][0]["display"] == sample_condition["code"]["coding"][0]["display"]
+    assert (
+        conditions[0]["code"]["coding"][0]["display"]
+        == sample_condition["code"]["coding"][0]["display"]
+    )
 
 
 @pytest.mark.asyncio
 async def test_get_verified_conditions_excludes_inactive(
-    graph: KnowledgeGraph, patient_id: str, sample_patient, sample_condition, sample_condition_inactive
+    graph: KnowledgeGraph,
+    patient_id: str,
+    sample_patient,
+    sample_condition,
+    sample_condition_inactive,
 ):
     """Test that get_verified_conditions excludes inactive conditions."""
     await graph.build_from_fhir(
@@ -369,13 +414,22 @@ async def test_get_verified_medications_returns_active_medications(
     assert medications[0]["resourceType"] == "MedicationRequest"
     assert medications[0]["id"] == sample_medication["id"]
     # Verify the full FHIR resource is returned
-    expected_display = sample_medication["medicationCodeableConcept"]["coding"][0]["display"]
-    assert medications[0]["medicationCodeableConcept"]["coding"][0]["display"] == expected_display
+    expected_display = sample_medication["medicationCodeableConcept"]["coding"][0][
+        "display"
+    ]
+    assert (
+        medications[0]["medicationCodeableConcept"]["coding"][0]["display"]
+        == expected_display
+    )
 
 
 @pytest.mark.asyncio
 async def test_get_verified_medications_includes_on_hold(
-    graph: KnowledgeGraph, patient_id: str, sample_patient, sample_medication, sample_medication_on_hold
+    graph: KnowledgeGraph,
+    patient_id: str,
+    sample_patient,
+    sample_medication,
+    sample_medication_on_hold,
 ):
     """Test that get_verified_medications includes on-hold medications."""
     await graph.build_from_fhir(
@@ -393,7 +447,11 @@ async def test_get_verified_medications_includes_on_hold(
 
 @pytest.mark.asyncio
 async def test_get_verified_medications_excludes_stopped(
-    graph: KnowledgeGraph, patient_id: str, sample_patient, sample_medication, sample_medication_stopped
+    graph: KnowledgeGraph,
+    patient_id: str,
+    sample_patient,
+    sample_medication,
+    sample_medication_stopped,
 ):
     """Test that get_verified_medications excludes stopped medications."""
     await graph.build_from_fhir(
@@ -430,12 +488,19 @@ async def test_get_verified_allergies_returns_active_allergies(
     assert allergies[0]["resourceType"] == "AllergyIntolerance"
     assert allergies[0]["id"] == sample_allergy["id"]
     # Verify the full FHIR resource is returned
-    assert allergies[0]["code"]["coding"][0]["display"] == sample_allergy["code"]["coding"][0]["display"]
+    assert (
+        allergies[0]["code"]["coding"][0]["display"]
+        == sample_allergy["code"]["coding"][0]["display"]
+    )
 
 
 @pytest.mark.asyncio
 async def test_get_verified_allergies_excludes_inactive(
-    graph: KnowledgeGraph, patient_id: str, sample_patient, sample_allergy, sample_allergy_inactive
+    graph: KnowledgeGraph,
+    patient_id: str,
+    sample_patient,
+    sample_allergy,
+    sample_allergy_inactive,
 ):
     """Test that get_verified_allergies excludes inactive allergies."""
     await graph.build_from_fhir(
@@ -525,7 +590,11 @@ async def test_get_verified_facts_returns_empty_collections_for_new_patient(
 # Tests for fhir_resource storage
 @pytest.mark.asyncio
 async def test_fhir_resource_stored_on_condition_node(
-    graph: KnowledgeGraph, patient_id: str, neo4j_driver, sample_patient, sample_condition
+    graph: KnowledgeGraph,
+    patient_id: str,
+    neo4j_driver,
+    sample_patient,
+    sample_condition,
 ):
     """Test that the full FHIR resource is stored on Condition nodes."""
     await graph.build_from_fhir(patient_id, [sample_patient, sample_condition])
@@ -546,12 +615,19 @@ async def test_fhir_resource_stored_on_condition_node(
     stored_resource = json.loads(record["fhir_resource"])
     assert stored_resource["resourceType"] == "Condition"
     assert stored_resource["id"] == sample_condition["id"]
-    assert stored_resource["code"]["coding"][0]["display"] == sample_condition["code"]["coding"][0]["display"]
+    assert (
+        stored_resource["code"]["coding"][0]["display"]
+        == sample_condition["code"]["coding"][0]["display"]
+    )
 
 
 @pytest.mark.asyncio
 async def test_fhir_resource_stored_on_medication_node(
-    graph: KnowledgeGraph, patient_id: str, neo4j_driver, sample_patient, sample_medication
+    graph: KnowledgeGraph,
+    patient_id: str,
+    neo4j_driver,
+    sample_patient,
+    sample_medication,
 ):
     """Test that the full FHIR resource is stored on MedicationRequest nodes."""
     await graph.build_from_fhir(patient_id, [sample_patient, sample_medication])

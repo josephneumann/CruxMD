@@ -87,7 +87,9 @@ def extract_conditions(bundle: dict[str, Any]) -> list[dict[str, Any]]:
     return conditions
 
 
-def extract_recent_encounters(bundle: dict[str, Any], limit: int = 5) -> list[dict[str, Any]]:
+def extract_recent_encounters(
+    bundle: dict[str, Any], limit: int = 5
+) -> list[dict[str, Any]]:
     """Extract recent Encounter resources from a FHIR bundle."""
     encounters = []
     for entry in bundle.get("entry", []):
@@ -110,8 +112,10 @@ def calculate_age(patient: dict[str, Any]) -> int:
         return 0
     birth_date = date.fromisoformat(birth_date_str)
     today = date.today()
-    return today.year - birth_date.year - (
-        (today.month, today.day) < (birth_date.month, birth_date.day)
+    return (
+        today.year
+        - birth_date.year
+        - ((today.month, today.day) < (birth_date.month, birth_date.day))
     )
 
 

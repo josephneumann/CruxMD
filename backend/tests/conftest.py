@@ -59,7 +59,11 @@ async def test_engine():
     db_url = os.environ.get("DATABASE_TEST_URL")
     if not db_url:
         base_url = settings.database_url
-        db_url = base_url + "_test" if base_url.endswith("/cruxmd") else base_url.rsplit("/", 1)[0] + "/cruxmd_test"
+        db_url = (
+            base_url + "_test"
+            if base_url.endswith("/cruxmd")
+            else base_url.rsplit("/", 1)[0] + "/cruxmd_test"
+        )
 
     engine = create_async_engine(db_url, echo=False)
 

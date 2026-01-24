@@ -48,7 +48,13 @@ class TestLoadBundle:
 
     @pytest.mark.asyncio
     async def test_load_bundle_creates_related_resources(
-        self, db_session, graph, sample_patient, sample_condition, sample_medication, sample_observation
+        self,
+        db_session,
+        graph,
+        sample_patient,
+        sample_condition,
+        sample_medication,
+        sample_observation,
     ):
         """Test that load_bundle creates related resources with patient_id linkage."""
         bundle = create_bundle(
@@ -64,10 +70,17 @@ class TestLoadBundle:
         assert len(resources) == 4
 
         resource_types = {r.resource_type for r in resources}
-        assert resource_types == {"Patient", "Condition", "MedicationRequest", "Observation"}
+        assert resource_types == {
+            "Patient",
+            "Condition",
+            "MedicationRequest",
+            "Observation",
+        }
 
     @pytest.mark.asyncio
-    async def test_load_bundle_populates_neo4j_graph(self, db_session, graph, sample_patient, sample_condition):
+    async def test_load_bundle_populates_neo4j_graph(
+        self, db_session, graph, sample_patient, sample_condition
+    ):
         """Test that load_bundle populates Neo4j graph."""
         bundle = create_bundle([sample_patient, sample_condition])
         patient_id = await load_bundle(db_session, graph, bundle)
@@ -84,14 +97,18 @@ class TestLoadBundle:
             await load_bundle(db_session, graph, bundle)
 
     @pytest.mark.asyncio
-    async def test_load_bundle_no_patient_raises(self, db_session, graph, sample_condition):
+    async def test_load_bundle_no_patient_raises(
+        self, db_session, graph, sample_condition
+    ):
         """Test that load_bundle raises when no Patient resource."""
         bundle = create_bundle([sample_condition])
         with pytest.raises(ValueError, match="must contain a Patient"):
             await load_bundle(db_session, graph, bundle)
 
     @pytest.mark.asyncio
-    async def test_load_bundle_is_idempotent(self, db_session, graph, sample_patient, sample_condition):
+    async def test_load_bundle_is_idempotent(
+        self, db_session, graph, sample_patient, sample_condition
+    ):
         """Test that loading same bundle twice doesn't create duplicates."""
         bundle = create_bundle([sample_patient, sample_condition])
 
@@ -170,7 +187,12 @@ class TestLoadBundleIntegration:
         import json
         from pathlib import Path
 
-        fixture_path = Path(__file__).parent.parent.parent / "fixtures" / "synthea" / "patient_bundle_1.json"
+        fixture_path = (
+            Path(__file__).parent.parent.parent
+            / "fixtures"
+            / "synthea"
+            / "patient_bundle_1.json"
+        )
         if not fixture_path.exists():
             pytest.skip("Synthea fixtures not available")
 
@@ -263,7 +285,9 @@ class TestPatientProfile:
             "social_history": "Non-smoker, occasional alcohol",
         }
 
-    def test_add_profile_extension_creates_extension(self, sample_patient, sample_profile):
+    def test_add_profile_extension_creates_extension(
+        self, sample_patient, sample_profile
+    ):
         """Test that _add_profile_extension adds FHIR extension to Patient."""
         bundle = create_bundle([sample_patient])
         result = _add_profile_extension(bundle, sample_profile)
@@ -280,7 +304,9 @@ class TestPatientProfile:
         assert len(patient["extension"]) == 1
         assert patient["extension"][0]["url"] == PROFILE_EXTENSION_URL
 
-    def test_add_profile_extension_does_not_modify_original(self, sample_patient, sample_profile):
+    def test_add_profile_extension_does_not_modify_original(
+        self, sample_patient, sample_profile
+    ):
         """Test that _add_profile_extension creates a copy and doesn't modify original."""
         bundle = create_bundle([sample_patient])
         original_patient = bundle["entry"][0]["resource"].copy()
@@ -288,10 +314,13 @@ class TestPatientProfile:
         _add_profile_extension(bundle, sample_profile)
 
         # Original should not have extension
-        assert "extension" not in bundle["entry"][0]["resource"] or \
-               bundle["entry"][0]["resource"].get("extension") == original_patient.get("extension", [])
+        assert "extension" not in bundle["entry"][0]["resource"] or bundle["entry"][0][
+            "resource"
+        ].get("extension") == original_patient.get("extension", [])
 
-    def test_add_profile_extension_replaces_existing(self, sample_patient, sample_profile):
+    def test_add_profile_extension_replaces_existing(
+        self, sample_patient, sample_profile
+    ):
         """Test that _add_profile_extension replaces existing profile extension."""
         # Add initial extension
         sample_patient["extension"] = [
@@ -303,10 +332,14 @@ class TestPatientProfile:
         result = _add_profile_extension(bundle, new_profile)
 
         patient = result["entry"][0]["resource"]
-        profile_exts = [e for e in patient["extension"] if e["url"] == PROFILE_EXTENSION_URL]
+        profile_exts = [
+            e for e in patient["extension"] if e["url"] == PROFILE_EXTENSION_URL
+        ]
         assert len(profile_exts) == 1  # Only one profile extension
 
-    def test_add_profile_extension_preserves_other_extensions(self, sample_patient, sample_profile):
+    def test_add_profile_extension_preserves_other_extensions(
+        self, sample_patient, sample_profile
+    ):
         """Test that _add_profile_extension preserves non-profile extensions."""
         other_ext = {"url": "http://other.extension", "valueString": "other"}
         sample_patient["extension"] = [other_ext]
@@ -338,7 +371,9 @@ class TestPatientProfile:
         result = get_patient_profile(sample_patient)
         assert result is None
 
-    def test_get_patient_profile_returns_none_for_empty_extensions(self, sample_patient):
+    def test_get_patient_profile_returns_none_for_empty_extensions(
+        self, sample_patient
+    ):
         """Test that get_patient_profile handles empty extensions array."""
         sample_patient["extension"] = []
         result = get_patient_profile(sample_patient)
@@ -354,10 +389,14 @@ class TestPatientProfile:
 
     @pytest.mark.integration
     @pytest.mark.asyncio
-    async def test_load_bundle_with_profile(self, db_session, graph, sample_patient, sample_profile):
+    async def test_load_bundle_with_profile(
+        self, db_session, graph, sample_patient, sample_profile
+    ):
         """Test that load_bundle_with_profile embeds profile in Patient."""
         bundle = create_bundle([sample_patient])
-        patient_id = await load_bundle_with_profile(db_session, graph, bundle, sample_profile)
+        patient_id = await load_bundle_with_profile(
+            db_session, graph, bundle, sample_profile
+        )
 
         assert patient_id is not None
 
@@ -377,10 +416,14 @@ class TestPatientProfile:
 
     @pytest.mark.integration
     @pytest.mark.asyncio
-    async def test_load_bundle_with_profile_none_profile(self, db_session, graph, sample_patient):
+    async def test_load_bundle_with_profile_none_profile(
+        self, db_session, graph, sample_patient
+    ):
         """Test that load_bundle_with_profile works without profile."""
         bundle = create_bundle([sample_patient])
-        patient_id = await load_bundle_with_profile(db_session, graph, bundle, profile=None)
+        patient_id = await load_bundle_with_profile(
+            db_session, graph, bundle, profile=None
+        )
 
         assert patient_id is not None
 
@@ -404,7 +447,9 @@ class TestGetPatientResource:
     """
 
     @pytest.mark.asyncio
-    async def test_get_patient_resource_returns_patient(self, db_session, graph, sample_patient):
+    async def test_get_patient_resource_returns_patient(
+        self, db_session, graph, sample_patient
+    ):
         """Test that get_patient_resource returns Patient FhirResource."""
         bundle = create_bundle([sample_patient])
         patient_id = await load_bundle(db_session, graph, bundle)

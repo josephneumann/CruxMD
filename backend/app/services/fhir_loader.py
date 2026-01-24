@@ -11,7 +11,9 @@ from app.models import FhirResource
 from app.services.graph import KnowledgeGraph
 
 # FHIR extension URL for patient narrative profiles
-PROFILE_EXTENSION_URL = "http://cruxmd.ai/fhir/StructureDefinition/patient-narrative-profile"
+PROFILE_EXTENSION_URL = (
+    "http://cruxmd.ai/fhir/StructureDefinition/patient-narrative-profile"
+)
 
 
 async def load_bundle(
@@ -41,7 +43,6 @@ async def load_bundle(
 
     # First pass: find Patient resource and assign canonical ID
     patient_id: uuid.UUID | None = None
-    patient_fhir_id: str | None = None
     resources_data: list[dict[str, Any]] = []
 
     for entry in entries:
@@ -59,7 +60,6 @@ async def load_bundle(
                 patient_id = existing.id
             else:
                 patient_id = uuid.uuid4()
-            patient_fhir_id = fhir_id
 
         resources_data.append(resource)
 
@@ -113,9 +113,7 @@ async def load_bundle(
     return patient_id
 
 
-async def _find_existing_patient(
-    db: AsyncSession, fhir_id: str
-) -> FhirResource | None:
+async def _find_existing_patient(db: AsyncSession, fhir_id: str) -> FhirResource | None:
     """Find existing Patient resource by fhir_id."""
     result = await db.execute(
         select(FhirResource).where(
