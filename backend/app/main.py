@@ -1,11 +1,36 @@
 """FastAPI application entry point."""
 
+import logging
+from contextlib import asynccontextmanager
+
 from fastapi import FastAPI, Request, Response
 from fastapi.middleware.cors import CORSMiddleware
 from starlette.middleware.base import BaseHTTPMiddleware
 
 from app.config import settings
 from app.routes import fhir, patients
+from app.services.graph import KnowledgeGraph
+
+logger = logging.getLogger(__name__)
+
+
+@asynccontextmanager
+async def lifespan(app: FastAPI):
+    """Application lifespan events for startup/shutdown."""
+    # Startup: ensure Neo4j indexes exist
+    graph = KnowledgeGraph()
+    try:
+        if await graph.verify_connectivity():
+            await graph.ensure_indexes()
+            logger.info("Neo4j indexes ensured")
+        else:
+            logger.warning("Neo4j not available - skipping index creation")
+    finally:
+        await graph.close()
+
+    yield  # Application runs here
+
+    # Shutdown: nothing needed currently
 
 
 class SecurityHeadersMiddleware(BaseHTTPMiddleware):
@@ -32,6 +57,7 @@ app = FastAPI(
     title="CruxMD",
     description="Medical Context Engine - LLM-native platform for clinical intelligence",
     version="0.1.0",
+    lifespan=lifespan,
 )
 
 # Security headers middleware (applied to all responses)
