@@ -1,6 +1,7 @@
 """Integration tests for KnowledgeGraph service.
 
 Uses centralized fixtures from conftest.py for database, graph, and test data.
+Requires Neo4j to be running.
 """
 
 import json
@@ -8,6 +9,9 @@ import json
 import pytest
 
 from app.services.graph import KnowledgeGraph
+
+# All tests in this module require Neo4j
+pytestmark = pytest.mark.integration
 
 
 @pytest.mark.asyncio
