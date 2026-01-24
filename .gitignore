@@ -66,3 +66,4 @@ session_summaries/*
 # Pending handoffs for automated worker dispatch
 pending_handoffs/*
 !pending_handoffs/.gitkeep
+session_summaries/
