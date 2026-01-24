@@ -6,12 +6,24 @@ import pytest
 from sqlalchemy import select
 
 from app.models import FhirResource
-from app.services.fhir_loader import get_patient_resources, load_bundle
+from app.services.fhir_loader import (
+    get_patient_profile,
+    get_patient_resource,
+    get_patient_resources,
+    load_bundle,
+    load_bundle_with_profile,
+    _add_profile_extension,
+    PROFILE_EXTENSION_URL,
+)
 from tests.conftest import create_bundle
 
 
+@pytest.mark.integration
 class TestLoadBundle:
-    """Tests for load_bundle function."""
+    """Tests for load_bundle function.
+
+    Requires PostgreSQL and Neo4j to be running.
+    """
 
     @pytest.mark.asyncio
     async def test_load_bundle_creates_patient(self, db_session, graph, sample_patient):
@@ -116,8 +128,12 @@ class TestLoadBundle:
         assert patient.data == sample_patient
 
 
+@pytest.mark.integration
 class TestGetPatientResources:
-    """Tests for get_patient_resources function."""
+    """Tests for get_patient_resources function.
+
+    Requires PostgreSQL and Neo4j to be running.
+    """
 
     @pytest.mark.asyncio
     async def test_get_patient_resources_returns_all(
@@ -141,8 +157,12 @@ class TestGetPatientResources:
         assert resources == []
 
 
+@pytest.mark.integration
 class TestLoadBundleIntegration:
-    """Integration tests with real Synthea fixtures."""
+    """Integration tests with real Synthea fixtures.
+
+    Requires PostgreSQL and Neo4j to be running.
+    """
 
     @pytest.mark.asyncio
     async def test_load_synthea_bundle(self, db_session, graph):
@@ -227,3 +247,208 @@ class TestFhirLoaderHelpers:
         assert "id" in sample_observation
         assert "code" in sample_observation
         assert "valueQuantity" in sample_observation
+
+
+class TestPatientProfile:
+    """Tests for patient profile functions."""
+
+    @pytest.fixture
+    def sample_profile(self) -> dict:
+        """Sample patient profile for testing."""
+        return {
+            "chief_complaints": ["headache", "fatigue"],
+            "medical_history_summary": "Patient has history of hypertension",
+            "current_medications_summary": "Taking Lisinopril 10mg daily",
+            "allergies_summary": "Penicillin allergy",
+            "social_history": "Non-smoker, occasional alcohol",
+        }
+
+    def test_add_profile_extension_creates_extension(self, sample_patient, sample_profile):
+        """Test that _add_profile_extension adds FHIR extension to Patient."""
+        bundle = create_bundle([sample_patient])
+        result = _add_profile_extension(bundle, sample_profile)
+
+        # Find patient in result bundle
+        patient = None
+        for entry in result["entry"]:
+            if entry["resource"]["resourceType"] == "Patient":
+                patient = entry["resource"]
+                break
+
+        assert patient is not None
+        assert "extension" in patient
+        assert len(patient["extension"]) == 1
+        assert patient["extension"][0]["url"] == PROFILE_EXTENSION_URL
+
+    def test_add_profile_extension_does_not_modify_original(self, sample_patient, sample_profile):
+        """Test that _add_profile_extension creates a copy and doesn't modify original."""
+        bundle = create_bundle([sample_patient])
+        original_patient = bundle["entry"][0]["resource"].copy()
+
+        _add_profile_extension(bundle, sample_profile)
+
+        # Original should not have extension
+        assert "extension" not in bundle["entry"][0]["resource"] or \
+               bundle["entry"][0]["resource"].get("extension") == original_patient.get("extension", [])
+
+    def test_add_profile_extension_replaces_existing(self, sample_patient, sample_profile):
+        """Test that _add_profile_extension replaces existing profile extension."""
+        # Add initial extension
+        sample_patient["extension"] = [
+            {"url": PROFILE_EXTENSION_URL, "valueString": '{"old": "profile"}'}
+        ]
+        bundle = create_bundle([sample_patient])
+
+        new_profile = {"new": "profile"}
+        result = _add_profile_extension(bundle, new_profile)
+
+        patient = result["entry"][0]["resource"]
+        profile_exts = [e for e in patient["extension"] if e["url"] == PROFILE_EXTENSION_URL]
+        assert len(profile_exts) == 1  # Only one profile extension
+
+    def test_add_profile_extension_preserves_other_extensions(self, sample_patient, sample_profile):
+        """Test that _add_profile_extension preserves non-profile extensions."""
+        other_ext = {"url": "http://other.extension", "valueString": "other"}
+        sample_patient["extension"] = [other_ext]
+        bundle = create_bundle([sample_patient])
+
+        result = _add_profile_extension(bundle, sample_profile)
+
+        patient = result["entry"][0]["resource"]
+        assert len(patient["extension"]) == 2
+        urls = {e["url"] for e in patient["extension"]}
+        assert "http://other.extension" in urls
+        assert PROFILE_EXTENSION_URL in urls
+
+    def test_get_patient_profile_extracts_profile(self, sample_patient, sample_profile):
+        """Test that get_patient_profile extracts profile from Patient resource."""
+        import json
+
+        sample_patient["extension"] = [
+            {"url": PROFILE_EXTENSION_URL, "valueString": json.dumps(sample_profile)}
+        ]
+
+        result = get_patient_profile(sample_patient)
+
+        assert result is not None
+        assert result == sample_profile
+
+    def test_get_patient_profile_returns_none_when_missing(self, sample_patient):
+        """Test that get_patient_profile returns None when no profile extension."""
+        result = get_patient_profile(sample_patient)
+        assert result is None
+
+    def test_get_patient_profile_returns_none_for_empty_extensions(self, sample_patient):
+        """Test that get_patient_profile handles empty extensions array."""
+        sample_patient["extension"] = []
+        result = get_patient_profile(sample_patient)
+        assert result is None
+
+    def test_get_patient_profile_ignores_other_extensions(self, sample_patient):
+        """Test that get_patient_profile ignores non-profile extensions."""
+        sample_patient["extension"] = [
+            {"url": "http://other.extension", "valueString": "other"}
+        ]
+        result = get_patient_profile(sample_patient)
+        assert result is None
+
+    @pytest.mark.integration
+    @pytest.mark.asyncio
+    async def test_load_bundle_with_profile(self, db_session, graph, sample_patient, sample_profile):
+        """Test that load_bundle_with_profile embeds profile in Patient."""
+        bundle = create_bundle([sample_patient])
+        patient_id = await load_bundle_with_profile(db_session, graph, bundle, sample_profile)
+
+        assert patient_id is not None
+
+        # Retrieve the patient and verify profile is embedded
+        result = await db_session.execute(
+            select(FhirResource).where(
+                FhirResource.patient_id == patient_id,
+                FhirResource.resource_type == "Patient",
+            )
+        )
+        patient_resource = result.scalar_one()
+
+        # Extract profile from stored data
+        profile = get_patient_profile(patient_resource.data)
+        assert profile is not None
+        assert profile == sample_profile
+
+    @pytest.mark.integration
+    @pytest.mark.asyncio
+    async def test_load_bundle_with_profile_none_profile(self, db_session, graph, sample_patient):
+        """Test that load_bundle_with_profile works without profile."""
+        bundle = create_bundle([sample_patient])
+        patient_id = await load_bundle_with_profile(db_session, graph, bundle, profile=None)
+
+        assert patient_id is not None
+
+        # Patient should exist without profile extension
+        result = await db_session.execute(
+            select(FhirResource).where(
+                FhirResource.patient_id == patient_id,
+                FhirResource.resource_type == "Patient",
+            )
+        )
+        patient_resource = result.scalar_one()
+        profile = get_patient_profile(patient_resource.data)
+        assert profile is None
+
+
+@pytest.mark.integration
+class TestGetPatientResource:
+    """Tests for get_patient_resource function.
+
+    Requires PostgreSQL and Neo4j to be running.
+    """
+
+    @pytest.mark.asyncio
+    async def test_get_patient_resource_returns_patient(self, db_session, graph, sample_patient):
+        """Test that get_patient_resource returns Patient FhirResource."""
+        bundle = create_bundle([sample_patient])
+        patient_id = await load_bundle(db_session, graph, bundle)
+
+        # Need to get the actual resource ID (which equals patient_id for Patient)
+        result = await db_session.execute(
+            select(FhirResource).where(
+                FhirResource.patient_id == patient_id,
+                FhirResource.resource_type == "Patient",
+            )
+        )
+        patient_db = result.scalar_one()
+
+        # Now use get_patient_resource with the patient's own ID
+        resource = await get_patient_resource(db_session, patient_db.id)
+
+        assert resource is not None
+        assert resource.resource_type == "Patient"
+        assert resource.fhir_id == sample_patient["id"]
+
+    @pytest.mark.asyncio
+    async def test_get_patient_resource_returns_none_for_nonexistent(self, db_session):
+        """Test that get_patient_resource returns None for nonexistent patient."""
+        fake_id = uuid.uuid4()
+        resource = await get_patient_resource(db_session, fake_id)
+        assert resource is None
+
+    @pytest.mark.asyncio
+    async def test_get_patient_resource_returns_none_for_non_patient(
+        self, db_session, graph, sample_patient, sample_condition
+    ):
+        """Test that get_patient_resource returns None when ID is not a Patient resource."""
+        bundle = create_bundle([sample_patient, sample_condition])
+        patient_id = await load_bundle(db_session, graph, bundle)
+
+        # Get the Condition resource
+        result = await db_session.execute(
+            select(FhirResource).where(
+                FhirResource.patient_id == patient_id,
+                FhirResource.resource_type == "Condition",
+            )
+        )
+        condition_resource = result.scalar_one()
+
+        # Trying to get a Patient with a Condition ID should return None
+        resource = await get_patient_resource(db_session, condition_resource.id)
+        assert resource is None

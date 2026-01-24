@@ -11,6 +11,10 @@ dependencies = [
 [tool.pytest.ini_options]
 testpaths = ["tests"]
 asyncio_mode = "auto"
+markers = [
+    "integration: tests that require PostgreSQL and/or Neo4j",
+    "unit: tests that run without external dependencies",
+]
 
 [tool.uv]
 dev-dependencies = []
