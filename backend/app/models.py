@@ -37,9 +37,6 @@ class FhirResource(Base):
     # The actual FHIR resource - stored as raw JSON per CLAUDE.md
     data: Mapped[dict] = mapped_column(JSONB, nullable=False)
 
-    # Patient profile (only populated for Patient resources)
-    profile: Mapped[dict | None] = mapped_column(JSONB, nullable=True)
-
     # Metadata
     created_at: Mapped[datetime] = mapped_column(
         DateTime(timezone=True),

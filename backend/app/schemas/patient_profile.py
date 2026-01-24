@@ -6,8 +6,12 @@ from pydantic import BaseModel
 class PatientProfile(BaseModel):
     """Non-clinical narrative about the patient's life.
 
-    Generated during Synthea fixture creation to add personality and context
-    that makes demos feel more human. Used by the LLM for personalization.
+    Profiles are stored as FHIR extensions on Patient resources, maintaining
+    FHIR-native architecture. Use `load_bundle_with_profile()` to attach
+    profiles during loading, and `get_patient_profile()` to extract them.
+
+    Can be generated lazily by the LLM from clinical data, or pre-generated
+    during fixture creation for demo consistency.
     """
 
     # Identity

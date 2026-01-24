@@ -19,7 +19,7 @@ class TestFhirResourceModel:
     def test_fhir_resource_columns_exist(self):
         """FhirResource should have all required columns."""
         column_names = {c.name for c in FhirResource.__table__.columns}
-        expected = {"id", "fhir_id", "resource_type", "patient_id", "data", "profile", "created_at"}
+        expected = {"id", "fhir_id", "resource_type", "patient_id", "data", "created_at"}
         assert expected == column_names
 
     def test_fhir_resource_id_is_primary_key(self):
