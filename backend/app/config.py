@@ -51,6 +51,11 @@ class Settings(BaseSettings):
     # Application
     debug: bool = False
 
+    # CORS allowed origins (comma-separated list)
+    # In production with reverse proxy, use the production domain
+    # For development: "http://localhost:3000"
+    cors_origins: str = "http://localhost:3000"
+
     def model_post_init(self, __context) -> None:
         """Warn about unconfigured credentials."""
         if self.api_key == _UNCONFIGURED_API_KEY:

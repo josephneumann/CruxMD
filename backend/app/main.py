@@ -4,6 +4,7 @@ from fastapi import FastAPI, Request, Response
 from fastapi.middleware.cors import CORSMiddleware
 from starlette.middleware.base import BaseHTTPMiddleware
 
+from app.config import settings
 from app.routes import fhir, patients
 
 
@@ -37,9 +38,11 @@ app = FastAPI(
 app.add_middleware(SecurityHeadersMiddleware)
 
 # CORS middleware for frontend
+# Parse comma-separated origins from config
+_cors_origins = [origin.strip() for origin in settings.cors_origins.split(",") if origin.strip()]
 app.add_middleware(
     CORSMiddleware,
-    allow_origins=["http://localhost:3000"],
+    allow_origins=_cors_origins,
     allow_credentials=True,
     allow_methods=["GET", "POST", "PUT", "DELETE"],
     allow_headers=["X-API-Key", "Content-Type"],
