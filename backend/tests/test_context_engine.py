@@ -19,16 +19,17 @@ from app.schemas.context import (
     VerifiedLayer,
 )
 from app.services.context_engine import (
+    CLINICALLY_SIGNIFICANT_TERMS,
     ContextEngine,
     DEFAULT_TOKEN_BUDGET,
     DEFAULT_RETRIEVAL_LIMIT,
     DEFAULT_SIMILARITY_THRESHOLD,
-    _extract_display_name,
     _generate_allergy_constraints,
     _generate_condition_constraints,
     _generate_medication_constraints,
 )
-from app.services.vector_search import SearchResult
+from app.services.vector_search import SearchResult, VectorSearchService
+from app.utils.fhir_helpers import extract_display_name
 
 
 # =============================================================================
@@ -141,50 +142,57 @@ def mock_embedding_service():
 
 
 @pytest.fixture
-def mock_db_session():
-    """Mock AsyncSession for vector search."""
-    return MagicMock(spec=AsyncSession)
+def mock_vector_search():
+    """Mock VectorSearchService instance."""
+    service = MagicMock(spec=VectorSearchService)
+    service.search_by_text = AsyncMock(return_value=[])
+    return service
 
 
 @pytest_asyncio.fixture
-async def context_engine(mock_db_session, mock_graph, mock_embedding_service):
+async def context_engine(mock_graph, mock_embedding_service, mock_vector_search):
     """ContextEngine instance with mocked dependencies."""
     return ContextEngine(
-        db_session=mock_db_session,
         graph=mock_graph,
         embedding_service=mock_embedding_service,
+        vector_search=mock_vector_search,
     )
 
 
 # =============================================================================
-# Helper Function Tests
+# FHIR Helper Function Tests
 # =============================================================================
 
 
 class TestExtractDisplayName:
-    """Tests for _extract_display_name helper function."""
+    """Tests for extract_display_name helper function from fhir_helpers."""
 
     def test_extracts_from_coding(self, sample_condition):
         """Test extraction from code.coding[0].display."""
-        result = _extract_display_name(sample_condition)
+        result = extract_display_name(sample_condition)
         assert result == "Type 2 diabetes mellitus"
 
     def test_extracts_from_medication_codeable_concept(self, sample_medication):
         """Test extraction from medicationCodeableConcept."""
-        result = _extract_display_name(sample_medication)
+        result = extract_display_name(sample_medication)
         assert result == "Metformin 500 MG"
 
     def test_extracts_from_text_fallback(self):
         """Test extraction from code.text when coding is empty."""
         resource = {"code": {"text": "Some condition"}}
-        result = _extract_display_name(resource)
+        result = extract_display_name(resource)
         assert result == "Some condition"
 
     def test_returns_none_for_empty_code(self):
         """Test returns None when no code is present."""
         resource = {"resourceType": "Condition"}
-        result = _extract_display_name(resource)
+        result = extract_display_name(resource)
         assert result is None
+
+
+# =============================================================================
+# Constraint Generation Tests
+# =============================================================================
 
 
 class TestGenerateAllergyConstraints:
@@ -283,6 +291,20 @@ class TestGenerateConditionConstraints:
 
         assert len(constraints) == 0
 
+    def test_uses_custom_significant_terms(self):
+        """Test custom significant terms parameter."""
+        condition = {"code": {"coding": [{"display": "Custom condition xyz"}]}}
+        custom_terms = frozenset(["xyz"])
+        constraints = _generate_condition_constraints([condition], custom_terms)
+
+        assert len(constraints) == 1
+        assert "xyz" in constraints[0].lower()
+
+    def test_clinically_significant_terms_is_frozenset(self):
+        """Test CLINICALLY_SIGNIFICANT_TERMS is immutable."""
+        assert isinstance(CLINICALLY_SIGNIFICANT_TERMS, frozenset)
+        assert "diabetes" in CLINICALLY_SIGNIFICANT_TERMS
+
 
 # =============================================================================
 # ContextEngine Tests
@@ -337,6 +359,7 @@ class TestBuildRetrievedLayer:
     async def test_builds_retrieved_layer_from_vector_search(
         self,
         context_engine,
+        mock_vector_search,
         patient_id,
         sample_observation,
     ):
@@ -347,16 +370,12 @@ class TestBuildRetrievedLayer:
             resource_type="Observation",
             fhir_id="obs-test-abc",
         )
+        mock_vector_search.search_by_text.return_value = [search_result]
 
-        with patch.object(
-            context_engine._vector_search,
-            "search_by_text",
-            return_value=[search_result],
-        ):
-            layer = await context_engine._build_retrieved_layer(
-                patient_id=patient_id,
-                query="blood glucose levels",
-            )
+        layer = await context_engine._build_retrieved_layer(
+            patient_id=patient_id,
+            query="blood glucose levels",
+        )
 
         assert isinstance(layer, RetrievedLayer)
         assert len(layer.resources) == 1
@@ -381,18 +400,16 @@ class TestBuildRetrievedLayer:
     async def test_handles_vector_search_error_gracefully(
         self,
         context_engine,
+        mock_vector_search,
         patient_id,
     ):
         """Test handles vector search errors without crashing."""
-        with patch.object(
-            context_engine._vector_search,
-            "search_by_text",
-            side_effect=Exception("Vector search failed"),
-        ):
-            layer = await context_engine._build_retrieved_layer(
-                patient_id=patient_id,
-                query="some query",
-            )
+        mock_vector_search.search_by_text.side_effect = Exception("Vector search failed")
+
+        layer = await context_engine._build_retrieved_layer(
+            patient_id=patient_id,
+            query="some query",
+        )
 
         assert layer.resources == []
 
@@ -415,15 +432,10 @@ class TestBuildContext:
         mock_graph.get_verified_medications.return_value = [sample_medication]
         mock_graph.get_verified_allergies.return_value = [sample_allergy]
 
-        with patch.object(
-            context_engine._vector_search,
-            "search_by_text",
-            return_value=[],
-        ):
-            context = await context_engine.build_context(
-                patient_id=patient_id,
-                query="diabetes management",
-            )
+        context = await context_engine.build_context(
+            patient_id=patient_id,
+            query="diabetes management",
+        )
 
         assert isinstance(context, PatientContext)
         assert context.meta.patient_id == patient_id
@@ -445,15 +457,10 @@ class TestBuildContext:
         mock_graph.get_verified_conditions.return_value = [sample_condition]
         mock_graph.get_verified_allergies.return_value = [sample_allergy]
 
-        with patch.object(
-            context_engine._vector_search,
-            "search_by_text",
-            return_value=[],
-        ):
-            context = await context_engine.build_context(
-                patient_id=patient_id,
-                query="treatment options",
-            )
+        context = await context_engine.build_context(
+            patient_id=patient_id,
+            query="treatment options",
+        )
 
         # Should have allergy and condition constraints
         assert len(context.constraints) >= 2
@@ -469,16 +476,11 @@ class TestBuildContext:
         patient_id,
     ):
         """Test context respects token budget."""
-        with patch.object(
-            context_engine._vector_search,
-            "search_by_text",
-            return_value=[],
-        ):
-            context = await context_engine.build_context(
-                patient_id=patient_id,
-                query="test",
-                token_budget=12000,
-            )
+        context = await context_engine.build_context(
+            patient_id=patient_id,
+            query="test",
+            token_budget=12000,
+        )
 
         assert context.meta.token_budget == 12000
         assert context.within_budget()
@@ -490,15 +492,10 @@ class TestBuildContext:
         patient_id,
     ):
         """Test uses default token budget when not specified."""
-        with patch.object(
-            context_engine._vector_search,
-            "search_by_text",
-            return_value=[],
-        ):
-            context = await context_engine.build_context(
-                patient_id=patient_id,
-                query="test",
-            )
+        context = await context_engine.build_context(
+            patient_id=patient_id,
+            query="test",
+        )
 
         assert context.meta.token_budget == DEFAULT_TOKEN_BUDGET
 
@@ -509,15 +506,10 @@ class TestBuildContext:
         patient_id,
     ):
         """Test sets retrieval strategy in metadata."""
-        with patch.object(
-            context_engine._vector_search,
-            "search_by_text",
-            return_value=[],
-        ):
-            context = await context_engine.build_context(
-                patient_id=patient_id,
-                query="test",
-            )
+        context = await context_engine.build_context(
+            patient_id=patient_id,
+            query="test",
+        )
 
         assert context.meta.retrieval_strategy == "query_focused"
 
@@ -526,6 +518,7 @@ class TestBuildContext:
         self,
         context_engine,
         mock_graph,
+        mock_vector_search,
         patient_id,
         sample_condition,
         sample_observation,
@@ -539,16 +532,12 @@ class TestBuildContext:
             resource_type="Observation",
             fhir_id="obs-test-abc",
         )
+        mock_vector_search.search_by_text.return_value = [search_result]
 
-        with patch.object(
-            context_engine._vector_search,
-            "search_by_text",
-            return_value=[search_result],
-        ):
-            context = await context_engine.build_context(
-                patient_id=patient_id,
-                query="blood glucose",
-            )
+        context = await context_engine.build_context(
+            patient_id=patient_id,
+            query="blood glucose",
+        )
 
         assert context.meta.retrieval_stats.verified_count == 1
         assert context.meta.retrieval_stats.retrieved_count == 1
@@ -563,6 +552,7 @@ class TestTrimToBudget:
         self,
         context_engine,
         mock_graph,
+        mock_vector_search,
         patient_id,
         sample_observation,
     ):
@@ -577,17 +567,13 @@ class TestTrimToBudget:
             )
             for i in range(50)
         ]
+        mock_vector_search.search_by_text.return_value = search_results
 
-        with patch.object(
-            context_engine._vector_search,
-            "search_by_text",
-            return_value=search_results,
-        ):
-            context = await context_engine.build_context(
-                patient_id=patient_id,
-                query="test",
-                token_budget=1000,  # Very small budget
-            )
+        context = await context_engine.build_context(
+            patient_id=patient_id,
+            query="test",
+            token_budget=1000,  # Very small budget
+        )
 
         # Should have trimmed retrieved resources
         assert context.meta.token_budget == 1000
@@ -605,16 +591,11 @@ class TestTrimToBudget:
         mock_graph.get_verified_conditions.return_value = [sample_condition]
         mock_graph.get_verified_allergies.return_value = [sample_allergy]
 
-        with patch.object(
-            context_engine._vector_search,
-            "search_by_text",
-            return_value=[],
-        ):
-            context = await context_engine.build_context(
-                patient_id=patient_id,
-                query="test",
-                token_budget=10000,
-            )
+        context = await context_engine.build_context(
+            patient_id=patient_id,
+            query="test",
+            token_budget=10000,
+        )
 
         # Verified resources should be preserved
         assert len(context.verified.conditions) == 1
@@ -638,16 +619,11 @@ class TestBuildContextWithPatient:
             "birthDate": "1990-01-15",
         }
 
-        with patch.object(
-            context_engine._vector_search,
-            "search_by_text",
-            return_value=[],
-        ):
-            context = await context_engine.build_context_with_patient(
-                patient_id=patient_id,
-                patient_resource=patient_resource,
-                query="test",
-            )
+        context = await context_engine.build_context_with_patient(
+            patient_id=patient_id,
+            patient_resource=patient_resource,
+            query="test",
+        )
 
         assert context.patient["name"][0]["given"][0] == "Jane"
         assert context.patient["birthDate"] == "1990-01-15"
@@ -661,17 +637,12 @@ class TestBuildContextWithPatient:
         """Test includes profile summary when provided."""
         patient_resource = {"resourceType": "Patient", "id": patient_id}
 
-        with patch.object(
-            context_engine._vector_search,
-            "search_by_text",
-            return_value=[],
-        ):
-            context = await context_engine.build_context_with_patient(
-                patient_id=patient_id,
-                patient_resource=patient_resource,
-                query="test",
-                profile_summary="Retired teacher who enjoys gardening.",
-            )
+        context = await context_engine.build_context_with_patient(
+            patient_id=patient_id,
+            patient_resource=patient_resource,
+            query="test",
+            profile_summary="Retired teacher who enjoys gardening.",
+        )
 
         assert context.profile_summary == "Retired teacher who enjoys gardening."
 
@@ -686,15 +657,10 @@ class TestContextEngineIntegration:
         patient_id,
     ):
         """Test patient with no data returns minimal but valid context."""
-        with patch.object(
-            context_engine._vector_search,
-            "search_by_text",
-            return_value=[],
-        ):
-            context = await context_engine.build_context(
-                patient_id=patient_id,
-                query="any query",
-            )
+        context = await context_engine.build_context(
+            patient_id=patient_id,
+            query="any query",
+        )
 
         assert context.meta.patient_id == patient_id
         assert context.patient["resourceType"] == "Patient"
@@ -714,15 +680,10 @@ class TestContextEngineIntegration:
         """Test token estimate is calculated and populated."""
         mock_graph.get_verified_conditions.return_value = [sample_condition]
 
-        with patch.object(
-            context_engine._vector_search,
-            "search_by_text",
-            return_value=[],
-        ):
-            context = await context_engine.build_context(
-                patient_id=patient_id,
-                query="test",
-            )
+        context = await context_engine.build_context(
+            patient_id=patient_id,
+            query="test",
+        )
 
         assert context.token_estimate() > 0
         assert context.meta.retrieval_stats.tokens_used > 0

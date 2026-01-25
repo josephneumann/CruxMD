@@ -24,6 +24,7 @@ from app.schemas.context import (
 from app.services.embeddings import EmbeddingService
 from app.services.graph import KnowledgeGraph
 from app.services.vector_search import VectorSearchService
+from app.utils.fhir_helpers import extract_display_name
 
 logger = logging.getLogger(__name__)
 
@@ -36,27 +37,19 @@ DEFAULT_SIMILARITY_THRESHOLD = 0.7
 # Maximum resources to retrieve from vector search
 DEFAULT_RETRIEVAL_LIMIT = 20
 
-
-def _extract_display_name(resource: dict[str, Any]) -> str | None:
-    """Extract display name from a FHIR resource's code field.
-
-    Handles both code.coding[0].display and code.text patterns.
-
-    Args:
-        resource: FHIR resource with a 'code' field
-
-    Returns:
-        Display name string or None if not found
-    """
-    code = resource.get("code", {})
-    if not code:
-        # Check for medicationCodeableConcept (MedicationRequest)
-        code = resource.get("medicationCodeableConcept", {})
-
-    codings = code.get("coding", [])
-    if codings:
-        return codings[0].get("display")
-    return code.get("text")
+# Conditions that typically require special clinical consideration
+# These trigger constraint generation for treatment implications
+CLINICALLY_SIGNIFICANT_TERMS = frozenset([
+    "diabetes",
+    "kidney",
+    "renal",
+    "liver",
+    "hepatic",
+    "heart",
+    "cardiac",
+    "pregnant",
+    "pregnancy",
+])
 
 
 def _generate_allergy_constraints(allergies: list[dict[str, Any]]) -> list[str]:
@@ -70,7 +63,7 @@ def _generate_allergy_constraints(allergies: list[dict[str, Any]]) -> list[str]:
     """
     constraints = []
     for allergy in allergies:
-        display = _extract_display_name(allergy)
+        display = extract_display_name(allergy)
         if not display:
             continue
 
@@ -94,8 +87,6 @@ def _generate_allergy_constraints(allergies: list[dict[str, Any]]) -> list[str]:
 def _generate_medication_constraints(medications: list[dict[str, Any]]) -> list[str]:
     """Generate safety constraints from active medications.
 
-    Focuses on medications that may have significant interactions.
-
     Args:
         medications: List of FHIR MedicationRequest resources
 
@@ -104,7 +95,7 @@ def _generate_medication_constraints(medications: list[dict[str, Any]]) -> list[
     """
     constraints = []
     for med in medications:
-        display = _extract_display_name(med)
+        display = extract_display_name(med)
         if not display:
             continue
 
@@ -115,39 +106,29 @@ def _generate_medication_constraints(medications: list[dict[str, Any]]) -> list[
     return constraints
 
 
-def _generate_condition_constraints(conditions: list[dict[str, Any]]) -> list[str]:
+def _generate_condition_constraints(
+    conditions: list[dict[str, Any]],
+    significant_terms: frozenset[str] = CLINICALLY_SIGNIFICANT_TERMS,
+) -> list[str]:
     """Generate safety constraints from active conditions.
 
     Focuses on conditions that may affect treatment decisions.
 
     Args:
         conditions: List of FHIR Condition resources
+        significant_terms: Set of terms indicating clinical significance
 
     Returns:
         List of constraint strings for the LLM
     """
     constraints = []
     for condition in conditions:
-        display = _extract_display_name(condition)
+        display = extract_display_name(condition)
         if not display:
             continue
 
-        # Look for conditions that typically require special consideration
         display_lower = display.lower()
-        if any(
-            term in display_lower
-            for term in [
-                "diabetes",
-                "kidney",
-                "renal",
-                "liver",
-                "hepatic",
-                "heart",
-                "cardiac",
-                "pregnant",
-                "pregnancy",
-            ]
-        ):
+        if any(term in display_lower for term in significant_terms):
             constraints.append(f"CONDITION: Patient has {display} - consider treatment implications")
 
     return constraints
@@ -163,11 +144,12 @@ class ContextEngine:
         async with async_session_maker() as session:
             graph = KnowledgeGraph()
             embedding_service = EmbeddingService()
+            vector_search = VectorSearchService(session)
 
             engine = ContextEngine(
-                db_session=session,
                 graph=graph,
                 embedding_service=embedding_service,
+                vector_search=vector_search,
             )
 
             context = await engine.build_context(
@@ -179,21 +161,20 @@ class ContextEngine:
 
     def __init__(
         self,
-        db_session: AsyncSession,
         graph: KnowledgeGraph,
         embedding_service: EmbeddingService,
+        vector_search: VectorSearchService,
     ):
         """Initialize ContextEngine.
 
         Args:
-            db_session: Async SQLAlchemy session for vector search
             graph: KnowledgeGraph instance for verified facts
             embedding_service: EmbeddingService for query embedding
+            vector_search: VectorSearchService for semantic search
         """
-        self._db_session = db_session
         self._graph = graph
         self._embedding_service = embedding_service
-        self._vector_search = VectorSearchService(db_session)
+        self._vector_search = vector_search
 
     async def _build_verified_layer(self, patient_id: str) -> VerifiedLayer:
         """Build the verified layer from Neo4j graph.
