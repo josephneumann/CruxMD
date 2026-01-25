@@ -19,8 +19,9 @@ export type { BundleLoadResponse } from "./generated";
 export const MAX_MESSAGE_LENGTH = 10000;
 export const MAX_CONVERSATION_HISTORY = 50;
 
-/** Message role in conversation */
-export type MessageRole = "user" | "assistant";
+/** Valid message roles - source of truth for type and validation */
+export const MESSAGE_ROLES = ["user", "assistant"] as const;
+export type MessageRole = (typeof MESSAGE_ROLES)[number];
 
 /** A single message in conversation history */
 export interface ChatMessage {
@@ -54,8 +55,9 @@ export interface DataQuery {
   limit?: number;
 }
 
-/** Insight severity/category */
-export type InsightType = "info" | "warning" | "critical" | "positive";
+/** Valid insight types - source of truth for type and validation */
+export const INSIGHT_TYPES = ["info", "warning", "critical", "positive"] as const;
+export type InsightType = (typeof INSIGHT_TYPES)[number];
 
 /** Clinical insight highlighted for the user */
 export interface Insight {
@@ -65,8 +67,9 @@ export interface Insight {
   citations?: string[];
 }
 
-/** Column format type */
-export type ColumnFormat = "text" | "date" | "number" | "badge";
+/** Valid column formats - source of truth for type and validation */
+export const COLUMN_FORMATS = ["text", "date", "number", "badge"] as const;
+export type ColumnFormat = (typeof COLUMN_FORMATS)[number];
 
 /** Column definition for a data table */
 export interface TableColumn {
@@ -75,8 +78,9 @@ export interface TableColumn {
   format?: ColumnFormat;
 }
 
-/** Visualization type */
-export type VisualizationType = "line_chart" | "bar_chart" | "timeline" | "vitals_grid";
+/** Valid visualization types - source of truth for type and validation */
+export const VISUALIZATION_TYPES = ["line_chart", "bar_chart", "timeline", "vitals_grid"] as const;
+export type VisualizationType = (typeof VISUALIZATION_TYPES)[number];
 
 /** Visualization specification for charts and graphs */
 export interface Visualization {
@@ -94,8 +98,9 @@ export interface DataTable {
   data_query: DataQuery;
 }
 
-/** Action type category */
-export type ActionType = "order" | "refer" | "document" | "alert" | "link";
+/** Valid action types - source of truth for type and validation */
+export const ACTION_TYPES = ["order", "refer", "document", "alert", "link"] as const;
+export type ActionType = (typeof ACTION_TYPES)[number];
 
 /** Suggested action for the user to take */
 export interface Action {
@@ -126,57 +131,132 @@ export interface AgentResponse {
 // Type Guards for Runtime Validation
 // =============================================================================
 
+/** Helper to check if value is a non-null object */
+function isObject(obj: unknown): obj is Record<string, unknown> {
+  return typeof obj === "object" && obj !== null;
+}
+
 /** Type guard for ChatMessage */
 export function isChatMessage(obj: unknown): obj is ChatMessage {
-  if (typeof obj !== "object" || obj === null) return false;
-  const msg = obj as Record<string, unknown>;
+  if (!isObject(obj)) return false;
   return (
-    (msg.role === "user" || msg.role === "assistant") &&
-    typeof msg.content === "string"
+    MESSAGE_ROLES.includes(obj.role as MessageRole) &&
+    typeof obj.content === "string"
   );
+}
+
+/** Type guard for DataQuery */
+export function isDataQuery(obj: unknown): obj is DataQuery {
+  if (!isObject(obj)) return false;
+  // All fields are optional, but validate types if present
+  if (obj.resource_types !== undefined) {
+    if (!Array.isArray(obj.resource_types)) return false;
+    if (!obj.resource_types.every((t) => typeof t === "string")) return false;
+  }
+  if (obj.filters !== undefined && !isObject(obj.filters)) return false;
+  if (obj.time_range !== undefined && typeof obj.time_range !== "string") return false;
+  if (obj.limit !== undefined && typeof obj.limit !== "number") return false;
+  return true;
 }
 
 /** Type guard for Insight */
 export function isInsight(obj: unknown): obj is Insight {
-  if (typeof obj !== "object" || obj === null) return false;
-  const insight = obj as Record<string, unknown>;
-  const validTypes: InsightType[] = ["info", "warning", "critical", "positive"];
-  return (
-    validTypes.includes(insight.type as InsightType) &&
-    typeof insight.title === "string" &&
-    typeof insight.content === "string"
-  );
+  if (!isObject(obj)) return false;
+  if (!INSIGHT_TYPES.includes(obj.type as InsightType)) return false;
+  if (typeof obj.title !== "string") return false;
+  if (typeof obj.content !== "string") return false;
+  // Validate citations array if present
+  if (obj.citations !== undefined) {
+    if (!Array.isArray(obj.citations)) return false;
+    if (!obj.citations.every((c) => typeof c === "string")) return false;
+  }
+  return true;
+}
+
+/** Type guard for TableColumn */
+export function isTableColumn(obj: unknown): obj is TableColumn {
+  if (!isObject(obj)) return false;
+  if (typeof obj.key !== "string") return false;
+  if (typeof obj.header !== "string") return false;
+  if (obj.format !== undefined && !COLUMN_FORMATS.includes(obj.format as ColumnFormat)) return false;
+  return true;
+}
+
+/** Type guard for Visualization */
+export function isVisualization(obj: unknown): obj is Visualization {
+  if (!isObject(obj)) return false;
+  if (!VISUALIZATION_TYPES.includes(obj.type as VisualizationType)) return false;
+  if (typeof obj.title !== "string") return false;
+  if (obj.description !== undefined && typeof obj.description !== "string") return false;
+  if (!isDataQuery(obj.data_query)) return false;
+  if (obj.config !== undefined && !isObject(obj.config)) return false;
+  return true;
+}
+
+/** Type guard for DataTable */
+export function isDataTable(obj: unknown): obj is DataTable {
+  if (!isObject(obj)) return false;
+  if (typeof obj.title !== "string") return false;
+  if (!Array.isArray(obj.columns)) return false;
+  if (!obj.columns.every(isTableColumn)) return false;
+  if (!isDataQuery(obj.data_query)) return false;
+  return true;
+}
+
+/** Type guard for Action */
+export function isAction(obj: unknown): obj is Action {
+  if (!isObject(obj)) return false;
+  if (typeof obj.label !== "string") return false;
+  if (!ACTION_TYPES.includes(obj.type as ActionType)) return false;
+  if (obj.description !== undefined && typeof obj.description !== "string") return false;
+  if (obj.payload !== undefined && !isObject(obj.payload)) return false;
+  return true;
 }
 
 /** Type guard for FollowUp */
 export function isFollowUp(obj: unknown): obj is FollowUp {
-  if (typeof obj !== "object" || obj === null) return false;
-  const followUp = obj as Record<string, unknown>;
-  return typeof followUp.question === "string";
+  if (!isObject(obj)) return false;
+  if (typeof obj.question !== "string") return false;
+  if (obj.intent !== undefined && typeof obj.intent !== "string") return false;
+  return true;
 }
 
-/** Type guard for AgentResponse */
+/** Type guard for AgentResponse with deep validation */
 export function isAgentResponse(obj: unknown): obj is AgentResponse {
-  if (typeof obj !== "object" || obj === null) return false;
-  const response = obj as Record<string, unknown>;
+  if (!isObject(obj)) return false;
   // narrative is the only required field
-  if (typeof response.narrative !== "string") return false;
-  // Validate optional arrays if present
-  if (response.insights !== undefined && !Array.isArray(response.insights)) return false;
-  if (response.visualizations !== undefined && !Array.isArray(response.visualizations)) return false;
-  if (response.tables !== undefined && !Array.isArray(response.tables)) return false;
-  if (response.actions !== undefined && !Array.isArray(response.actions)) return false;
-  if (response.follow_ups !== undefined && !Array.isArray(response.follow_ups)) return false;
+  if (typeof obj.narrative !== "string") return false;
+  if (obj.thinking !== undefined && typeof obj.thinking !== "string") return false;
+  // Validate optional arrays with element-level validation
+  if (obj.insights !== undefined) {
+    if (!Array.isArray(obj.insights)) return false;
+    if (!obj.insights.every(isInsight)) return false;
+  }
+  if (obj.visualizations !== undefined) {
+    if (!Array.isArray(obj.visualizations)) return false;
+    if (!obj.visualizations.every(isVisualization)) return false;
+  }
+  if (obj.tables !== undefined) {
+    if (!Array.isArray(obj.tables)) return false;
+    if (!obj.tables.every(isDataTable)) return false;
+  }
+  if (obj.actions !== undefined) {
+    if (!Array.isArray(obj.actions)) return false;
+    if (!obj.actions.every(isAction)) return false;
+  }
+  if (obj.follow_ups !== undefined) {
+    if (!Array.isArray(obj.follow_ups)) return false;
+    if (!obj.follow_ups.every(isFollowUp)) return false;
+  }
   return true;
 }
 
 /** Type guard for ChatResponse */
 export function isChatResponse(obj: unknown): obj is ChatResponse {
-  if (typeof obj !== "object" || obj === null) return false;
-  const response = obj as Record<string, unknown>;
+  if (!isObject(obj)) return false;
   return (
-    typeof response.conversation_id === "string" &&
-    isAgentResponse(response.response)
+    typeof obj.conversation_id === "string" &&
+    isAgentResponse(obj.response)
   );
 }
 
