@@ -14,7 +14,6 @@ from app.schemas.context import (
     PatientContext,
     RetrievedLayer,
     RetrievedResource,
-    RetrievalStats,
     VerifiedLayer,
 )
 from app.services.agent import (
@@ -24,11 +23,13 @@ from app.services.agent import (
     DEFAULT_MAX_OUTPUT_TOKENS,
     build_system_prompt,
     _format_patient_info,
-    _format_conditions,
-    _format_medications,
-    _format_allergies,
+    _format_resource_list,
+    _format_condition,
+    _format_medication,
+    _format_allergy,
     _format_retrieved_context,
     _format_constraints,
+    _get_display_name,
 )
 
 
@@ -185,23 +186,16 @@ def full_context(
 def create_mock_agent_response() -> AgentResponse:
     """Create a sample AgentResponse for mocking."""
     return AgentResponse(
-        thinking="The patient has Type 2 diabetes and is on Metformin.",
-        narrative="This patient has Type 2 diabetes mellitus and is currently taking Metformin 500 MG. Their recent HbA1c of 7.2% indicates moderate glycemic control.",
+        narrative="This patient has Type 2 diabetes mellitus.",
         insights=[
             Insight(
                 type="info",
                 title="HbA1c Level",
-                content="Recent HbA1c of 7.2% is above the target of <7% for most adults with diabetes.",
-            ),
-            Insight(
-                type="warning",
-                title="Drug Allergy",
-                content="Patient has a HIGH criticality allergy to Penicillin. Avoid all penicillin-class antibiotics.",
+                content="Recent HbA1c is above target.",
             ),
         ],
         follow_ups=[
             FollowUp(question="What is the patient's blood pressure trend?", intent="vitals"),
-            FollowUp(question="Are there any recent kidney function tests?", intent="labs"),
         ],
     )
 
@@ -213,12 +207,10 @@ def create_mock_openai_client(response: AgentResponse | None = None) -> AsyncMoc
     if response is None:
         response = create_mock_agent_response()
 
-    # Create mock response structure
     mock_response = MagicMock()
     mock_response.output_parsed = response
     mock_response.output_text = response.model_dump_json()
 
-    # Set up the responses.parse method
     mock_client.responses.parse = AsyncMock(return_value=mock_response)
 
     return mock_client
@@ -227,6 +219,31 @@ def create_mock_openai_client(response: AgentResponse | None = None) -> AsyncMoc
 # =============================================================================
 # Helper Function Tests
 # =============================================================================
+
+
+class TestGetDisplayName:
+    """Tests for _get_display_name helper."""
+
+    def test_extracts_from_coding(self, sample_condition: dict):
+        """Test extracting display from coding array."""
+        result = _get_display_name(sample_condition)
+        assert result == "Type 2 diabetes mellitus"
+
+    def test_falls_back_to_text(self):
+        """Test falling back to text field."""
+        resource = {"code": {"text": "Hypertension"}}
+        result = _get_display_name(resource)
+        assert result == "Hypertension"
+
+    def test_returns_none_for_empty(self):
+        """Test returning None for empty resource."""
+        result = _get_display_name({})
+        assert result is None
+
+    def test_custom_code_field(self, sample_medication: dict):
+        """Test using custom code field."""
+        result = _get_display_name(sample_medication, "medicationCodeableConcept")
+        assert result == "Metformin 500 MG"
 
 
 class TestFormatPatientInfo:
@@ -252,71 +269,65 @@ class TestFormatPatientInfo:
     def test_format_empty_patient(self):
         """Test formatting empty patient resource."""
         result = _format_patient_info({})
-
         assert result == "No demographic information available"
 
 
-class TestFormatConditions:
-    """Tests for _format_conditions helper."""
+class TestFormatResourceList:
+    """Tests for _format_resource_list helper."""
 
     def test_format_conditions_list(self, sample_condition: dict):
         """Test formatting list of conditions."""
-        result = _format_conditions([sample_condition])
+        result = _format_resource_list(
+            [sample_condition],
+            "No conditions",
+            format_fn=_format_condition,
+        )
 
         assert "Type 2 diabetes mellitus" in result
         assert "active" in result
 
-    def test_format_empty_conditions(self):
-        """Test formatting empty conditions list."""
-        result = _format_conditions([])
+    def test_format_empty_list(self):
+        """Test formatting empty list."""
+        result = _format_resource_list([], "No items recorded")
+        assert result == "No items recorded"
 
-        assert result == "No active conditions recorded"
-
-    def test_format_condition_with_text(self):
-        """Test formatting condition using text fallback."""
-        condition = {
+    def test_format_with_text_fallback(self):
+        """Test formatting resource using text fallback."""
+        resource = {
             "resourceType": "Condition",
             "code": {"text": "Hypertension"},
             "clinicalStatus": {"coding": [{"code": "active"}]},
         }
-        result = _format_conditions([condition])
-
+        result = _format_resource_list(
+            [resource],
+            "No conditions",
+            format_fn=_format_condition,
+        )
         assert "Hypertension" in result
 
-
-class TestFormatMedications:
-    """Tests for _format_medications helper."""
-
-    def test_format_medications_list(self, sample_medication: dict):
-        """Test formatting list of medications."""
-        result = _format_medications([sample_medication])
+    def test_format_medications(self, sample_medication: dict):
+        """Test formatting medications with custom code field."""
+        result = _format_resource_list(
+            [sample_medication],
+            "No medications",
+            code_field="medicationCodeableConcept",
+            format_fn=_format_medication,
+        )
 
         assert "Metformin 500 MG" in result
         assert "active" in result
 
-    def test_format_empty_medications(self):
-        """Test formatting empty medications list."""
-        result = _format_medications([])
-
-        assert result == "No active medications recorded"
-
-
-class TestFormatAllergies:
-    """Tests for _format_allergies helper."""
-
-    def test_format_allergies_list(self, sample_allergy: dict):
-        """Test formatting list of allergies."""
-        result = _format_allergies([sample_allergy])
+    def test_format_allergies(self, sample_allergy: dict):
+        """Test formatting allergies."""
+        result = _format_resource_list(
+            [sample_allergy],
+            "No allergies",
+            format_fn=_format_allergy,
+        )
 
         assert "Penicillin" in result
         assert "high" in result
         assert "medication" in result
-
-    def test_format_empty_allergies(self):
-        """Test formatting empty allergies list."""
-        result = _format_allergies([])
-
-        assert result == "No known allergies recorded"
 
 
 class TestFormatRetrievedContext:
@@ -334,7 +345,6 @@ class TestFormatRetrievedContext:
     def test_format_empty_retrieved(self):
         """Test formatting empty retrieved context."""
         result = _format_retrieved_context([])
-
         assert result == "No additional context retrieved"
 
     def test_format_non_observation_resource(self, sample_condition: dict):
@@ -363,7 +373,6 @@ class TestFormatConstraints:
     def test_format_empty_constraints(self):
         """Test formatting empty constraints list."""
         result = _format_constraints([])
-
         assert result == "No specific safety constraints"
 
 
@@ -388,22 +397,13 @@ class TestBuildSystemPrompt:
         """Test building prompt with full context."""
         prompt = build_system_prompt(full_context)
 
-        # Check patient info
         assert "John Michael Doe" in prompt
-
-        # Check profile
         assert "Active retired teacher" in prompt
-
-        # Check verified layer
         assert "Type 2 diabetes mellitus" in prompt
         assert "Metformin 500 MG" in prompt
         assert "Penicillin" in prompt
-
-        # Check retrieved context
         assert "Hemoglobin A1c" in prompt
         assert "7.2" in prompt
-
-        # Check constraints
         assert "CRITICAL ALLERGY" in prompt
 
     def test_prompt_includes_guidelines(self, minimal_context: PatientContext):
@@ -425,13 +425,15 @@ class TestAgentServiceInit:
 
     def test_init_with_defaults(self):
         """Test initialization with default settings."""
-        with patch("app.services.agent.AsyncOpenAI") as mock_openai:
-            service = AgentService()
+        with patch("app.services.agent.settings") as mock_settings:
+            mock_settings.openai_api_key = "test-key"
+            with patch("app.services.agent.AsyncOpenAI") as mock_openai:
+                service = AgentService()
 
-            assert service._model == DEFAULT_MODEL
-            assert service._reasoning_effort == DEFAULT_REASONING_EFFORT
-            assert service._max_output_tokens == DEFAULT_MAX_OUTPUT_TOKENS
-            mock_openai.assert_called_once()
+                assert service._model == DEFAULT_MODEL
+                assert service._reasoning_effort == DEFAULT_REASONING_EFFORT
+                assert service._max_output_tokens == DEFAULT_MAX_OUTPUT_TOKENS
+                mock_openai.assert_called_once()
 
     def test_init_with_custom_client(self):
         """Test initialization with custom client."""
@@ -453,6 +455,14 @@ class TestAgentServiceInit:
         service = AgentService(client=mock_client, reasoning_effort="high")
 
         assert service._reasoning_effort == "high"
+
+    def test_init_without_api_key_raises(self):
+        """Test that missing API key raises ValueError."""
+        with patch("app.services.agent.settings") as mock_settings:
+            mock_settings.openai_api_key = ""
+
+            with pytest.raises(ValueError, match="OPENAI_API_KEY"):
+                AgentService()
 
 
 class TestAgentServiceGenerateResponse:
@@ -493,7 +503,6 @@ class TestAgentServiceGenerateResponse:
 
         assert isinstance(response, AgentResponse)
 
-        # Verify history was included in input
         call_args = mock_client.responses.parse.call_args
         input_messages = call_args.kwargs["input"]
         assert len(input_messages) == 4  # system + 2 history + current
@@ -528,10 +537,8 @@ class TestAgentServiceGenerateResponse:
             reasoning_effort="high",
         )
 
-        # Verify high reasoning was used
         call_args = mock_client.responses.parse.call_args
         reasoning = call_args.kwargs["reasoning"]
-        # Reasoning is a TypedDict-like object, access effort attribute or key
         effort = getattr(reasoning, "effort", None) or reasoning.get("effort")
         assert effort == "high"
 
@@ -579,10 +586,9 @@ class TestAgentServiceGenerateResponse:
 
     @pytest.mark.asyncio
     async def test_generate_response_fallback_on_none(self, minimal_context: PatientContext):
-        """Test fallback when structured parsing returns None."""
+        """Test fallback when structured parsing returns None but raw text available."""
         mock_client = AsyncMock()
 
-        # Create response where output_parsed is None but output_text has valid JSON
         expected_response = create_mock_agent_response()
         mock_response = MagicMock()
         mock_response.output_parsed = None
@@ -601,11 +607,10 @@ class TestAgentServiceGenerateResponse:
         assert response.narrative == expected_response.narrative
 
     @pytest.mark.asyncio
-    async def test_generate_response_minimal_fallback(self, minimal_context: PatientContext):
-        """Test minimal fallback when all parsing fails."""
+    async def test_generate_response_raises_on_parse_failure(self, minimal_context: PatientContext):
+        """Test that RuntimeError is raised when all parsing fails."""
         mock_client = AsyncMock()
 
-        # Create response where both output_parsed and output_text are None/empty
         mock_response = MagicMock()
         mock_response.output_parsed = None
         mock_response.output_text = None
@@ -614,13 +619,11 @@ class TestAgentServiceGenerateResponse:
 
         service = AgentService(client=mock_client)
 
-        response = await service.generate_response(
-            context=minimal_context,
-            message="Test question",
-        )
-
-        assert isinstance(response, AgentResponse)
-        assert "unable to generate a proper response" in response.narrative
+        with pytest.raises(RuntimeError, match="LLM response could not be parsed"):
+            await service.generate_response(
+                context=minimal_context,
+                message="Test question",
+            )
 
     @pytest.mark.asyncio
     async def test_generate_response_filters_invalid_history(self, minimal_context: PatientContext):
@@ -630,8 +633,8 @@ class TestAgentServiceGenerateResponse:
 
         history = [
             {"role": "user", "content": "Valid message"},
-            {"role": "system", "content": "Should be ignored"},  # Invalid role
-            {"role": "assistant", "content": ""},  # Empty content
+            {"role": "system", "content": "Should be ignored"},
+            {"role": "assistant", "content": ""},
             {"role": "assistant", "content": "Valid assistant message"},
         ]
 
@@ -644,7 +647,7 @@ class TestAgentServiceGenerateResponse:
         call_args = mock_client.responses.parse.call_args
         input_messages = call_args.kwargs["input"]
 
-        # Should have: system + 2 valid history + current = 4
+        # system + 2 valid history + current = 4
         assert len(input_messages) == 4
 
 

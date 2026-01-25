@@ -8,7 +8,6 @@ Uses the OpenAI Responses API with Pydantic structured outputs for type-safe
 response parsing.
 """
 
-import json
 import logging
 from typing import Any, Literal
 
@@ -84,11 +83,27 @@ Provide your response as a structured JSON object with:
 """
 
 
+def _get_display_name(resource: dict[str, Any], code_field: str = "code") -> str | None:
+    """Extract display name from a FHIR resource's code field.
+
+    Args:
+        resource: FHIR resource dict
+        code_field: Name of the code field to extract from
+
+    Returns:
+        Display name string or None if not found
+    """
+    code = resource.get(code_field, {})
+    codings = code.get("coding", [])
+    if codings:
+        return codings[0].get("display")
+    return code.get("text")
+
+
 def _format_patient_info(patient: dict[str, Any]) -> str:
     """Format patient demographics from FHIR Patient resource."""
     parts = []
 
-    # Name
     names = patient.get("name", [])
     if names:
         name = names[0]
@@ -97,86 +112,73 @@ def _format_patient_info(patient: dict[str, Any]) -> str:
         if given or family:
             parts.append(f"Name: {given} {family}".strip())
 
-    # Birth date
-    birth_date = patient.get("birthDate")
-    if birth_date:
+    if birth_date := patient.get("birthDate"):
         parts.append(f"Date of Birth: {birth_date}")
 
-    # Gender
-    gender = patient.get("gender")
-    if gender:
+    if gender := patient.get("gender"):
         parts.append(f"Gender: {gender}")
 
-    # ID
-    patient_id = patient.get("id")
-    if patient_id:
+    if patient_id := patient.get("id"):
         parts.append(f"Patient ID: {patient_id}")
 
     return "\n".join(parts) if parts else "No demographic information available"
 
 
-def _format_conditions(conditions: list[dict[str, Any]]) -> str:
-    """Format conditions list for the prompt."""
-    if not conditions:
-        return "No active conditions recorded"
+def _format_resource_list(
+    resources: list[dict[str, Any]],
+    empty_message: str,
+    code_field: str = "code",
+    format_fn: callable = None,
+) -> str:
+    """Generic formatter for lists of FHIR resources.
+
+    Args:
+        resources: List of FHIR resources
+        empty_message: Message to return if list is empty
+        code_field: Field name containing the code (default: "code")
+        format_fn: Optional function to format each resource line
+
+    Returns:
+        Formatted string with one line per resource
+    """
+    if not resources:
+        return empty_message
 
     lines = []
-    for condition in conditions:
-        code = condition.get("code", {})
-        codings = code.get("coding", [])
-        display = codings[0].get("display") if codings else None
+    for resource in resources:
+        display = _get_display_name(resource, code_field)
         if not display:
-            display = code.get("text", "Unknown condition")
+            display = f"Unknown {resource.get('resourceType', 'resource')}"
 
-        clinical_status = condition.get("clinicalStatus", {})
-        status_codings = clinical_status.get("coding", [])
-        status = status_codings[0].get("code") if status_codings else "unknown"
-
-        lines.append(f"- {display} (status: {status})")
+        if format_fn:
+            line = format_fn(resource, display)
+        else:
+            line = f"- {display}"
+        lines.append(line)
 
     return "\n".join(lines)
 
 
-def _format_medications(medications: list[dict[str, Any]]) -> str:
-    """Format medications list for the prompt."""
-    if not medications:
-        return "No active medications recorded"
-
-    lines = []
-    for med in medications:
-        # Try medicationCodeableConcept first
-        med_concept = med.get("medicationCodeableConcept", {})
-        codings = med_concept.get("coding", [])
-        display = codings[0].get("display") if codings else None
-        if not display:
-            display = med_concept.get("text", "Unknown medication")
-
-        status = med.get("status", "unknown")
-        lines.append(f"- {display} (status: {status})")
-
-    return "\n".join(lines)
+def _format_condition(resource: dict[str, Any], display: str) -> str:
+    """Format a single condition resource."""
+    clinical_status = resource.get("clinicalStatus", {})
+    status_codings = clinical_status.get("coding", [])
+    status = status_codings[0].get("code") if status_codings else "unknown"
+    return f"- {display} (status: {status})"
 
 
-def _format_allergies(allergies: list[dict[str, Any]]) -> str:
-    """Format allergies list for the prompt."""
-    if not allergies:
-        return "No known allergies recorded"
+def _format_medication(resource: dict[str, Any], display: str) -> str:
+    """Format a single medication resource."""
+    status = resource.get("status", "unknown")
+    return f"- {display} (status: {status})"
 
-    lines = []
-    for allergy in allergies:
-        code = allergy.get("code", {})
-        codings = code.get("coding", [])
-        display = codings[0].get("display") if codings else None
-        if not display:
-            display = code.get("text", "Unknown allergen")
 
-        criticality = allergy.get("criticality", "unknown")
-        categories = allergy.get("category", [])
-        category = categories[0] if categories else "unknown"
-
-        lines.append(f"- {display} (criticality: {criticality}, category: {category})")
-
-    return "\n".join(lines)
+def _format_allergy(resource: dict[str, Any], display: str) -> str:
+    """Format a single allergy resource."""
+    criticality = resource.get("criticality", "unknown")
+    categories = resource.get("category", [])
+    category = categories[0] if categories else "unknown"
+    return f"- {display} (criticality: {criticality}, category: {category})"
 
 
 def _format_retrieved_context(retrieved_resources: list[dict[str, Any]]) -> str:
@@ -189,21 +191,15 @@ def _format_retrieved_context(retrieved_resources: list[dict[str, Any]]) -> str:
         resource = item.get("resource", item)
         resource_type = resource.get("resourceType", "Unknown")
         score = item.get("score", 0.0)
+        display = _get_display_name(resource) or resource_type
 
-        # Get display name based on resource type
         if resource_type == "Observation":
-            code = resource.get("code", {})
-            codings = code.get("coding", [])
-            display = codings[0].get("display") if codings else code.get("text", "Observation")
             value = resource.get("valueQuantity", {})
             if value:
                 lines.append(f"- {display}: {value.get('value')} {value.get('unit', '')} (score: {score:.2f})")
             else:
                 lines.append(f"- {display} (score: {score:.2f})")
         else:
-            code = resource.get("code", {})
-            codings = code.get("coding", [])
-            display = codings[0].get("display") if codings else resource_type
             lines.append(f"- [{resource_type}] {display} (score: {score:.2f})")
 
     return "\n".join(lines) if lines else "No additional context retrieved"
@@ -213,7 +209,6 @@ def _format_constraints(constraints: list[str]) -> str:
     """Format safety constraints for the prompt."""
     if not constraints:
         return "No specific safety constraints"
-
     return "\n".join(f"- {constraint}" for constraint in constraints)
 
 
@@ -226,27 +221,35 @@ def build_system_prompt(context: PatientContext) -> str:
     Returns:
         Formatted system prompt string
     """
-    # Format patient info
     patient_info = _format_patient_info(context.patient)
 
-    # Format profile section if available
     profile_section = ""
     if context.profile_summary:
         profile_section = f"### Patient Profile\n{context.profile_summary}"
 
-    # Format verified layer
-    conditions = _format_conditions(context.verified.conditions)
-    medications = _format_medications(context.verified.medications)
-    allergies = _format_allergies(context.verified.allergies)
+    conditions = _format_resource_list(
+        context.verified.conditions,
+        "No active conditions recorded",
+        format_fn=_format_condition,
+    )
+    medications = _format_resource_list(
+        context.verified.medications,
+        "No active medications recorded",
+        code_field="medicationCodeableConcept",
+        format_fn=_format_medication,
+    )
+    allergies = _format_resource_list(
+        context.verified.allergies,
+        "No known allergies recorded",
+        format_fn=_format_allergy,
+    )
 
-    # Format retrieved context
     retrieved_dicts = [
         {"resource": r.resource, "score": r.score}
         for r in context.retrieved.resources
     ]
     retrieved_context = _format_retrieved_context(retrieved_dicts)
 
-    # Format constraints
     constraints = _format_constraints(context.constraints)
 
     return SYSTEM_PROMPT_TEMPLATE.format(
@@ -298,10 +301,18 @@ class AgentService:
             model: Model to use for generation. Defaults to gpt-5.2.
             reasoning_effort: Reasoning effort level. Defaults to "low" for speed.
             max_output_tokens: Maximum tokens in response. Defaults to 4096.
+
+        Raises:
+            ValueError: If no client provided and OPENAI_API_KEY is not configured.
         """
         if client is not None:
             self._client = client
         else:
+            if not settings.openai_api_key:
+                raise ValueError(
+                    "OPENAI_API_KEY environment variable is required. "
+                    "Set it in your .env file or environment."
+                )
             self._client = AsyncOpenAI(api_key=settings.openai_api_key)
 
         self._model = model
@@ -332,7 +343,6 @@ class AgentService:
             {"role": "system", "content": build_system_prompt(context)},
         ]
 
-        # Add conversation history if provided
         if history:
             for msg in history:
                 role = msg.get("role", "user")
@@ -340,7 +350,6 @@ class AgentService:
                 if role in ("user", "assistant") and content:
                     messages.append({"role": role, "content": content})
 
-        # Add current user message
         messages.append({"role": "user", "content": message})
 
         return messages
@@ -371,18 +380,14 @@ class AgentService:
         if not message or not message.strip():
             raise ValueError("message cannot be empty")
 
-        # Build input messages
         input_messages = self._build_input_messages(context, message, history)
-
-        # Use provided reasoning effort or default
         effort = reasoning_effort or self._reasoning_effort
 
         logger.debug(
-            f"Generating response for patient {context.meta.patient_id} "
-            f"with {len(input_messages)} messages, reasoning_effort={effort}"
+            f"Generating response with {len(input_messages)} messages, "
+            f"reasoning_effort={effort}"
         )
 
-        # Call OpenAI Responses API with structured output
         response = await self._client.responses.parse(
             model=self._model,
             input=input_messages,
@@ -391,7 +396,6 @@ class AgentService:
             max_output_tokens=self._max_output_tokens,
         )
 
-        # Extract parsed response
         agent_response = response.output_parsed
 
         if agent_response is None:
@@ -401,9 +405,9 @@ class AgentService:
             if raw_output:
                 agent_response = AgentResponse.model_validate_json(raw_output)
             else:
-                # Last resort: return minimal response
-                agent_response = AgentResponse(
-                    narrative="I apologize, but I was unable to generate a proper response. Please try again.",
+                raise RuntimeError(
+                    "LLM response could not be parsed. "
+                    "Neither structured output nor raw text was available."
                 )
 
         logger.debug(
