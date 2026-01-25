@@ -67,3 +67,4 @@ session_summaries/*
 pending_handoffs/*
 !pending_handoffs/.gitkeep
 session_summaries/
+pending_handoffs/

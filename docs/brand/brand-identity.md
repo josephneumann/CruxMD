@@ -229,43 +229,62 @@ The CruxMD palette is **warm, grounded, and natural**—deliberately rejecting c
 
 ### Primary Palette
 
-#### Brand Colors
+> **Source of Truth:** [Figma Design System](https://www.figma.com/file/Y11v84IbClu6oNFGkWn1yM/Design-System-for-CruxMD)
 
-| Name | Hex | RGB | HSL | Role |
-|------|-----|-----|-----|------|
-| **Book Cloth** | `#CC785C` | 204, 120, 92 | 15°, 51%, 58% | Primary brand, CTAs, focus |
-| **Sage** | `#7D8B6F` | 125, 139, 111 | 90°, 11%, 49% | Positive, success, growth |
-| **Periwinkle** | `#8B8FC7` | 139, 143, 199 | 236°, 32%, 66% | Accent, informational |
-
-#### Neutral Palette
+#### Neutral Colors
 
 | Name | Hex | RGB | Role |
 |------|-----|-----|------|
-| **Slate Dark** | `#191919` | 25, 25, 25 | Primary text |
-| **Slate Medium** | `#262625` | 38, 38, 37 | Dark mode surfaces |
-| **Slate Light** | `#40403E` | 64, 64, 62 | Borders (dark), secondary (dark) |
-| **Cloud Dark** | `#666663` | 102, 102, 99 | Muted text |
-| **Cloud Medium** | `#91918D` | 145, 145, 141 | Disabled states |
-| **Cloud Light** | `#BFBFBA` | 191, 191, 186 | Subtle borders |
-| **Ivory Dark** | `#E5E4DF` | 229, 228, 223 | Borders, dividers |
-| **Ivory Medium** | `#F0F0EB` | 240, 240, 235 | Hover states, muted bg |
-| **Ivory Light** | `#FAFAF7` | 250, 250, 247 | Background |
 | **White** | `#FFFFFF` | 255, 255, 255 | Cards, surfaces |
+| **Black** | `#000000` | 0, 0, 0 | Maximum contrast text |
 
-#### Warm Accent Palette
-
-| Name | Hex | RGB | Role |
-|------|-----|-----|------|
-| **Kraft** | `#D4A27F` | 212, 162, 127 | Warnings, warm highlights |
-| **Manilla** | `#EBDBBC` | 235, 219, 188 | Subtle warm backgrounds |
-
-#### Utility Colors
+#### State Colors
 
 | Name | Hex | RGB | Role |
 |------|-----|-----|------|
 | **Focus** | `#61AAF2` | 97, 170, 242 | Focus rings, links |
 | **Error** | `#BF4D43` | 191, 77, 67 | Errors, critical alerts |
-| **Error Light** | `#D4645A` | 212, 100, 90 | Error in dark mode |
+
+#### Anthropic Orange (Brand)
+
+| Name | Hex | RGB | Role |
+|------|-----|-----|------|
+| **Book Cloth** | `#CC785C` | 204, 120, 92 | Primary brand, CTAs |
+| **Kraft** | `#D4A27F` | 212, 162, 127 | Warnings, warm highlights |
+| **Manilla** | `#EBDBBC` | 235, 219, 188 | Subtle warm backgrounds |
+
+#### Slate (Dark Tones)
+
+| Name | Hex | RGB | Role |
+|------|-----|-----|------|
+| **Slate Dark** | `#191919` | 25, 25, 25 | Primary text, dark mode bg |
+| **Slate Medium** | `#262625` | 38, 38, 37 | Dark mode surfaces |
+| **Slate Light** | `#40403E` | 64, 64, 62 | Borders (dark), secondary (dark) |
+
+#### Cloud (Mid Tones)
+
+| Name | Hex | RGB | Role |
+|------|-----|-----|------|
+| **Cloud Dark** | `#666663` | 102, 102, 99 | Muted text |
+| **Cloud Medium** | `#91918D` | 145, 145, 141 | Disabled states |
+| **Cloud Light** | `#BFBFBA` | 191, 191, 186 | Subtle borders |
+
+#### Ivory (Light Tones)
+
+| Name | Hex | RGB | Role |
+|------|-----|-----|------|
+| **Ivory Dark** | `#E5E4DF` | 229, 228, 223 | Borders, dividers |
+| **Ivory Medium** | `#F0F0EB` | 240, 240, 235 | Hover states, muted bg |
+| **Ivory Light** | `#FAFAF7` | 250, 250, 247 | Background |
+
+#### UI Colors
+
+| Name | Hex | RGB | Role |
+|------|-----|-----|------|
+| **UI Orange** | `#D97757` | 217, 119, 87 | Interactive accents, highlights |
+| **UI Purple** | `#9B87F5` | 155, 135, 245 | Informational, secondary accent |
+| **UI Blue** | `#207FDE` | 32, 127, 222 | Links, interactive elements |
+| **Sage** | `#7D8B6F` | 125, 139, 111 | Success, positive, confirmations |
 
 ### Clinical Insight Colors
 
@@ -273,10 +292,10 @@ These colors communicate clinical significance:
 
 | Insight Type | Light Mode | Dark Mode | Usage |
 |--------------|------------|-----------|-------|
-| **Info** | `#61AAF2` | `#7BBAF5` | Neutral clinical observations |
-| **Positive** | `#7D8B6F` | `#9AAB8F` | Favorable findings, goals met |
-| **Warning** | `#D4A27F` | `#EBDBBC` | Attention needed, monitoring |
-| **Critical** | `#BF4D43` | `#D4645A` | Urgent, requires action |
+| **Info** | `#207FDE` (UI Blue) | `#61AAF2` | Neutral clinical observations |
+| **Positive** | `#7D8B6F` (Sage) | `#9AAB8F` | Favorable findings, goals met |
+| **Warning** | `#D4A27F` (Kraft) | `#EBDBBC` | Attention needed, monitoring |
+| **Critical** | `#BF4D43` (Error) | `#D4645A` | Urgent, requires action |
 
 ### Chart & Data Visualization Colors
 
@@ -284,11 +303,11 @@ Ordered by visual priority:
 
 | Order | Name | Light Mode | Dark Mode | Use Case |
 |-------|------|------------|-----------|----------|
-| 1 | Primary | `#CC785C` | `#D4907A` | Primary data series |
-| 2 | Secondary | `#7D8B6F` | `#9AAB8F` | Secondary series |
-| 3 | Tertiary | `#8B8FC7` | `#A5A9D6` | Tertiary series |
-| 4 | Quaternary | `#D4A27F` | `#EBDBBC` | Fourth series |
-| 5 | Quinary | `#61AAF2` | `#7BBAF5` | Fifth series |
+| 1 | Primary | `#D97757` (UI Orange) | `#E89070` | Primary data series |
+| 2 | Secondary | `#207FDE` (UI Blue) | `#61AAF2` | Secondary series |
+| 3 | Tertiary | `#9B87F5` (UI Purple) | `#B5A5F7` | Tertiary series |
+| 4 | Quaternary | `#CC785C` (Book Cloth) | `#D4907A` | Fourth series |
+| 5 | Quinary | `#D4A27F` (Kraft) | `#EBDBBC` | Fifth series |
 
 ### Color Usage Ratios
 
@@ -1004,9 +1023,11 @@ A summary of rejections to guide decision-making:
 
 | Element | Specification |
 |---------|---------------|
-| **Primary color** | Book Cloth `#CC785C` |
+| **Primary brand** | Book Cloth `#CC785C` |
+| **Primary UI** | UI Orange `#D97757` |
 | **Background** | Ivory Light `#FAFAF7` |
 | **Text** | Slate Dark `#191919` |
+| **Accent** | UI Purple `#9B87F5`, UI Blue `#207FDE` |
 | **Typeface** | Geist Sans (or similar humanist sans) |
 | **Body size** | 16px / 1rem |
 | **Base unit** | 4px |
@@ -1017,8 +1038,9 @@ A summary of rejections to guide decision-making:
 
 | File | Location |
 |------|----------|
+| **Figma Design System** | [Design-System-for-CruxMD](https://www.figma.com/file/Y11v84IbClu6oNFGkWn1yM/Design-System-for-CruxMD) |
 | Design tokens | `frontend/app/globals.css` |
-| Brand identity | `docs/brand-identity.md` |
+| Brand identity | `docs/brand/brand-identity.md` |
 | Project plan | `docs/cruxmd-v2-plan.md` |
 
 ---
