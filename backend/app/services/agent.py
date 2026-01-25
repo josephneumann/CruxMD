@@ -1,0 +1,414 @@
+"""LLM Agent Service for clinical reasoning with structured output.
+
+This is the brain of the chat system - it takes patient context and user messages,
+reasons about them using GPT-5.2, and returns structured responses with insights,
+visualizations, and follow-up suggestions.
+
+Uses the OpenAI Responses API with Pydantic structured outputs for type-safe
+response parsing.
+"""
+
+import json
+import logging
+from typing import Any, Literal
+
+from openai import AsyncOpenAI
+from openai.types.shared_params import Reasoning
+
+from app.config import settings
+from app.schemas import AgentResponse, PatientContext
+
+logger = logging.getLogger(__name__)
+
+# Default model for agent responses
+DEFAULT_MODEL = "gpt-5.2"
+
+# Default reasoning effort (low for fast responses)
+DEFAULT_REASONING_EFFORT: Literal["low", "medium", "high"] = "low"
+
+# Maximum tokens for response generation
+DEFAULT_MAX_OUTPUT_TOKENS = 4096
+
+# System prompt template for clinical reasoning
+SYSTEM_PROMPT_TEMPLATE = """You are a clinical reasoning assistant helping healthcare providers understand patient data.
+
+## Your Role
+- Analyze patient medical records and provide clinical insights
+- Answer questions about patient history, conditions, medications, and test results
+- Highlight important clinical findings and potential concerns
+- Suggest relevant follow-up questions to deepen understanding
+
+## Response Guidelines
+1. Be accurate and evidence-based - cite specific data from the patient's records
+2. Use clear, professional medical language
+3. Highlight safety-critical information (allergies, drug interactions, critical values)
+4. Provide actionable insights when appropriate
+5. Suggest 2-3 relevant follow-up questions to help explore the patient's data
+
+## Patient Context
+
+### Patient Demographics
+{patient_info}
+
+{profile_section}
+
+### Verified Clinical Facts (HIGH CONFIDENCE)
+These facts are confirmed in the patient's medical record:
+
+**Active Conditions:**
+{conditions}
+
+**Current Medications:**
+{medications}
+
+**Known Allergies:**
+{allergies}
+
+### Retrieved Context (MEDIUM CONFIDENCE)
+Additional relevant information from semantic search:
+{retrieved_context}
+
+## Safety Constraints
+The following constraints MUST be respected in your response:
+{constraints}
+
+## Response Format
+Provide your response as a structured JSON object with:
+- thinking: Your reasoning process (optional, for transparency)
+- narrative: Main response in markdown format
+- insights: Important clinical insights to highlight (info, warning, critical, positive)
+- visualizations: Charts/graphs if data warrants visualization
+- tables: Structured data displays if helpful
+- actions: Suggested clinical actions if appropriate
+- follow_ups: 2-3 suggested follow-up questions with intent labels
+"""
+
+
+def _format_patient_info(patient: dict[str, Any]) -> str:
+    """Format patient demographics from FHIR Patient resource."""
+    parts = []
+
+    # Name
+    names = patient.get("name", [])
+    if names:
+        name = names[0]
+        given = " ".join(name.get("given", []))
+        family = name.get("family", "")
+        if given or family:
+            parts.append(f"Name: {given} {family}".strip())
+
+    # Birth date
+    birth_date = patient.get("birthDate")
+    if birth_date:
+        parts.append(f"Date of Birth: {birth_date}")
+
+    # Gender
+    gender = patient.get("gender")
+    if gender:
+        parts.append(f"Gender: {gender}")
+
+    # ID
+    patient_id = patient.get("id")
+    if patient_id:
+        parts.append(f"Patient ID: {patient_id}")
+
+    return "\n".join(parts) if parts else "No demographic information available"
+
+
+def _format_conditions(conditions: list[dict[str, Any]]) -> str:
+    """Format conditions list for the prompt."""
+    if not conditions:
+        return "No active conditions recorded"
+
+    lines = []
+    for condition in conditions:
+        code = condition.get("code", {})
+        codings = code.get("coding", [])
+        display = codings[0].get("display") if codings else None
+        if not display:
+            display = code.get("text", "Unknown condition")
+
+        clinical_status = condition.get("clinicalStatus", {})
+        status_codings = clinical_status.get("coding", [])
+        status = status_codings[0].get("code") if status_codings else "unknown"
+
+        lines.append(f"- {display} (status: {status})")
+
+    return "\n".join(lines)
+
+
+def _format_medications(medications: list[dict[str, Any]]) -> str:
+    """Format medications list for the prompt."""
+    if not medications:
+        return "No active medications recorded"
+
+    lines = []
+    for med in medications:
+        # Try medicationCodeableConcept first
+        med_concept = med.get("medicationCodeableConcept", {})
+        codings = med_concept.get("coding", [])
+        display = codings[0].get("display") if codings else None
+        if not display:
+            display = med_concept.get("text", "Unknown medication")
+
+        status = med.get("status", "unknown")
+        lines.append(f"- {display} (status: {status})")
+
+    return "\n".join(lines)
+
+
+def _format_allergies(allergies: list[dict[str, Any]]) -> str:
+    """Format allergies list for the prompt."""
+    if not allergies:
+        return "No known allergies recorded"
+
+    lines = []
+    for allergy in allergies:
+        code = allergy.get("code", {})
+        codings = code.get("coding", [])
+        display = codings[0].get("display") if codings else None
+        if not display:
+            display = code.get("text", "Unknown allergen")
+
+        criticality = allergy.get("criticality", "unknown")
+        categories = allergy.get("category", [])
+        category = categories[0] if categories else "unknown"
+
+        lines.append(f"- {display} (criticality: {criticality}, category: {category})")
+
+    return "\n".join(lines)
+
+
+def _format_retrieved_context(retrieved_resources: list[dict[str, Any]]) -> str:
+    """Format retrieved resources for the prompt."""
+    if not retrieved_resources:
+        return "No additional context retrieved"
+
+    lines = []
+    for item in retrieved_resources:
+        resource = item.get("resource", item)
+        resource_type = resource.get("resourceType", "Unknown")
+        score = item.get("score", 0.0)
+
+        # Get display name based on resource type
+        if resource_type == "Observation":
+            code = resource.get("code", {})
+            codings = code.get("coding", [])
+            display = codings[0].get("display") if codings else code.get("text", "Observation")
+            value = resource.get("valueQuantity", {})
+            if value:
+                lines.append(f"- {display}: {value.get('value')} {value.get('unit', '')} (score: {score:.2f})")
+            else:
+                lines.append(f"- {display} (score: {score:.2f})")
+        else:
+            code = resource.get("code", {})
+            codings = code.get("coding", [])
+            display = codings[0].get("display") if codings else resource_type
+            lines.append(f"- [{resource_type}] {display} (score: {score:.2f})")
+
+    return "\n".join(lines) if lines else "No additional context retrieved"
+
+
+def _format_constraints(constraints: list[str]) -> str:
+    """Format safety constraints for the prompt."""
+    if not constraints:
+        return "No specific safety constraints"
+
+    return "\n".join(f"- {constraint}" for constraint in constraints)
+
+
+def build_system_prompt(context: PatientContext) -> str:
+    """Build the system prompt from patient context.
+
+    Args:
+        context: PatientContext with verified facts and retrieved resources
+
+    Returns:
+        Formatted system prompt string
+    """
+    # Format patient info
+    patient_info = _format_patient_info(context.patient)
+
+    # Format profile section if available
+    profile_section = ""
+    if context.profile_summary:
+        profile_section = f"### Patient Profile\n{context.profile_summary}"
+
+    # Format verified layer
+    conditions = _format_conditions(context.verified.conditions)
+    medications = _format_medications(context.verified.medications)
+    allergies = _format_allergies(context.verified.allergies)
+
+    # Format retrieved context
+    retrieved_dicts = [
+        {"resource": r.resource, "score": r.score}
+        for r in context.retrieved.resources
+    ]
+    retrieved_context = _format_retrieved_context(retrieved_dicts)
+
+    # Format constraints
+    constraints = _format_constraints(context.constraints)
+
+    return SYSTEM_PROMPT_TEMPLATE.format(
+        patient_info=patient_info,
+        profile_section=profile_section,
+        conditions=conditions,
+        medications=medications,
+        allergies=allergies,
+        retrieved_context=retrieved_context,
+        constraints=constraints,
+    )
+
+
+class AgentService:
+    """LLM agent service for clinical reasoning with structured output.
+
+    Uses OpenAI's Responses API with Pydantic structured outputs to generate
+    type-safe responses with clinical insights, visualizations, and follow-ups.
+
+    Example:
+        agent = AgentService()
+
+        response = await agent.generate_response(
+            context=patient_context,
+            message="What medications is this patient taking for diabetes?",
+            history=[
+                {"role": "user", "content": "Tell me about this patient"},
+                {"role": "assistant", "content": "This is a 65-year-old..."},
+            ],
+        )
+
+        print(response.narrative)
+        for insight in response.insights or []:
+            print(f"[{insight.type}] {insight.title}")
+    """
+
+    def __init__(
+        self,
+        client: AsyncOpenAI | None = None,
+        model: str = DEFAULT_MODEL,
+        reasoning_effort: Literal["low", "medium", "high"] = DEFAULT_REASONING_EFFORT,
+        max_output_tokens: int = DEFAULT_MAX_OUTPUT_TOKENS,
+    ):
+        """Initialize AgentService.
+
+        Args:
+            client: Optional pre-configured AsyncOpenAI client (for testing).
+                   If not provided, creates one from settings.
+            model: Model to use for generation. Defaults to gpt-5.2.
+            reasoning_effort: Reasoning effort level. Defaults to "low" for speed.
+            max_output_tokens: Maximum tokens in response. Defaults to 4096.
+        """
+        if client is not None:
+            self._client = client
+        else:
+            self._client = AsyncOpenAI(api_key=settings.openai_api_key)
+
+        self._model = model
+        self._reasoning_effort = reasoning_effort
+        self._max_output_tokens = max_output_tokens
+
+    async def close(self) -> None:
+        """Close the OpenAI client connection."""
+        await self._client.close()
+
+    def _build_input_messages(
+        self,
+        context: PatientContext,
+        message: str,
+        history: list[dict[str, str]] | None = None,
+    ) -> list[dict[str, str]]:
+        """Build input messages for the API call.
+
+        Args:
+            context: Patient context for system prompt
+            message: Current user message
+            history: Optional conversation history
+
+        Returns:
+            List of message dicts for the API
+        """
+        messages = [
+            {"role": "system", "content": build_system_prompt(context)},
+        ]
+
+        # Add conversation history if provided
+        if history:
+            for msg in history:
+                role = msg.get("role", "user")
+                content = msg.get("content", "")
+                if role in ("user", "assistant") and content:
+                    messages.append({"role": role, "content": content})
+
+        # Add current user message
+        messages.append({"role": "user", "content": message})
+
+        return messages
+
+    async def generate_response(
+        self,
+        context: PatientContext,
+        message: str,
+        history: list[dict[str, str]] | None = None,
+        reasoning_effort: Literal["low", "medium", "high"] | None = None,
+    ) -> AgentResponse:
+        """Generate a structured response for a clinical question.
+
+        Args:
+            context: PatientContext with verified facts and retrieved resources
+            message: The user's question or message
+            history: Optional list of previous messages in the conversation.
+                    Each message should have 'role' and 'content' keys.
+            reasoning_effort: Override default reasoning effort for this call
+
+        Returns:
+            AgentResponse with narrative, insights, visualizations, and follow-ups
+
+        Raises:
+            ValueError: If message is empty
+            openai.APIError: If API call fails
+        """
+        if not message or not message.strip():
+            raise ValueError("message cannot be empty")
+
+        # Build input messages
+        input_messages = self._build_input_messages(context, message, history)
+
+        # Use provided reasoning effort or default
+        effort = reasoning_effort or self._reasoning_effort
+
+        logger.debug(
+            f"Generating response for patient {context.meta.patient_id} "
+            f"with {len(input_messages)} messages, reasoning_effort={effort}"
+        )
+
+        # Call OpenAI Responses API with structured output
+        response = await self._client.responses.parse(
+            model=self._model,
+            input=input_messages,
+            text_format=AgentResponse,
+            reasoning=Reasoning(effort=effort),
+            max_output_tokens=self._max_output_tokens,
+        )
+
+        # Extract parsed response
+        agent_response = response.output_parsed
+
+        if agent_response is None:
+            # Fallback: try to parse from raw output if structured parsing failed
+            logger.warning("Structured parsing returned None, attempting fallback")
+            raw_output = getattr(response, "output_text", None)
+            if raw_output:
+                agent_response = AgentResponse.model_validate_json(raw_output)
+            else:
+                # Last resort: return minimal response
+                agent_response = AgentResponse(
+                    narrative="I apologize, but I was unable to generate a proper response. Please try again.",
+                )
+
+        logger.debug(
+            f"Generated response with {len(agent_response.insights or [])} insights, "
+            f"{len(agent_response.follow_ups or [])} follow-ups"
+        )
+
+        return agent_response
