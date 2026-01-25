@@ -528,7 +528,114 @@ class TestChatErrorHandling:
             )
 
             assert response.status_code == 400
-            assert "message cannot be empty" in response.json()["detail"]
+            assert "Invalid request parameters" in response.json()["detail"]
+
+
+# =============================================================================
+# Input Validation Tests (Security Hardening)
+# =============================================================================
+
+
+class TestChatInputValidation:
+    """Tests for enhanced input validation."""
+
+    @pytest.mark.asyncio
+    async def test_chat_rejects_invalid_role(
+        self, client: AsyncClient, auth_headers: dict
+    ):
+        """Test that invalid role values are rejected."""
+        response = await client.post(
+            "/api/chat",
+            json={
+                "patient_id": str(uuid.uuid4()),
+                "message": "Test message",
+                "conversation_history": [
+                    {"role": "system", "content": "You are helpful"}  # Invalid role
+                ],
+            },
+            headers=auth_headers,
+        )
+
+        assert response.status_code == 422
+
+    @pytest.mark.asyncio
+    async def test_chat_rejects_oversized_message(
+        self, client: AsyncClient, auth_headers: dict
+    ):
+        """Test that messages exceeding max length are rejected."""
+        response = await client.post(
+            "/api/chat",
+            json={
+                "patient_id": str(uuid.uuid4()),
+                "message": "x" * 10001,  # Exceeds MAX_MESSAGE_LENGTH
+            },
+            headers=auth_headers,
+        )
+
+        assert response.status_code == 422
+
+    @pytest.mark.asyncio
+    async def test_chat_accepts_max_length_message(
+        self,
+        client: AsyncClient,
+        auth_headers: dict,
+        patient_in_db: uuid.UUID,
+        sample_agent_response: AgentResponse,
+        sample_patient_context: PatientContext,
+    ):
+        """Test that messages at max length are accepted."""
+        with patch("app.routes.chat.ContextEngine") as mock_context_engine_class, \
+             patch("app.routes.chat.AgentService") as mock_agent_service_class, \
+             patch("app.routes.chat.KnowledgeGraph") as mock_graph_class, \
+             patch("app.routes.chat.EmbeddingService") as mock_embedding_class, \
+             patch("app.routes.chat.VectorSearchService"):
+
+            mock_graph_class.return_value = AsyncMock()
+            mock_embedding_class.return_value = AsyncMock()
+
+            mock_context_engine = AsyncMock()
+            mock_context_engine.build_context_with_patient = AsyncMock(
+                return_value=sample_patient_context
+            )
+            mock_context_engine_class.return_value = mock_context_engine
+
+            mock_agent = AsyncMock()
+            mock_agent.generate_response = AsyncMock(return_value=sample_agent_response)
+            mock_agent_service_class.return_value = mock_agent
+
+            response = await client.post(
+                "/api/chat",
+                json={
+                    "patient_id": str(patient_in_db),
+                    "message": "x" * 10000,  # Exactly MAX_MESSAGE_LENGTH
+                },
+                headers=auth_headers,
+            )
+
+            assert response.status_code == 200
+
+    @pytest.mark.asyncio
+    async def test_chat_rejects_too_many_history_messages(
+        self, client: AsyncClient, auth_headers: dict
+    ):
+        """Test that conversation history exceeding limit is rejected."""
+        # Create 51 messages (exceeds MAX_CONVERSATION_HISTORY of 50)
+        history = [
+            {"role": "user" if i % 2 == 0 else "assistant", "content": f"Message {i}"}
+            for i in range(51)
+        ]
+
+        response = await client.post(
+            "/api/chat",
+            json={
+                "patient_id": str(uuid.uuid4()),
+                "message": "Test message",
+                "conversation_history": history,
+            },
+            headers=auth_headers,
+        )
+
+        assert response.status_code == 422
 
 
 # =============================================================================

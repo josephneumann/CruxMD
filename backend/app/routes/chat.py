@@ -2,9 +2,10 @@
 
 import logging
 import uuid
+from typing import Literal
 
 from fastapi import APIRouter, Depends, HTTPException, status
-from pydantic import BaseModel, Field
+from pydantic import BaseModel, Field, field_validator
 from sqlalchemy import select
 from sqlalchemy.ext.asyncio import AsyncSession
 
@@ -23,27 +24,70 @@ logger = logging.getLogger(__name__)
 
 router = APIRouter(prefix="/chat", tags=["chat"])
 
+# Validation limits
+MAX_MESSAGE_LENGTH = 10000
+MAX_CONVERSATION_HISTORY = 50
+
+
+def _format_profile_summary(profile: dict) -> str | None:
+    """Format a brief summary from patient profile fields.
+
+    Args:
+        profile: Patient profile dict from FHIR extension.
+
+    Returns:
+        Formatted summary string or None if no relevant fields.
+    """
+    parts = []
+    if profile.get("occupation"):
+        parts.append(profile["occupation"])
+    if profile.get("living_situation"):
+        parts.append(profile["living_situation"])
+    if profile.get("primary_motivation"):
+        parts.append(profile["primary_motivation"])
+
+    return ". ".join(parts) + "." if parts else None
+
 
 class ChatMessage(BaseModel):
     """A single message in conversation history."""
 
-    role: str = Field(description="Message role: 'user' or 'assistant'")
-    content: str = Field(description="Message content")
+    role: Literal["user", "assistant"] = Field(
+        description="Message role: 'user' or 'assistant'"
+    )
+    content: str = Field(
+        min_length=1,
+        max_length=MAX_MESSAGE_LENGTH,
+        description="Message content",
+    )
 
 
 class ChatRequest(BaseModel):
     """Request body for chat endpoint."""
 
     patient_id: uuid.UUID = Field(description="PostgreSQL UUID of the patient")
-    message: str = Field(min_length=1, description="The user's message")
+    message: str = Field(
+        min_length=1,
+        max_length=MAX_MESSAGE_LENGTH,
+        description="The user's message",
+    )
     conversation_id: uuid.UUID | None = Field(
         default=None,
         description="Optional conversation ID. Generated if not provided.",
     )
     conversation_history: list[ChatMessage] | None = Field(
         default=None,
+        max_length=MAX_CONVERSATION_HISTORY,
         description="Optional previous messages in the conversation",
     )
+
+    @field_validator("conversation_history")
+    @classmethod
+    def validate_history_length(cls, v: list[ChatMessage] | None) -> list[ChatMessage] | None:
+        """Validate conversation history doesn't exceed limit."""
+        if v is not None and len(v) > MAX_CONVERSATION_HISTORY:
+            raise ValueError(f"conversation_history cannot exceed {MAX_CONVERSATION_HISTORY} messages")
+        return v
 
 
 class ChatResponse(BaseModel):
@@ -81,7 +125,7 @@ async def chat(
     # Generate conversation_id if not provided
     conversation_id = request.conversation_id or uuid.uuid4()
 
-    # Validate patient exists and get patient resource
+    # Validate patient exists FIRST (before initializing expensive services)
     stmt = select(FhirResource).where(
         FhirResource.id == request.patient_id,
         FhirResource.resource_type == "Patient",
@@ -95,34 +139,22 @@ async def chat(
             detail="Patient not found",
         )
 
-    # Initialize services
+    # Initialize services inside try block for proper cleanup
     graph = KnowledgeGraph()
     embedding_service = EmbeddingService()
     vector_search = VectorSearchService(db)
-
-    context_engine = ContextEngine(
-        graph=graph,
-        embedding_service=embedding_service,
-        vector_search=vector_search,
-    )
-
     agent = AgentService()
 
     try:
+        context_engine = ContextEngine(
+            graph=graph,
+            embedding_service=embedding_service,
+            vector_search=vector_search,
+        )
+
         # Extract patient profile summary if available
-        profile_summary = None
         profile = get_patient_profile(patient_resource.data)
-        if profile:
-            # Format a brief summary from profile fields
-            parts = []
-            if profile.get("occupation"):
-                parts.append(profile["occupation"])
-            if profile.get("living_situation"):
-                parts.append(profile["living_situation"])
-            if profile.get("primary_motivation"):
-                parts.append(profile["primary_motivation"])
-            if parts:
-                profile_summary = ". ".join(parts) + "."
+        profile_summary = _format_profile_summary(profile) if profile else None
 
         # Build patient context with the patient resource
         context = await context_engine.build_context_with_patient(
@@ -152,22 +184,22 @@ async def chat(
             response=agent_response,
         )
 
-    except ValueError as e:
-        # Validation errors from AgentService (e.g., empty message)
+    except ValueError:
+        # Validation errors from AgentService - don't expose internal details
         raise HTTPException(
             status_code=status.HTTP_400_BAD_REQUEST,
-            detail=str(e),
+            detail="Invalid request parameters",
         )
-    except RuntimeError as e:
-        # LLM parsing failures
-        logger.error(f"Agent response parsing failed: {e}")
+    except RuntimeError:
+        # LLM parsing failures - log but don't expose details
+        logger.error("Agent response parsing failed", exc_info=True)
         raise HTTPException(
             status_code=status.HTTP_500_INTERNAL_SERVER_ERROR,
             detail="Failed to generate response. Please try again.",
         )
-    except Exception as e:
-        # Catch-all for unexpected errors
-        logger.exception(f"Unexpected error in chat endpoint: {e}")
+    except Exception:
+        # Catch-all for unexpected errors - log with stack trace
+        logger.exception("Unexpected error in chat endpoint")
         raise HTTPException(
             status_code=status.HTTP_500_INTERNAL_SERVER_ERROR,
             detail="An unexpected error occurred.",
