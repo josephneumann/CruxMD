@@ -2,14 +2,19 @@
 
 Uses pgvector's cosine distance operator with HNSW index for efficient
 similarity search, scoped to individual patients for security.
+
+SECURITY: This service enforces patient-scoped queries but does NOT perform
+authentication or authorization. API routes MUST verify that the authenticated
+user has permission to access the requested patient_id before calling these methods.
 """
 
 import logging
+import math
 import uuid
 from dataclasses import dataclass
 from typing import Any
 
-from sqlalchemy import select, text
+from sqlalchemy import select
 from sqlalchemy.ext.asyncio import AsyncSession
 
 from app.models import FhirResource
@@ -22,6 +27,12 @@ DEFAULT_THRESHOLD = 0.7
 
 # Default maximum results to return
 DEFAULT_LIMIT = 10
+
+# Hard maximum limit to prevent resource exhaustion
+MAX_LIMIT = 100
+
+# Expected embedding dimensions (text-embedding-3-small)
+EMBEDDING_DIMENSION = 1536
 
 
 @dataclass
@@ -87,7 +98,7 @@ class VectorSearchService:
             patient_id: The patient UUID to scope the search to.
                        Can be a UUID object or string representation.
             query_embedding: The query embedding vector (1536 dimensions).
-            limit: Maximum number of results to return. Defaults to 10.
+            limit: Maximum number of results to return. Defaults to 10, max 100.
             threshold: Minimum similarity score (0-1). Resources with lower
                       similarity are filtered out. Defaults to 0.7.
 
@@ -96,43 +107,71 @@ class VectorSearchService:
             Each result contains the FHIR resource data and similarity score.
 
         Raises:
-            ValueError: If query_embedding is empty or has wrong dimensions.
+            ValueError: If parameters are invalid (wrong dimensions, out of range, etc.)
         """
+        # Validate embedding
         if not query_embedding:
             raise ValueError("query_embedding cannot be empty")
+        if len(query_embedding) != EMBEDDING_DIMENSION:
+            raise ValueError(
+                f"query_embedding must have exactly {EMBEDDING_DIMENSION} dimensions, "
+                f"got {len(query_embedding)}"
+            )
+        if not all(
+            isinstance(v, (int, float)) and not math.isnan(v) and not math.isinf(v)
+            for v in query_embedding
+        ):
+            raise ValueError("query_embedding contains invalid values (NaN or Inf)")
+
+        # Validate limit
+        if limit < 1:
+            raise ValueError("limit must be at least 1")
+        if limit > MAX_LIMIT:
+            raise ValueError(f"limit cannot exceed {MAX_LIMIT}")
+
+        # Validate threshold
+        if not (0.0 <= threshold <= 1.0):
+            raise ValueError("threshold must be between 0.0 and 1.0")
 
         # Convert string patient_id to UUID if needed
         if isinstance(patient_id, str):
-            patient_id = uuid.UUID(patient_id)
+            try:
+                patient_id = uuid.UUID(patient_id)
+            except ValueError:
+                logger.warning(f"Invalid patient_id format attempted")
+                raise ValueError("Invalid patient_id format") from None
 
         # pgvector's <=> operator returns cosine distance (0 = identical, 2 = opposite)
         # We convert to similarity: similarity = 1 - distance
-        # Since we're using cosine_ops, distance is in [0, 2] range
         # Threshold on distance: distance <= 1 - threshold
-        # (because similarity >= threshold means 1 - distance >= threshold)
         max_distance = 1 - threshold
 
-        # Build the query using pgvector's <=> operator
+        # Build subquery to compute distance once (avoids duplicate calculation)
         # The HNSW index (idx_fhir_embedding_hnsw) will be used automatically
-        query = (
+        distance_subquery = (
             select(
                 FhirResource.data,
                 FhirResource.resource_type,
                 FhirResource.fhir_id,
-                # Calculate cosine distance using <=> operator
-                # Convert embedding list to PostgreSQL vector format
-                (FhirResource.embedding.cosine_distance(query_embedding)).label("distance"),
+                FhirResource.embedding.cosine_distance(query_embedding).label("distance"),
             )
             .where(
                 FhirResource.patient_id == patient_id,
                 FhirResource.embedding.isnot(None),
             )
-            # Filter by distance threshold
-            .where(
-                FhirResource.embedding.cosine_distance(query_embedding) <= max_distance
+            .subquery()
+        )
+
+        # Filter and order on the computed distance column
+        query = (
+            select(
+                distance_subquery.c.data,
+                distance_subquery.c.resource_type,
+                distance_subquery.c.fhir_id,
+                distance_subquery.c.distance,
             )
-            # Order by distance (ascending = most similar first)
-            .order_by(text("distance"))
+            .where(distance_subquery.c.distance <= max_distance)
+            .order_by(distance_subquery.c.distance)
             .limit(limit)
         )
 
@@ -211,7 +250,7 @@ class VectorSearchService:
         Args:
             patient_id: The patient UUID to scope the search to.
             resource_id: The database ID of the source resource.
-            limit: Maximum number of results to return. Defaults to 10.
+            limit: Maximum number of results to return. Defaults to 10, max 100.
             threshold: Minimum similarity score (0-1). Defaults to 0.7.
 
         Returns:
@@ -219,13 +258,31 @@ class VectorSearchService:
             The source resource is excluded from results.
 
         Raises:
-            ValueError: If the source resource has no embedding.
+            ValueError: If parameters are invalid or source resource has no embedding.
         """
+        # Validate limit
+        if limit < 1:
+            raise ValueError("limit must be at least 1")
+        if limit > MAX_LIMIT:
+            raise ValueError(f"limit cannot exceed {MAX_LIMIT}")
+
+        # Validate threshold
+        if not (0.0 <= threshold <= 1.0):
+            raise ValueError("threshold must be between 0.0 and 1.0")
+
         # Convert string IDs to UUIDs if needed
         if isinstance(patient_id, str):
-            patient_id = uuid.UUID(patient_id)
+            try:
+                patient_id = uuid.UUID(patient_id)
+            except ValueError:
+                logger.warning(f"Invalid patient_id format attempted")
+                raise ValueError("Invalid patient_id format") from None
         if isinstance(resource_id, str):
-            resource_id = uuid.UUID(resource_id)
+            try:
+                resource_id = uuid.UUID(resource_id)
+            except ValueError:
+                logger.warning(f"Invalid resource_id format attempted")
+                raise ValueError("Invalid resource_id format") from None
 
         # First, get the embedding of the source resource
         source_query = select(FhirResource.embedding).where(
@@ -238,29 +295,38 @@ class VectorSearchService:
         if not row or row.embedding is None:
             raise ValueError(f"Resource {resource_id} has no embedding")
 
-        # Convert pgvector vector to list
-        source_embedding = list(row.embedding)
+        # pgvector returns the embedding directly usable
+        source_embedding = row.embedding
 
         # Calculate max distance from threshold
         max_distance = 1 - threshold
 
-        # Search for similar resources, excluding the source
-        query = (
+        # Build subquery to compute distance once (avoids duplicate calculation)
+        distance_subquery = (
             select(
                 FhirResource.data,
                 FhirResource.resource_type,
                 FhirResource.fhir_id,
-                (FhirResource.embedding.cosine_distance(source_embedding)).label("distance"),
+                FhirResource.embedding.cosine_distance(source_embedding).label("distance"),
             )
             .where(
                 FhirResource.patient_id == patient_id,
                 FhirResource.embedding.isnot(None),
                 FhirResource.id != resource_id,  # Exclude source resource
             )
-            .where(
-                FhirResource.embedding.cosine_distance(source_embedding) <= max_distance
+            .subquery()
+        )
+
+        # Filter and order on the computed distance column
+        query = (
+            select(
+                distance_subquery.c.data,
+                distance_subquery.c.resource_type,
+                distance_subquery.c.fhir_id,
+                distance_subquery.c.distance,
             )
-            .order_by(text("distance"))
+            .where(distance_subquery.c.distance <= max_distance)
+            .order_by(distance_subquery.c.distance)
             .limit(limit)
         )
 

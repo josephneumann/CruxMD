@@ -21,6 +21,8 @@ from app.services.vector_search import (
     SearchResult,
     DEFAULT_THRESHOLD,
     DEFAULT_LIMIT,
+    MAX_LIMIT,
+    EMBEDDING_DIMENSION,
 )
 
 
@@ -460,6 +462,151 @@ class TestSearchSimilar:
         assert len(results) <= DEFAULT_LIMIT
         for result in results:
             assert result.score >= DEFAULT_THRESHOLD
+
+
+# =============================================================================
+# Input Validation Tests
+# =============================================================================
+
+
+class TestInputValidation:
+    """Tests for input parameter validation."""
+
+    @pytest.mark.asyncio
+    async def test_wrong_embedding_dimension_raises_error(
+        self,
+        db_session: AsyncSession,
+        patient_a_id: uuid.UUID,
+    ):
+        """Test wrong embedding dimension raises ValueError."""
+        service = VectorSearchService(db_session)
+        wrong_dimension_embedding = [0.1] * 768  # Wrong dimension
+
+        with pytest.raises(ValueError, match=f"must have exactly {EMBEDDING_DIMENSION} dimensions"):
+            await service.search_similar(
+                patient_id=patient_a_id,
+                query_embedding=wrong_dimension_embedding,
+            )
+
+    @pytest.mark.asyncio
+    async def test_nan_in_embedding_raises_error(
+        self,
+        db_session: AsyncSession,
+        patient_a_id: uuid.UUID,
+    ):
+        """Test NaN in embedding raises ValueError."""
+        service = VectorSearchService(db_session)
+        nan_embedding = [0.1] * 1535 + [float("nan")]
+
+        with pytest.raises(ValueError, match="invalid values"):
+            await service.search_similar(
+                patient_id=patient_a_id,
+                query_embedding=nan_embedding,
+            )
+
+    @pytest.mark.asyncio
+    async def test_inf_in_embedding_raises_error(
+        self,
+        db_session: AsyncSession,
+        patient_a_id: uuid.UUID,
+    ):
+        """Test Inf in embedding raises ValueError."""
+        service = VectorSearchService(db_session)
+        inf_embedding = [0.1] * 1535 + [float("inf")]
+
+        with pytest.raises(ValueError, match="invalid values"):
+            await service.search_similar(
+                patient_id=patient_a_id,
+                query_embedding=inf_embedding,
+            )
+
+    @pytest.mark.asyncio
+    async def test_limit_too_high_raises_error(
+        self,
+        db_session: AsyncSession,
+        patient_a_id: uuid.UUID,
+        populated_db: dict,
+    ):
+        """Test limit exceeding MAX_LIMIT raises ValueError."""
+        service = VectorSearchService(db_session)
+        query_embedding = populated_db["base_embedding"]
+
+        with pytest.raises(ValueError, match=f"cannot exceed {MAX_LIMIT}"):
+            await service.search_similar(
+                patient_id=patient_a_id,
+                query_embedding=query_embedding,
+                limit=MAX_LIMIT + 1,
+            )
+
+    @pytest.mark.asyncio
+    async def test_limit_too_low_raises_error(
+        self,
+        db_session: AsyncSession,
+        patient_a_id: uuid.UUID,
+        populated_db: dict,
+    ):
+        """Test limit less than 1 raises ValueError."""
+        service = VectorSearchService(db_session)
+        query_embedding = populated_db["base_embedding"]
+
+        with pytest.raises(ValueError, match="must be at least 1"):
+            await service.search_similar(
+                patient_id=patient_a_id,
+                query_embedding=query_embedding,
+                limit=0,
+            )
+
+    @pytest.mark.asyncio
+    async def test_threshold_too_high_raises_error(
+        self,
+        db_session: AsyncSession,
+        patient_a_id: uuid.UUID,
+        populated_db: dict,
+    ):
+        """Test threshold > 1.0 raises ValueError."""
+        service = VectorSearchService(db_session)
+        query_embedding = populated_db["base_embedding"]
+
+        with pytest.raises(ValueError, match="between 0.0 and 1.0"):
+            await service.search_similar(
+                patient_id=patient_a_id,
+                query_embedding=query_embedding,
+                threshold=1.5,
+            )
+
+    @pytest.mark.asyncio
+    async def test_threshold_negative_raises_error(
+        self,
+        db_session: AsyncSession,
+        patient_a_id: uuid.UUID,
+        populated_db: dict,
+    ):
+        """Test negative threshold raises ValueError."""
+        service = VectorSearchService(db_session)
+        query_embedding = populated_db["base_embedding"]
+
+        with pytest.raises(ValueError, match="between 0.0 and 1.0"):
+            await service.search_similar(
+                patient_id=patient_a_id,
+                query_embedding=query_embedding,
+                threshold=-0.1,
+            )
+
+    @pytest.mark.asyncio
+    async def test_invalid_patient_id_string_raises_error(
+        self,
+        db_session: AsyncSession,
+        populated_db: dict,
+    ):
+        """Test invalid patient_id string raises ValueError."""
+        service = VectorSearchService(db_session)
+        query_embedding = populated_db["base_embedding"]
+
+        with pytest.raises(ValueError, match="Invalid patient_id format"):
+            await service.search_similar(
+                patient_id="not-a-valid-uuid",
+                query_embedding=query_embedding,
+            )
 
 
 # =============================================================================
