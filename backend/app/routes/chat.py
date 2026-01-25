@@ -5,7 +5,7 @@ import uuid
 from typing import Literal
 
 from fastapi import APIRouter, Depends, HTTPException, status
-from pydantic import BaseModel, Field, field_validator
+from pydantic import BaseModel, Field
 from sqlalchemy import select
 from sqlalchemy.ext.asyncio import AsyncSession
 
@@ -80,14 +80,6 @@ class ChatRequest(BaseModel):
         max_length=MAX_CONVERSATION_HISTORY,
         description="Optional previous messages in the conversation",
     )
-
-    @field_validator("conversation_history")
-    @classmethod
-    def validate_history_length(cls, v: list[ChatMessage] | None) -> list[ChatMessage] | None:
-        """Validate conversation history doesn't exceed limit."""
-        if v is not None and len(v) > MAX_CONVERSATION_HISTORY:
-            raise ValueError(f"conversation_history cannot exceed {MAX_CONVERSATION_HISTORY} messages")
-        return v
 
 
 class ChatResponse(BaseModel):
