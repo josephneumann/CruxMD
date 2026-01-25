@@ -3,40 +3,74 @@
 
 @custom-variant dark (&:is(.dark *));
 
+/*
+ * CruxMD Design Tokens
+ * Based on Anthropic's brand palette
+ *
+ * Palette Reference:
+ * --------------------------------------------------
+ * Slate:  Dark #191919 | Medium #262625 | Light #40403E
+ * Cloud:  Dark #666663 | Medium #91918D | Light #BFBFBA
+ * Ivory:  Dark #E5E4DF | Medium #F0F0EB | Light #FAFAF7
+ * Warm:   Book Cloth #CC785C | Kraft #D4A27F | Manilla #EBDBBC
+ * Accent: Sage #7D8B6F | Periwinkle #8B8FC7
+ * Utility: Black #000000 | White #FFFFFF | Focus #61AAF2 | Error #BF4D43
+ */
+
 @theme inline {
+  /* Core semantic colors */
   --color-background: var(--background);
   --color-foreground: var(--foreground);
   --font-sans: var(--font-geist-sans);
   --font-mono: var(--font-geist-mono);
-  --color-sidebar-ring: var(--sidebar-ring);
-  --color-sidebar-border: var(--sidebar-border);
-  --color-sidebar-accent-foreground: var(--sidebar-accent-foreground);
-  --color-sidebar-accent: var(--sidebar-accent);
-  --color-sidebar-primary-foreground: var(--sidebar-primary-foreground);
-  --color-sidebar-primary: var(--sidebar-primary);
-  --color-sidebar-foreground: var(--sidebar-foreground);
-  --color-sidebar: var(--sidebar);
-  --color-chart-5: var(--chart-5);
-  --color-chart-4: var(--chart-4);
-  --color-chart-3: var(--chart-3);
-  --color-chart-2: var(--chart-2);
-  --color-chart-1: var(--chart-1);
-  --color-ring: var(--ring);
-  --color-input: var(--input);
-  --color-border: var(--border);
-  --color-destructive: var(--destructive);
-  --color-accent-foreground: var(--accent-foreground);
-  --color-accent: var(--accent);
-  --color-muted-foreground: var(--muted-foreground);
-  --color-muted: var(--muted);
-  --color-secondary-foreground: var(--secondary-foreground);
-  --color-secondary: var(--secondary);
-  --color-primary-foreground: var(--primary-foreground);
-  --color-primary: var(--primary);
-  --color-popover-foreground: var(--popover-foreground);
-  --color-popover: var(--popover);
-  --color-card-foreground: var(--card-foreground);
+
+  /* Component colors */
   --color-card: var(--card);
+  --color-card-foreground: var(--card-foreground);
+  --color-popover: var(--popover);
+  --color-popover-foreground: var(--popover-foreground);
+  --color-primary: var(--primary);
+  --color-primary-foreground: var(--primary-foreground);
+  --color-secondary: var(--secondary);
+  --color-secondary-foreground: var(--secondary-foreground);
+  --color-muted: var(--muted);
+  --color-muted-foreground: var(--muted-foreground);
+  --color-accent: var(--accent);
+  --color-accent-foreground: var(--accent-foreground);
+  --color-destructive: var(--destructive);
+  --color-destructive-foreground: var(--destructive-foreground);
+  --color-border: var(--border);
+  --color-input: var(--input);
+  --color-ring: var(--ring);
+
+  /* Clinical insight colors */
+  --color-insight-info: var(--insight-info);
+  --color-insight-info-foreground: var(--insight-info-foreground);
+  --color-insight-warning: var(--insight-warning);
+  --color-insight-warning-foreground: var(--insight-warning-foreground);
+  --color-insight-critical: var(--insight-critical);
+  --color-insight-critical-foreground: var(--insight-critical-foreground);
+  --color-insight-positive: var(--insight-positive);
+  --color-insight-positive-foreground: var(--insight-positive-foreground);
+
+  /* Chart colors - Anthropic palette */
+  --color-chart-1: var(--chart-1);
+  --color-chart-2: var(--chart-2);
+  --color-chart-3: var(--chart-3);
+  --color-chart-4: var(--chart-4);
+  --color-chart-5: var(--chart-5);
+
+  /* Sidebar */
+  --color-sidebar: var(--sidebar);
+  --color-sidebar-foreground: var(--sidebar-foreground);
+  --color-sidebar-primary: var(--sidebar-primary);
+  --color-sidebar-primary-foreground: var(--sidebar-primary-foreground);
+  --color-sidebar-accent: var(--sidebar-accent);
+  --color-sidebar-accent-foreground: var(--sidebar-accent-foreground);
+  --color-sidebar-border: var(--sidebar-border);
+  --color-sidebar-ring: var(--sidebar-ring);
+
+  /* Border radius */
   --radius-sm: calc(var(--radius) - 4px);
   --radius-md: calc(var(--radius) - 2px);
   --radius-lg: var(--radius);
@@ -47,72 +81,148 @@
 }
 
 :root {
-  --radius: 0.625rem;
-  --background: oklch(1 0 0);
-  --foreground: oklch(0.145 0 0);
-  --card: oklch(1 0 0);
-  --card-foreground: oklch(0.145 0 0);
-  --popover: oklch(1 0 0);
-  --popover-foreground: oklch(0.145 0 0);
-  --primary: oklch(0.205 0 0);
-  --primary-foreground: oklch(0.985 0 0);
-  --secondary: oklch(0.97 0 0);
-  --secondary-foreground: oklch(0.205 0 0);
-  --muted: oklch(0.97 0 0);
-  --muted-foreground: oklch(0.556 0 0);
-  --accent: oklch(0.97 0 0);
-  --accent-foreground: oklch(0.205 0 0);
-  --destructive: oklch(0.577 0.245 27.325);
-  --border: oklch(0.922 0 0);
-  --input: oklch(0.922 0 0);
-  --ring: oklch(0.708 0 0);
-  --chart-1: oklch(0.646 0.222 41.116);
-  --chart-2: oklch(0.6 0.118 184.704);
-  --chart-3: oklch(0.398 0.07 227.392);
-  --chart-4: oklch(0.828 0.189 84.429);
-  --chart-5: oklch(0.769 0.188 70.08);
-  --sidebar: oklch(0.985 0 0);
-  --sidebar-foreground: oklch(0.145 0 0);
-  --sidebar-primary: oklch(0.205 0 0);
-  --sidebar-primary-foreground: oklch(0.985 0 0);
-  --sidebar-accent: oklch(0.97 0 0);
-  --sidebar-accent-foreground: oklch(0.205 0 0);
-  --sidebar-border: oklch(0.922 0 0);
-  --sidebar-ring: oklch(0.708 0 0);
+  /* Base radius */
+  --radius: 0.5rem;
+
+  /*
+   * Light Mode - Anthropic Palette
+   * Background: Ivory Light | Surface: White | Text: Slate Dark
+   */
+  --background: #FAFAF7;
+  --foreground: #191919;
+
+  --card: #FFFFFF;
+  --card-foreground: #191919;
+
+  --popover: #FFFFFF;
+  --popover-foreground: #191919;
+
+  /* Primary: Book Cloth (warm terracotta) */
+  --primary: #CC785C;
+  --primary-foreground: #FFFFFF;
+
+  /* Secondary: Ivory Dark */
+  --secondary: #E5E4DF;
+  --secondary-foreground: #191919;
+
+  /* Muted: Cloud Light */
+  --muted: #F0F0EB;
+  --muted-foreground: #666663;
+
+  /* Accent: Kraft (warm tan) */
+  --accent: #EBDBBC;
+  --accent-foreground: #191919;
+
+  /* Destructive: Error red */
+  --destructive: #BF4D43;
+  --destructive-foreground: #FFFFFF;
+
+  /* Borders and inputs */
+  --border: #E5E4DF;
+  --input: #E5E4DF;
+  --ring: #CC785C;
+
+  /*
+   * Clinical Insight Colors (Light Mode)
+   */
+  --insight-info: #61AAF2;
+  --insight-info-foreground: #FFFFFF;
+  --insight-warning: #D4A27F;
+  --insight-warning-foreground: #191919;
+  --insight-critical: #BF4D43;
+  --insight-critical-foreground: #FFFFFF;
+  --insight-positive: #7D8B6F;
+  --insight-positive-foreground: #FFFFFF;
+
+  /*
+   * Chart Colors - Warm Anthropic palette
+   */
+  --chart-1: #CC785C;  /* Book Cloth - primary data */
+  --chart-2: #7D8B6F;  /* Sage - secondary data */
+  --chart-3: #8B8FC7;  /* Periwinkle - tertiary */
+  --chart-4: #D4A27F;  /* Kraft - quaternary */
+  --chart-5: #61AAF2;  /* Focus blue - quinary */
+
+  /* Sidebar */
+  --sidebar: #F0F0EB;
+  --sidebar-foreground: #191919;
+  --sidebar-primary: #CC785C;
+  --sidebar-primary-foreground: #FFFFFF;
+  --sidebar-accent: #E5E4DF;
+  --sidebar-accent-foreground: #191919;
+  --sidebar-border: #E5E4DF;
+  --sidebar-ring: #CC785C;
 }
 
 .dark {
-  --background: oklch(0.145 0 0);
-  --foreground: oklch(0.985 0 0);
-  --card: oklch(0.205 0 0);
-  --card-foreground: oklch(0.985 0 0);
-  --popover: oklch(0.205 0 0);
-  --popover-foreground: oklch(0.985 0 0);
-  --primary: oklch(0.922 0 0);
-  --primary-foreground: oklch(0.205 0 0);
-  --secondary: oklch(0.269 0 0);
-  --secondary-foreground: oklch(0.985 0 0);
-  --muted: oklch(0.269 0 0);
-  --muted-foreground: oklch(0.708 0 0);
-  --accent: oklch(0.269 0 0);
-  --accent-foreground: oklch(0.985 0 0);
-  --destructive: oklch(0.704 0.191 22.216);
-  --border: oklch(1 0 0 / 10%);
-  --input: oklch(1 0 0 / 15%);
-  --ring: oklch(0.556 0 0);
-  --chart-1: oklch(0.488 0.243 264.376);
-  --chart-2: oklch(0.696 0.17 162.48);
-  --chart-3: oklch(0.769 0.188 70.08);
-  --chart-4: oklch(0.627 0.265 303.9);
-  --chart-5: oklch(0.645 0.246 16.439);
-  --sidebar: oklch(0.205 0 0);
-  --sidebar-foreground: oklch(0.985 0 0);
-  --sidebar-primary: oklch(0.488 0.243 264.376);
-  --sidebar-primary-foreground: oklch(0.985 0 0);
-  --sidebar-accent: oklch(0.269 0 0);
-  --sidebar-accent-foreground: oklch(0.985 0 0);
-  --sidebar-border: oklch(1 0 0 / 10%);
-  --sidebar-ring: oklch(0.556 0 0);
+  /*
+   * Dark Mode - Anthropic Palette
+   * Background: Slate Dark | Surface: Slate Medium | Text: Ivory Light
+   */
+  --background: #191919;
+  --foreground: #FAFAF7;
+
+  --card: #262625;
+  --card-foreground: #FAFAF7;
+
+  --popover: #262625;
+  --popover-foreground: #FAFAF7;
+
+  /* Primary: Book Cloth (stays warm) */
+  --primary: #CC785C;
+  --primary-foreground: #FFFFFF;
+
+  /* Secondary: Slate Light */
+  --secondary: #40403E;
+  --secondary-foreground: #FAFAF7;
+
+  /* Muted: Slate Medium */
+  --muted: #262625;
+  --muted-foreground: #BFBFBA;
+
+  /* Accent: Kraft (slightly muted in dark) */
+  --accent: #40403E;
+  --accent-foreground: #FAFAF7;
+
+  /* Destructive: Error red (brighter in dark) */
+  --destructive: #D4645A;
+  --destructive-foreground: #FFFFFF;
+
+  /* Borders and inputs */
+  --border: #40403E;
+  --input: #40403E;
+  --ring: #CC785C;
+
+  /*
+   * Clinical Insight Colors (Dark Mode - slightly adjusted for contrast)
+   */
+  --insight-info: #7BBAF5;
+  --insight-info-foreground: #191919;
+  --insight-warning: #EBDBBC;
+  --insight-warning-foreground: #191919;
+  --insight-critical: #D4645A;
+  --insight-critical-foreground: #FFFFFF;
+  --insight-positive: #9AAB8F;
+  --insight-positive-foreground: #191919;
+
+  /*
+   * Chart Colors - Adjusted for dark mode visibility
+   */
+  --chart-1: #D4907A;  /* Lighter Book Cloth */
+  --chart-2: #9AAB8F;  /* Lighter Sage */
+  --chart-3: #A5A9D6;  /* Lighter Periwinkle */
+  --chart-4: #EBDBBC;  /* Manilla */
+  --chart-5: #7BBAF5;  /* Lighter Focus blue */
+
+  /* Sidebar */
+  --sidebar: #262625;
+  --sidebar-foreground: #FAFAF7;
+  --sidebar-primary: #CC785C;
+  --sidebar-primary-foreground: #FFFFFF;
+  --sidebar-accent: #40403E;
+  --sidebar-accent-foreground: #FAFAF7;
+  --sidebar-border: #40403E;
+  --sidebar-ring: #CC785C;
 }
 
 @layer base {
@@ -121,5 +231,8 @@
   }
   body {
     @apply bg-background text-foreground;
+    /* Anthropic uses a slightly warm anti-aliasing */
+    -webkit-font-smoothing: antialiased;
+    -moz-osx-font-smoothing: grayscale;
   }
 }
