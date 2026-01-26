@@ -1,7 +1,6 @@
 import Image from "next/image";
 import Link from "next/link";
 import {
-  Github,
   Lock,
   Clock,
   Code,
@@ -13,34 +12,12 @@ import {
 import { Button } from "@/components/ui/button";
 import { Card, CardHeader, CardTitle, CardContent } from "@/components/ui/card";
 import { InsightCard } from "@/components/clinical/InsightCard";
+import { Header } from "@/components/Header";
 
 export default function Home() {
   return (
     <div className="min-h-screen bg-background">
-      {/* Header */}
-      <header className="flex items-center justify-between px-8 py-4 border-b border-border">
-        <Link href="/">
-          <Image
-            src="/brand/wordmark-primary.svg"
-            alt="CruxMD"
-            width={140}
-            height={32}
-            priority
-          />
-        </Link>
-        <nav className="flex items-center gap-4">
-          <Button variant="ghost" size="icon" asChild>
-            <a
-              href="https://github.com/josephneumann/CruxMD"
-              target="_blank"
-              rel="noopener noreferrer"
-              aria-label="View on GitHub"
-            >
-              <Github className="size-5" />
-            </a>
-          </Button>
-        </nav>
-      </header>
+      <Header />
 
       <main>
         {/* Hero */}

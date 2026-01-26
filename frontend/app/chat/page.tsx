@@ -6,7 +6,6 @@
 
 import { useState, useEffect } from "react";
 import Image from "next/image";
-import Link from "next/link";
 import dynamic from "next/dynamic";
 import {
   Plus,
@@ -76,18 +75,6 @@ export default function ChatPage() {
 
   return (
     <div className="flex min-h-screen flex-col bg-background">
-      {/* Header */}
-      <header className="flex items-center justify-between px-6 py-3 border-b border-border">
-        <Link href="/">
-          <Image
-            src="/brand/wordmark-primary.svg"
-            alt="CruxMD"
-            width={120}
-            height={28}
-            priority
-          />
-        </Link>
-      </header>
 
       {/* Main content - centered */}
       <main className="flex-1 flex flex-col items-center justify-center px-4 pb-32">
