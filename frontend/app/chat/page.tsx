@@ -4,9 +4,10 @@
  * Chat page - Main conversational canvas styled like Claude.ai
  */
 
-import { useState } from "react";
+import { useState, useEffect } from "react";
 import Image from "next/image";
 import Link from "next/link";
+import dynamic from "next/dynamic";
 import {
   Plus,
   Clock,
@@ -19,8 +20,51 @@ import {
 } from "lucide-react";
 import { Button } from "@/components/ui/button";
 
+// Dynamically import Lottie to avoid SSR issues
+const Lottie = dynamic(() => import("lottie-react"), { ssr: false });
+
+// Clinical reasoning verbs for the thinking animation
+const THINKING_VERBS = [
+  "Researching",
+  "Reviewing history",
+  "Considering differential",
+  "Analyzing labs",
+  "Cross-referencing",
+  "Refining thinking",
+  "Ruling out",
+  "Synthesizing",
+  "Correlating findings",
+  "Checking interactions",
+];
+
 export default function ChatPage() {
   const [inputValue, setInputValue] = useState("");
+  const [isThinking, setIsThinking] = useState(false);
+  const [thinkingVerbIndex, setThinkingVerbIndex] = useState(0);
+  const [lottieData, setLottieData] = useState<object | null>(null);
+
+  // Load Lottie animation data
+  useEffect(() => {
+    fetch("/brand/crux-spin.json")
+      .then((res) => res.json())
+      .then((data) => setLottieData(data));
+  }, []);
+
+  // Cycle through thinking verbs
+  useEffect(() => {
+    if (!isThinking) return;
+    const interval = setInterval(() => {
+      setThinkingVerbIndex((prev) => (prev + 1) % THINKING_VERBS.length);
+    }, 2000);
+    return () => clearInterval(interval);
+  }, [isThinking]);
+
+  // Handle message submission
+  const handleSubmit = () => {
+    if (!inputValue.trim()) return;
+    setIsThinking(true);
+    setInputValue("");
+  };
 
   // Get time-based greeting
   const getGreeting = () => {
@@ -48,18 +92,35 @@ export default function ChatPage() {
       {/* Main content - centered */}
       <main className="flex-1 flex flex-col items-center justify-center px-4 pb-32">
         <div className="w-full max-w-2xl flex flex-col items-center">
-          {/* Greeting with mark */}
-          <div className="flex items-center gap-3 mb-8">
-            <Image
-              src="/brand/mark-primary.svg"
-              alt=""
-              width={40}
-              height={40}
-            />
-            <h1 className="text-3xl md:text-4xl font-light text-foreground">
-              {getGreeting()}, <span className="font-normal">Dr. Neumann</span>
-            </h1>
-          </div>
+          {/* Thinking state or Greeting */}
+          {isThinking ? (
+            <div className="flex flex-col items-center gap-4 mb-8">
+              {lottieData && (
+                <div className="w-16 h-16">
+                  <Lottie
+                    animationData={lottieData}
+                    loop={true}
+                    style={{ width: "100%", height: "100%" }}
+                  />
+                </div>
+              )}
+              <p className="text-lg text-muted-foreground animate-pulse transition-opacity duration-500">
+                {THINKING_VERBS[thinkingVerbIndex]}...
+              </p>
+            </div>
+          ) : (
+            <div className="flex items-center gap-3 mb-8">
+              <Image
+                src="/brand/mark-primary.svg"
+                alt=""
+                width={40}
+                height={40}
+              />
+              <h1 className="text-3xl md:text-4xl font-light text-foreground">
+                {getGreeting()}, <span className="font-normal">Dr. Neumann</span>
+              </h1>
+            </div>
+          )}
 
           {/* Input card */}
           <div className="w-full bg-card rounded-2xl border border-border shadow-sm">
@@ -71,6 +132,13 @@ export default function ChatPage() {
                 placeholder="How can I help you today?"
                 className="w-full bg-transparent text-foreground placeholder:text-muted-foreground resize-none outline-none text-base min-h-[24px] max-h-[200px]"
                 rows={1}
+                disabled={isThinking}
+                onKeyDown={(e) => {
+                  if (e.key === "Enter" && !e.shiftKey) {
+                    e.preventDefault();
+                    handleSubmit();
+                  }
+                }}
                 onInput={(e) => {
                   const target = e.target as HTMLTextAreaElement;
                   target.style.height = "auto";
@@ -114,7 +182,8 @@ export default function ChatPage() {
                 <Button
                   size="icon"
                   className="h-8 w-8 rounded-lg"
-                  disabled={!inputValue.trim()}
+                  disabled={!inputValue.trim() || isThinking}
+                  onClick={handleSubmit}
                 >
                   <ArrowUp className="h-4 w-4" />
                 </Button>
