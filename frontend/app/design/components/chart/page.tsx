@@ -2,6 +2,7 @@
 
 import { Card, CardHeader, CardTitle, CardContent } from "@/components/ui/card";
 import { Badge } from "@/components/ui/badge";
+import { CodeBlock } from "@/components/design-system/CodeBlock";
 import {
   LineChart,
   Line,
@@ -304,11 +305,10 @@ export default function ChartPage() {
       </div>
 
       {/* Usage */}
-      <div className="space-y-4">
-        <h2 className="text-2xl font-medium">Usage</h2>
-        <div className="rounded-lg border bg-muted p-4">
-          <pre className="text-sm font-mono overflow-x-auto">
-            <code>{`import {
+      <CodeBlock
+        collapsible
+        label="View Code"
+        code={`import {
   LineChart, Line, XAxis, YAxis,
   CartesianGrid, Tooltip, ResponsiveContainer
 } from "recharts";
@@ -331,10 +331,8 @@ const data = [
       strokeWidth={2}
     />
   </LineChart>
-</ResponsiveContainer>`}</code>
-          </pre>
-        </div>
-      </div>
+</ResponsiveContainer>`}
+      />
     </div>
   );
 }

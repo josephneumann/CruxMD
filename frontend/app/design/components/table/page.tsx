@@ -1,5 +1,8 @@
+"use client";
+
 import { Badge } from "@/components/ui/badge";
 import { Card, CardHeader, CardTitle, CardContent } from "@/components/ui/card";
+import { CodeBlock } from "@/components/design-system/CodeBlock";
 import { TrendingUp, TrendingDown, Minus } from "lucide-react";
 
 const labResults = [
@@ -200,11 +203,10 @@ export default function TablePage() {
       </div>
 
       {/* Usage */}
-      <div className="space-y-4">
-        <h2 className="text-2xl font-medium">Usage</h2>
-        <div className="rounded-lg border bg-muted p-4">
-          <pre className="text-sm font-mono overflow-x-auto">
-            <code>{`// Table with Card wrapper
+      <CodeBlock
+        collapsible
+        label="View Code"
+        code={`// Table with Card wrapper
 <Card>
   <CardHeader>
     <CardTitle>Table Title</CardTitle>
@@ -231,10 +233,8 @@ export default function TablePage() {
 // Status badges in tables
 <Badge variant="positive" size="sm">Normal</Badge>
 <Badge variant="warning" size="sm">High</Badge>
-<Badge variant="critical" size="sm">Critical</Badge>`}</code>
-          </pre>
-        </div>
-      </div>
+<Badge variant="critical" size="sm">Critical</Badge>`}
+      />
     </div>
   );
 }

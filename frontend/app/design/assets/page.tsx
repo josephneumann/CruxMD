@@ -4,6 +4,7 @@ import { useState } from "react";
 import Image from "next/image";
 import { Check, Copy, Download } from "lucide-react";
 import { cn } from "@/lib/utils";
+import { CodeBlock } from "@/components/design-system/CodeBlock";
 
 interface AssetCardProps {
   name: string;
@@ -255,9 +256,10 @@ export default function AssetsPage() {
       {/* Code Example */}
       <div className="space-y-6">
         <h2 className="text-2xl font-medium">Usage in Code</h2>
-        <div className="rounded-lg border bg-muted p-4">
-          <pre className="text-sm font-mono overflow-x-auto">
-            <code>{`import Image from "next/image"
+        <CodeBlock
+          collapsible
+          label="Theme-Aware Logo Component"
+          code={`import Image from "next/image"
 import { useTheme } from "next-themes"
 
 function Logo() {
@@ -276,9 +278,8 @@ function Logo() {
       priority
     />
   )
-}`}</code>
-          </pre>
-        </div>
+}`}
+        />
       </div>
 
       {/* HTML Implementation */}
@@ -289,11 +290,11 @@ function Logo() {
         </p>
 
         <div className="space-y-4">
-          <div>
-            <h3 className="font-medium mb-2">Minimal (covers 99% of use cases)</h3>
-            <div className="rounded-lg border bg-muted p-4">
-              <pre className="text-sm font-mono overflow-x-auto">
-                <code>{`<!-- Favicon (SVG + ICO fallback) -->
+          <CodeBlock
+            collapsible
+            label="Minimal Head Tags"
+            language="html"
+            code={`<!-- Favicon (SVG + ICO fallback) -->
 <link rel="icon" href="/favicon.svg" type="image/svg+xml">
 <link rel="icon" href="/favicon.ico" sizes="32x32">
 
@@ -304,16 +305,14 @@ function Logo() {
 <link rel="manifest" href="/manifest.webmanifest">
 
 <!-- Theme Color -->
-<meta name="theme-color" content="#CC785C">`}</code>
-              </pre>
-            </div>
-          </div>
+<meta name="theme-color" content="#CC785C">`}
+          />
 
-          <div>
-            <h3 className="font-medium mb-2">Open Graph (Social Sharing)</h3>
-            <div className="rounded-lg border bg-muted p-4">
-              <pre className="text-sm font-mono overflow-x-auto">
-                <code>{`<!-- Open Graph -->
+          <CodeBlock
+            collapsible
+            label="Open Graph (Social Sharing)"
+            language="html"
+            code={`<!-- Open Graph -->
 <meta property="og:type" content="website">
 <meta property="og:image" content="https://cruxmd.ai/og-image.png">
 <meta property="og:image:width" content="1200">
@@ -322,16 +321,14 @@ function Logo() {
 
 <!-- Twitter Card -->
 <meta name="twitter:card" content="summary_large_image">
-<meta name="twitter:image" content="https://cruxmd.ai/og-image-twitter.png">`}</code>
-              </pre>
-            </div>
-          </div>
+<meta name="twitter:image" content="https://cruxmd.ai/og-image-twitter.png">`}
+          />
 
-          <div>
-            <h3 className="font-medium mb-2">manifest.webmanifest</h3>
-            <div className="rounded-lg border bg-muted p-4">
-              <pre className="text-sm font-mono overflow-x-auto">
-                <code>{`{
+          <CodeBlock
+            collapsible
+            label="manifest.webmanifest"
+            language="json"
+            code={`{
   "name": "CruxMD",
   "short_name": "CruxMD",
   "description": "Clinical intelligence for physicians",
@@ -357,10 +354,8 @@ function Logo() {
       "purpose": "maskable"
     }
   ]
-}`}</code>
-              </pre>
-            </div>
-          </div>
+}`}
+          />
         </div>
       </div>
     </div>

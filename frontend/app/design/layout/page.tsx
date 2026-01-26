@@ -1,3 +1,7 @@
+"use client";
+
+import { CodeBlock } from "@/components/design-system/CodeBlock";
+
 export default function LayoutPage() {
   const spacingScale = [
     { token: "0", value: "0px", use: "None" },
@@ -249,11 +253,10 @@ export default function LayoutPage() {
       </div>
 
       {/* Usage */}
-      <div className="space-y-4">
-        <h2 className="text-2xl font-medium">Usage</h2>
-        <div className="rounded-lg border bg-muted p-4">
-          <pre className="text-sm font-mono overflow-x-auto">
-            <code>{`// Tailwind spacing classes map to the scale
+      <CodeBlock
+        collapsible
+        label="View Code"
+        code={`// Tailwind spacing classes map to the scale
 <div className="p-4">      {/* 16px padding */}
 <div className="p-5">      {/* 20px padding */}
 <div className="gap-6">    {/* 24px gap */}
@@ -267,10 +270,8 @@ export default function LayoutPage() {
 // Content width constraints
 <div className="max-w-prose">     {/* ~65ch, for text */}
 <div className="max-w-3xl">       {/* 768px */}
-<div className="max-w-5xl">       {/* 1024px */}`}</code>
-          </pre>
-        </div>
-      </div>
+<div className="max-w-5xl">       {/* 1024px */}`}
+      />
     </div>
   );
 }

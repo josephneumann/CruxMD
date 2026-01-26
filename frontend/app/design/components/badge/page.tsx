@@ -1,4 +1,7 @@
+"use client";
+
 import { Badge } from "@/components/ui/badge";
+import { CodeBlock } from "@/components/design-system/CodeBlock";
 import { FlaskConical, Pill, Calendar } from "lucide-react";
 
 export default function BadgePage() {
@@ -99,11 +102,10 @@ export default function BadgePage() {
       </div>
 
       {/* Code Example */}
-      <div className="space-y-4">
-        <h2 className="text-2xl font-medium">Usage</h2>
-        <div className="rounded-lg border bg-muted p-4">
-          <pre className="text-sm font-mono overflow-x-auto">
-            <code>{`import { Badge } from "@/components/ui/badge"
+      <CodeBlock
+        collapsible
+        label="View Code"
+        code={`import { Badge } from "@/components/ui/badge"
 import { FlaskConical } from "lucide-react"
 
 // Base variants
@@ -121,10 +123,8 @@ import { FlaskConical } from "lucide-react"
 <Badge variant="periwinkle" className="gap-1">
   <FlaskConical className="size-3" />
   Lab
-</Badge>`}</code>
-          </pre>
-        </div>
-      </div>
+</Badge>`}
+      />
 
       {/* Props */}
       <div className="space-y-4">
