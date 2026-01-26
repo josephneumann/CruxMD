@@ -17,17 +17,17 @@ import { ComponentPreview, PreviewGrid } from "@/components/design-system/Compon
 import { PropsTable } from "@/components/design-system/PropsTable";
 import { cn } from "@/lib/utils";
 import {
-  MoreHorizontal,
   Heart,
   Activity,
   Thermometer,
-  Wind,
   Droplets,
   TrendingUp,
   Minus,
   AlertCircle,
   Pill,
   Stethoscope,
+  FileText,
+  TestTube,
 } from "lucide-react";
 
 const cardComponents = [
@@ -86,25 +86,18 @@ export default function CardPage() {
         </p>
       </div>
 
-      {/* Basic Card */}
+      {/* Basic Examples */}
       <div className="space-y-6">
-        <h2 className="text-2xl font-medium">Basic Card</h2>
-        <ComponentPreview
-          title="Simple card"
-          description="Card with header and content"
-          code={`<Card>
-  <CardHeader>
-    <CardTitle>Patient Summary</CardTitle>
-    <CardDescription>Last updated 2 hours ago</CardDescription>
-  </CardHeader>
-  <CardContent>
-    <p>Patient is a 45-year-old male with history of hypertension.</p>
-  </CardContent>
-</Card>`}
-        >
-          <Card className="w-80">
+        <h2 className="text-2xl font-medium">Basic Examples</h2>
+        <div className="flex flex-wrap gap-4">
+          {/* Basic Card */}
+          <Card className="w-80 relative">
+            <Badge variant="sage" size="sm" className="absolute top-3 right-3">Active</Badge>
             <CardHeader>
-              <CardTitle>Patient Summary</CardTitle>
+              <CardTitle className="flex items-center gap-2">
+                <FileText className="size-4" />
+                Patient Summary
+              </CardTitle>
               <CardDescription>Last updated 2 hours ago</CardDescription>
             </CardHeader>
             <CardContent>
@@ -113,32 +106,15 @@ export default function CardPage() {
               </p>
             </CardContent>
           </Card>
-        </ComponentPreview>
-      </div>
 
-      {/* With Footer */}
-      <div className="space-y-6">
-        <h2 className="text-2xl font-medium">With Footer</h2>
-        <ComponentPreview
-          title="Card with footer"
-          description="Card with action buttons in the footer"
-          code={`<Card>
-  <CardHeader>
-    <CardTitle>Lab Results</CardTitle>
-    <CardDescription>Complete blood count</CardDescription>
-  </CardHeader>
-  <CardContent>
-    <p>All values within normal range.</p>
-  </CardContent>
-  <CardFooter className="gap-2">
-    <Button size="sm">View Details</Button>
-    <Button size="sm" variant="outline">Download PDF</Button>
-  </CardFooter>
-</Card>`}
-        >
-          <Card className="w-80">
+          {/* Card with Footer */}
+          <Card className="w-80 relative">
+            <Badge variant="periwinkle" size="sm" className="absolute top-3 right-3">New</Badge>
             <CardHeader>
-              <CardTitle>Lab Results</CardTitle>
+              <CardTitle className="flex items-center gap-2">
+                <TestTube className="size-4" />
+                Lab Results
+              </CardTitle>
               <CardDescription>Complete blood count</CardDescription>
             </CardHeader>
             <CardContent>
@@ -148,50 +124,10 @@ export default function CardPage() {
             </CardContent>
             <CardFooter className="gap-2">
               <Button size="sm">View Details</Button>
-              <Button size="sm" variant="outline">Download PDF</Button>
+              <Button size="sm" variant="outline">Download</Button>
             </CardFooter>
           </Card>
-        </ComponentPreview>
-      </div>
-
-      {/* With Header Action */}
-      <div className="space-y-6">
-        <h2 className="text-2xl font-medium">With Header Action</h2>
-        <ComponentPreview
-          title="Card with action button"
-          description="Using CardAction for a menu button"
-          code={`<Card>
-  <CardHeader>
-    <CardTitle>Recent Visits</CardTitle>
-    <CardDescription>3 visits in the last month</CardDescription>
-    <CardAction>
-      <Button variant="ghost" size="icon-sm">
-        <MoreHorizontal className="size-4" />
-      </Button>
-    </CardAction>
-  </CardHeader>
-  <CardContent>
-    <p>View the patient's recent visit history.</p>
-  </CardContent>
-</Card>`}
-        >
-          <Card className="w-80">
-            <CardHeader>
-              <CardTitle>Recent Visits</CardTitle>
-              <CardDescription>3 visits in the last month</CardDescription>
-              <CardAction>
-                <Button variant="ghost" size="icon-sm">
-                  <MoreHorizontal className="size-4" />
-                </Button>
-              </CardAction>
-            </CardHeader>
-            <CardContent>
-              <p className="text-sm text-muted-foreground">
-                View the patient&apos;s recent visit history.
-              </p>
-            </CardContent>
-          </Card>
-        </ComponentPreview>
+        </div>
       </div>
 
       {/* Card Grid */}
