@@ -9,7 +9,7 @@ import {
   Plus,
   Search,
   Users,
-  MessageSquare,
+  CheckSquare,
   ChevronDown,
   ChevronUp,
 } from "lucide-react";
@@ -34,7 +34,7 @@ const NAV_ITEMS = [
   { icon: Plus, label: "New chat", href: "/chat" },
   { icon: Search, label: "Search", href: "#" },
   { icon: Users, label: "Patients", href: "#" },
-  { icon: MessageSquare, label: "Incomplete Sessions", href: "#" },
+  { icon: CheckSquare, label: "Tasks", href: "/tasks" },
 ];
 
 export function Sidebar({ className }: SidebarProps) {
