@@ -204,14 +204,6 @@ export default function CardPage() {
                 </div>
               </div>
             </div>
-
-            <div className="mt-4 pt-4 border-t">
-              <p className="text-sm font-medium mb-1.5">Allergies</p>
-              <div className="flex flex-wrap gap-1.5">
-                <Badge variant="outline" size="sm">Penicillin</Badge>
-                <Badge variant="outline" size="sm">Latex</Badge>
-              </div>
-            </div>
           </Card>
         </div>
       </div>
