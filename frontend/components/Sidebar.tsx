@@ -1,8 +1,9 @@
 "use client";
 
-import { useState } from "react";
+import { useState, useEffect } from "react";
 import Image from "next/image";
 import Link from "next/link";
+import { useTheme } from "next-themes";
 import {
   PanelLeftClose,
   PanelLeft,
@@ -40,6 +41,17 @@ const NAV_ITEMS = [
 export function Sidebar({ className }: SidebarProps) {
   const [isExpanded, setIsExpanded] = useState(false);
   const [isRecentsExpanded, setIsRecentsExpanded] = useState(true);
+  const { resolvedTheme } = useTheme();
+  const [mounted, setMounted] = useState(false);
+
+  // Avoid hydration mismatch by only rendering theme-dependent content after mount
+  useEffect(() => {
+    setMounted(true);
+  }, []);
+
+  const wordmarkSrc = mounted && resolvedTheme === "dark"
+    ? "/brand/wordmark-reversed.svg"
+    : "/brand/wordmark-primary.svg";
 
   return (
     <aside
@@ -54,7 +66,7 @@ export function Sidebar({ className }: SidebarProps) {
         {isExpanded ? (
           <Link href="/" className="flex items-center">
             <Image
-              src="/brand/wordmark-primary.svg"
+              src={wordmarkSrc}
               alt="CruxMD"
               width={100}
               height={24}
