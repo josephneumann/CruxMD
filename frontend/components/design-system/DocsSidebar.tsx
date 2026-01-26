@@ -38,6 +38,7 @@ const navigation: NavItem[] = [
       { title: "Badge", href: "/design/components/badge" },
       { title: "Card", href: "/design/components/card" },
       { title: "Table", href: "/design/components/table" },
+      { title: "Chart", href: "/design/components/chart" },
       { title: "Alert", href: "/design/components/alert" },
       { title: "Avatar", href: "/design/components/avatar" },
       { title: "Select", href: "/design/components/select" },

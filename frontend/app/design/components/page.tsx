@@ -57,6 +57,22 @@ const components = [
     ),
   },
   {
+    name: "Chart",
+    description: "Clinical data visualizations",
+    href: "/design/components/chart",
+    preview: (
+      <svg viewBox="0 0 80 32" className="w-20 h-8">
+        <polyline
+          fill="none"
+          stroke="#7D8B6F"
+          strokeWidth="2"
+          points="0,28 20,22 40,20 60,14 80,8"
+        />
+        <circle cx="80" cy="8" r="3" fill="#7D8B6F" />
+      </svg>
+    ),
+  },
+  {
     name: "Alert",
     description: "Clinical insights with severity colors",
     href: "/design/components/alert",
