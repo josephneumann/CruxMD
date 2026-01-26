@@ -333,9 +333,9 @@ function VitalSignCard({
   return (
     <Card
       className={cn(
-        "cursor-pointer transition-all duration-200 select-none",
+        "cursor-pointer transition-all duration-200 select-none w-[180px]",
         isAbnormal && "border-destructive/50",
-        expanded ? "w-[180px] h-[160px] p-3" : "px-3 py-2"
+        expanded ? "h-[160px] p-3" : "px-3 py-2"
       )}
       onClick={() => setExpanded(!expanded)}
     >
