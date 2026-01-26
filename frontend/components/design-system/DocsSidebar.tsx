@@ -1,7 +1,10 @@
 "use client";
 
+import { useState, useEffect } from "react";
+import Image from "next/image";
 import Link from "next/link";
 import { usePathname } from "next/navigation";
+import { useTheme } from "next-themes";
 import { cn } from "@/lib/utils";
 import {
   Palette,
@@ -9,6 +12,7 @@ import {
   Component,
   Smile,
   Home,
+  Image as ImageIcon,
 } from "lucide-react";
 
 interface NavItem {
@@ -20,6 +24,7 @@ interface NavItem {
 
 const navigation: NavItem[] = [
   { title: "Overview", href: "/design", icon: Home },
+  { title: "Assets", href: "/design/assets", icon: ImageIcon },
   { title: "Colors", href: "/design/colors", icon: Palette },
   { title: "Typography", href: "/design/typography", icon: Type },
   {
@@ -40,14 +45,30 @@ const navigation: NavItem[] = [
 
 export function DocsSidebar() {
   const pathname = usePathname();
+  const { resolvedTheme } = useTheme();
+  const [mounted, setMounted] = useState(false);
+
+  useEffect(() => {
+    setMounted(true);
+  }, []);
+
+  const wordmarkSrc = mounted && resolvedTheme === "dark"
+    ? "/brand/wordmark-reversed.svg"
+    : "/brand/wordmark-primary.svg";
 
   return (
     <aside className="w-64 border-r bg-muted/30 p-6 overflow-y-auto">
       <div className="mb-8">
         <Link href="/design" className="flex items-center gap-2">
-          <span className="text-lg font-semibold">Design System</span>
+          <Image
+            src={wordmarkSrc}
+            alt="CruxMD"
+            width={100}
+            height={24}
+            priority
+          />
         </Link>
-        <p className="text-sm text-muted-foreground mt-1">CruxMD Components</p>
+        <p className="text-sm text-muted-foreground mt-1">Design System</p>
       </div>
       <nav className="space-y-1">
         {navigation.map((item) => {
