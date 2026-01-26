@@ -196,14 +196,13 @@ export default function ColorsPage() {
               interactive states and visual depth.
             </p>
           </div>
-          <div className="grid grid-cols-2 md:grid-cols-4 gap-3">
+          <div className="grid grid-cols-2 md:grid-cols-3 lg:grid-cols-4 gap-3">
             {PALETTE.accent.map((color) => (
               <ColorSwatch
                 key={color.name}
                 name={color.name}
                 value={color.value}
                 description={color.description}
-                large
               />
             ))}
           </div>
