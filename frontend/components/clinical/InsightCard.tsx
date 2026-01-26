@@ -29,13 +29,13 @@ const INSIGHT_ICONS: Record<InsightType, React.ComponentType<{ className?: strin
 /**
  * Maps insight types to their Tailwind color classes.
  * Uses the semantic insight color tokens from globals.css.
- * Dark mode uses higher opacity backgrounds for better visibility.
+ * Higher opacity backgrounds for better visual distinction between severity types.
  */
 const INSIGHT_STYLES: Record<InsightType, string> = {
-  info: "border-insight-info bg-insight-info/10 dark:bg-insight-info/20 text-foreground [&>svg]:text-insight-info",
-  warning: "border-insight-warning bg-insight-warning/10 dark:bg-insight-warning/20 text-foreground [&>svg]:text-insight-warning",
-  critical: "border-insight-critical bg-insight-critical/10 dark:bg-insight-critical/20 text-foreground [&>svg]:text-insight-critical",
-  positive: "border-insight-positive bg-insight-positive/10 dark:bg-insight-positive/20 text-foreground [&>svg]:text-insight-positive",
+  info: "border-insight-info bg-insight-info/20 dark:bg-insight-info/30 text-foreground [&>svg]:text-insight-info",
+  warning: "border-insight-warning bg-insight-warning/20 dark:bg-insight-warning/30 text-foreground [&>svg]:text-insight-warning",
+  critical: "border-insight-critical bg-insight-critical/20 dark:bg-insight-critical/30 text-foreground [&>svg]:text-insight-critical",
+  positive: "border-insight-positive bg-insight-positive/20 dark:bg-insight-positive/30 text-foreground [&>svg]:text-insight-positive",
 };
 
 /**
