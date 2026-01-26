@@ -335,7 +335,7 @@ function VitalSignCard({
       className={cn(
         "cursor-pointer transition-all duration-200 select-none",
         isAbnormal && "border-destructive/50",
-        expanded ? "w-[180px] p-3" : "px-3 py-2"
+        expanded ? "w-[180px] h-[160px] p-3" : "px-3 py-2"
       )}
       onClick={() => setExpanded(!expanded)}
     >
@@ -373,10 +373,10 @@ function VitalSignCard({
           </Badge>
         </div>
       ) : (
-        <div className="flex items-center gap-3">
+        <div className="flex items-center gap-2">
           {icon}
-          <span className="text-sm font-medium">{label}</span>
-          <span className="text-sm font-semibold">{value} {unit}</span>
+          <span className="text-sm font-semibold">{value}</span>
+          <span className="text-xs text-muted-foreground">{unit}</span>
           {trendIcon}
         </div>
       )}
