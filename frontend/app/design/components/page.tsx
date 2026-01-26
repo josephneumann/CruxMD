@@ -45,6 +45,18 @@ const components = [
     ),
   },
   {
+    name: "Table",
+    description: "Structured data with status badges",
+    href: "/design/components/table",
+    preview: (
+      <div className="flex items-center gap-2 text-xs">
+        <span className="font-medium">K+</span>
+        <span className="text-[#BF4D43]">6.2</span>
+        <Badge variant="critical" size="sm" className="text-[10px]">Critical</Badge>
+      </div>
+    ),
+  },
+  {
     name: "Alert",
     description: "Clinical insights with severity colors",
     href: "/design/components/alert",

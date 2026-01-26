@@ -37,6 +37,7 @@ const navigation: NavItem[] = [
       { title: "Button", href: "/design/components/button" },
       { title: "Badge", href: "/design/components/badge" },
       { title: "Card", href: "/design/components/card" },
+      { title: "Table", href: "/design/components/table" },
       { title: "Alert", href: "/design/components/alert" },
       { title: "Avatar", href: "/design/components/avatar" },
       { title: "Select", href: "/design/components/select" },
