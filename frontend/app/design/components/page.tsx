@@ -45,15 +45,15 @@ const components = [
     ),
   },
   {
-    name: "InsightCard",
+    name: "Alert",
     description: "Clinical insights with severity colors",
-    href: "/design/components/insight-card",
+    href: "/design/components/alert",
     preview: (
       <div className="flex gap-2">
-        <div className="size-6 rounded bg-insight-info" />
-        <div className="size-6 rounded bg-insight-warning" />
-        <div className="size-6 rounded bg-insight-critical" />
-        <div className="size-6 rounded bg-insight-positive" />
+        <div className="h-6 w-1 rounded-full bg-insight-info" />
+        <div className="h-6 w-1 rounded-full bg-insight-warning" />
+        <div className="h-6 w-1 rounded-full bg-insight-critical" />
+        <div className="h-6 w-1 rounded-full bg-insight-positive" />
       </div>
     ),
   },
