@@ -92,35 +92,29 @@ export default function ChatPage() {
       {/* Main content - centered */}
       <main className="flex-1 flex flex-col items-center justify-center px-4 pb-32">
         <div className="w-full max-w-2xl flex flex-col items-center">
-          {/* Thinking state or Greeting */}
-          {isThinking ? (
-            <div className="flex flex-col items-center gap-4 mb-8">
-              {lottieData && (
-                <div className="w-16 h-16">
-                  <Lottie
-                    animationData={lottieData}
-                    loop={true}
-                    style={{ width: "100%", height: "100%" }}
-                  />
-                </div>
-              )}
-              <p className="text-lg text-muted-foreground animate-pulse transition-opacity duration-500">
-                {THINKING_VERBS[thinkingVerbIndex]}...
-              </p>
-            </div>
-          ) : (
-            <div className="flex items-center gap-3 mb-8">
+          {/* Greeting with mark */}
+          <div className="flex items-center gap-3 mb-8">
+            {/* Animated mark when thinking, static mark otherwise */}
+            {isThinking && lottieData ? (
+              <div className="w-10 h-10">
+                <Lottie
+                  animationData={lottieData}
+                  loop={true}
+                  style={{ width: "100%", height: "100%" }}
+                />
+              </div>
+            ) : (
               <Image
                 src="/brand/mark-primary.svg"
                 alt=""
                 width={40}
                 height={40}
               />
-              <h1 className="text-3xl md:text-4xl font-light text-foreground">
-                {getGreeting()}, <span className="font-normal">Dr. Neumann</span>
-              </h1>
-            </div>
-          )}
+            )}
+            <h1 className="text-3xl md:text-4xl font-light text-foreground">
+              {getGreeting()}, <span className="font-normal">Dr. Neumann</span>
+            </h1>
+          </div>
 
           {/* Input card */}
           <div className="w-full bg-card rounded-2xl border border-border shadow-sm">
@@ -129,8 +123,8 @@ export default function ChatPage() {
               <textarea
                 value={inputValue}
                 onChange={(e) => setInputValue(e.target.value)}
-                placeholder="How can I help you today?"
-                className="w-full bg-transparent text-foreground placeholder:text-muted-foreground resize-none outline-none text-base min-h-[24px] max-h-[200px]"
+                placeholder={isThinking ? `${THINKING_VERBS[thinkingVerbIndex]}...` : "How can I help you today?"}
+                className={`w-full bg-transparent text-foreground placeholder:text-muted-foreground resize-none outline-none text-base min-h-[24px] max-h-[200px] ${isThinking ? "placeholder:animate-pulse" : ""}`}
                 rows={1}
                 disabled={isThinking}
                 onKeyDown={(e) => {
