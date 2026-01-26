@@ -266,15 +266,15 @@ export default function Home() {
         </section>
 
         {/* Final CTA */}
-        <section className="bg-primary text-primary-foreground px-8 py-16 md:py-20">
+        <section className="bg-muted dark:bg-muted/50 border-t border-border px-8 py-16 md:py-20">
           <div className="max-w-2xl mx-auto text-center">
-            <h2 className="text-2xl md:text-3xl font-medium mb-4">
+            <h2 className="text-2xl md:text-3xl font-medium text-foreground mb-4">
               Be present with every patient
             </h2>
-            <p className="text-primary-foreground/80 mb-8">
+            <p className="text-muted-foreground mb-8">
               Let CruxMD handle the exhaustive. You handle the irreplaceable.
             </p>
-            <Button variant="secondary" size="lg" asChild>
+            <Button size="lg" asChild>
               <Link href="/chat">Get Started</Link>
             </Button>
           </div>
