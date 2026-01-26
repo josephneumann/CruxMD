@@ -58,8 +58,8 @@ export function DocsSidebar() {
 
   return (
     <aside className="w-64 border-r bg-muted/30 p-6 overflow-y-auto">
-      <div className="mb-8">
-        <Link href="/design" className="flex items-center gap-2">
+      <div className="mb-8 px-3">
+        <Link href="/design" className="flex items-center">
           <Image
             src={wordmarkSrc}
             alt="CruxMD"
