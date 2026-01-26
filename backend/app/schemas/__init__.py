@@ -19,6 +19,19 @@ from app.schemas.context import (
     VerifiedLayer,
 )
 from app.schemas.patient_profile import PatientProfile
+from app.schemas.task import (
+    AITaskProvenance,
+    TaskCategory,
+    TaskContextConfig,
+    TaskCreate,
+    TaskListResponse,
+    TaskPriority,
+    TaskQueueResponse,
+    TaskResponse,
+    TaskStatus,
+    TaskType,
+    TaskUpdate,
+)
 
 __all__ = [
     "Action",
@@ -36,4 +49,16 @@ __all__ = [
     "TableColumn",
     "VerifiedLayer",
     "Visualization",
+    # Task schemas
+    "AITaskProvenance",
+    "TaskCategory",
+    "TaskContextConfig",
+    "TaskCreate",
+    "TaskListResponse",
+    "TaskPriority",
+    "TaskQueueResponse",
+    "TaskResponse",
+    "TaskStatus",
+    "TaskType",
+    "TaskUpdate",
 ]

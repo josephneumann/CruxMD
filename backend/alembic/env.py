@@ -11,7 +11,7 @@ from alembic import context
 
 from app.config import settings
 from app.database import Base
-from app.models import FhirResource  # noqa: F401 - import to register model
+from app.models import FhirResource, Task  # noqa: F401 - import to register models
 
 # this is the Alembic Config object, which provides
 # access to the values within the .ini file in use.
