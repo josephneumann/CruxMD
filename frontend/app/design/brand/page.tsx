@@ -58,7 +58,7 @@ export default function BrandPage() {
       <div className="space-y-6">
         <h2 className="text-2xl font-medium">Brand Essence</h2>
         <div className="rounded-lg border bg-primary/5 border-primary/20 p-6">
-          <p className="text-xl font-medium text-center">&ldquo;The decisive point of care.&rdquo;</p>
+          <p className="text-xl font-medium text-center">&ldquo;Decisive clinical intelligence.&rdquo;</p>
         </div>
         <p className="text-muted-foreground">
           CruxMD handles the cognitive load of recall and pattern recognition so physicians
