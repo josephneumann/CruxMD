@@ -23,7 +23,7 @@ export default function DesignLayout({
           <Button variant="ghost" size="sm" asChild>
             <Link href="/">
               <ArrowLeft className="size-4" />
-              Back to App
+              Back
             </Link>
           </Button>
           <ThemeToggle />
