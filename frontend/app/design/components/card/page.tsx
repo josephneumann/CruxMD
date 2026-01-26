@@ -228,84 +228,106 @@ export default function CardPage() {
         <p className="text-muted-foreground">
           Compact cards for displaying individual vital sign measurements with status indicators.
         </p>
-        <div className="flex flex-wrap gap-3">
-          {/* Heart Rate */}
-          <Card className="w-[140px] p-4">
-            <div className="flex items-center justify-between mb-2">
+
+        {/* Expanded State */}
+        <div className="space-y-3">
+          <h3 className="text-lg font-medium">Expanded</h3>
+          <div className="flex flex-wrap gap-3">
+            {/* Heart Rate - Normal */}
+            <Card className="w-[180px] p-3">
+              <div className="flex items-center justify-between">
+                <Heart className="size-4 text-primary" strokeWidth={1.5} />
+                <Minus className="size-3 text-muted-foreground/40" />
+              </div>
+              <div className="mt-1">
+                <span className="text-2xl font-semibold leading-none">72</span>
+                <span className="text-xs text-muted-foreground ml-1">bpm</span>
+              </div>
+              <p className="text-sm font-medium leading-tight">Heart Rate</p>
+              <Badge variant="sage" size="sm" className="mt-1.5">Normal</Badge>
+              <p className="text-xs text-muted-foreground mt-1.5">10:30 AM</p>
+            </Card>
+
+            {/* Blood Pressure - Abnormal */}
+            <Card className="w-[180px] p-3 border-destructive/50">
+              <div className="flex items-center justify-between">
+                <Activity className="size-4 text-destructive" strokeWidth={1.5} />
+                <TrendingUp className="size-3 text-destructive" />
+              </div>
+              <div className="mt-1">
+                <span className="text-2xl font-semibold leading-none">132/85</span>
+                <span className="text-xs text-muted-foreground ml-1">mmHg</span>
+              </div>
+              <p className="text-sm font-medium leading-tight">Blood Pressure</p>
+              <p className="text-xs text-muted-foreground leading-tight">Trending up last 3 visits</p>
+              <Badge variant="primary" size="sm" className="mt-1.5 bg-destructive text-destructive-foreground">Stage 1 HTN</Badge>
+              <p className="text-xs text-muted-foreground mt-1.5">10:30 AM</p>
+            </Card>
+
+            {/* Temperature - Normal */}
+            <Card className="w-[180px] p-3">
+              <div className="flex items-center justify-between">
+                <Thermometer className="size-4 text-[#8B8FC7]" strokeWidth={1.5} />
+                <Minus className="size-3 text-muted-foreground/40" />
+              </div>
+              <div className="mt-1">
+                <span className="text-2xl font-semibold leading-none">98.6</span>
+                <span className="text-xs text-muted-foreground ml-1">°F</span>
+              </div>
+              <p className="text-sm font-medium leading-tight">Temperature</p>
+              <Badge variant="sage" size="sm" className="mt-1.5">Normal</Badge>
+              <p className="text-xs text-muted-foreground mt-1.5">10:30 AM</p>
+            </Card>
+
+            {/* O2 Saturation - Normal */}
+            <Card className="w-[180px] p-3">
+              <div className="flex items-center justify-between">
+                <Droplets className="size-4 text-[#8B8FC7]" strokeWidth={1.5} />
+                <Minus className="size-3 text-muted-foreground/40" />
+              </div>
+              <div className="mt-1">
+                <span className="text-2xl font-semibold leading-none">98</span>
+                <span className="text-xs text-muted-foreground ml-1">%</span>
+              </div>
+              <p className="text-sm font-medium leading-tight">O₂ Saturation</p>
+              <Badge variant="sage" size="sm" className="mt-1.5">Normal</Badge>
+              <p className="text-xs text-muted-foreground mt-1.5">10:30 AM</p>
+            </Card>
+          </div>
+        </div>
+
+        {/* Collapsed State */}
+        <div className="space-y-3">
+          <h3 className="text-lg font-medium">Collapsed</h3>
+          <div className="flex flex-wrap gap-3">
+            <Card className="px-3 py-2 flex items-center gap-3">
               <Heart className="size-4 text-primary" strokeWidth={1.5} />
-              <Minus className="size-3 text-muted-foreground/50" />
-            </div>
-            <span className="text-3xl font-semibold tracking-tight">72</span>
-            <p className="text-xs text-muted-foreground">bpm</p>
-            <p className="text-sm font-medium mt-1">Heart Rate</p>
-            <Badge variant="sage" size="sm" className="mt-2">Normal</Badge>
-            <p className="text-xs text-muted-foreground mt-2">10:30 AM</p>
-          </Card>
+              <span className="text-sm font-medium">Heart Rate</span>
+              <span className="text-sm font-semibold">72 bpm</span>
+              <Minus className="size-3 text-muted-foreground/40" />
+            </Card>
 
-          {/* Blood Pressure */}
-          <Card className="w-[140px] p-4">
-            <div className="flex items-center justify-between mb-2">
-              <Activity className="size-4 text-primary" strokeWidth={1.5} />
-              <TrendingUp className="size-3 text-muted-foreground/50" />
-            </div>
-            <span className="text-3xl font-semibold tracking-tight">120/80</span>
-            <p className="text-xs text-muted-foreground">mmHg</p>
-            <p className="text-sm font-medium mt-1">Blood Pressure</p>
-            <Badge variant="sage" size="sm" className="mt-2">Normal</Badge>
-            <p className="text-xs text-muted-foreground mt-2">10:30 AM</p>
-          </Card>
+            <Card className="px-3 py-2 flex items-center gap-3 border-destructive/50">
+              <Activity className="size-4 text-destructive" strokeWidth={1.5} />
+              <span className="text-sm font-medium">Blood Pressure</span>
+              <span className="text-sm font-semibold">132/85</span>
+              <TrendingUp className="size-3 text-destructive" />
+            </Card>
 
-          {/* Temperature */}
-          <Card className="w-[140px] p-4">
-            <div className="flex items-center justify-between mb-2">
+            <Card className="px-3 py-2 flex items-center gap-3">
               <Thermometer className="size-4 text-[#8B8FC7]" strokeWidth={1.5} />
-              <Minus className="size-3 text-muted-foreground/50" />
-            </div>
-            <span className="text-3xl font-semibold tracking-tight">98.6</span>
-            <p className="text-xs text-muted-foreground">°F</p>
-            <p className="text-sm font-medium mt-1">Temperature</p>
-            <Badge variant="sage" size="sm" className="mt-2">Normal</Badge>
-            <p className="text-xs text-muted-foreground mt-2">10:30 AM</p>
-          </Card>
+              <span className="text-sm font-medium">Temperature</span>
+              <span className="text-sm font-semibold">98.6°F</span>
+              <Minus className="size-3 text-muted-foreground/40" />
+            </Card>
 
-          {/* Respiratory Rate */}
-          <Card className="w-[140px] p-4">
-            <div className="flex items-center justify-between mb-2">
-              <Wind className="size-4 text-primary" strokeWidth={1.5} />
-              <Minus className="size-3 text-muted-foreground/50" />
-            </div>
-            <span className="text-3xl font-semibold tracking-tight">16</span>
-            <p className="text-xs text-muted-foreground">bpm</p>
-            <p className="text-sm font-medium mt-1">Respiratory Rate</p>
-            <Badge variant="sage" size="sm" className="mt-2">Normal</Badge>
-            <p className="text-xs text-muted-foreground mt-2">10:30 AM</p>
-          </Card>
-
-          {/* O2 Saturation */}
-          <Card className="w-[140px] p-4">
-            <div className="flex items-center justify-between mb-2">
+            <Card className="px-3 py-2 flex items-center gap-3">
               <Droplets className="size-4 text-[#8B8FC7]" strokeWidth={1.5} />
-              <Minus className="size-3 text-muted-foreground/50" />
-            </div>
-            <span className="text-3xl font-semibold tracking-tight">98</span>
-            <p className="text-xs text-muted-foreground">%</p>
-            <p className="text-sm font-medium mt-1">O₂ Saturation</p>
-            <Badge variant="sage" size="sm" className="mt-2">Normal</Badge>
-            <p className="text-xs text-muted-foreground mt-2">10:30 AM</p>
-          </Card>
-
-          {/* Blood Glucose */}
-          <Card className="w-[140px] p-4">
-            <div className="flex items-center justify-between mb-2">
-              <Activity className="size-4 text-primary" strokeWidth={1.5} />
-              <Minus className="size-3 text-muted-foreground/50" />
-            </div>
-            <span className="text-3xl font-semibold tracking-tight">95</span>
-            <p className="text-xs text-muted-foreground">mg/dL</p>
-            <p className="text-sm font-medium mt-1">Blood Glucose</p>
-            <Badge variant="sage" size="sm" className="mt-2">Normal</Badge>
-            <p className="text-xs text-muted-foreground mt-2">10:30 AM</p>
-          </Card>
+              <span className="text-sm font-medium">O₂ Sat</span>
+              <span className="text-sm font-semibold">98%</span>
+              <Minus className="size-3 text-muted-foreground/40" />
+            </Card>
+          </div>
         </div>
       </div>
 
