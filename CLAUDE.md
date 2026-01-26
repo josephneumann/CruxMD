@@ -87,5 +87,5 @@ cruxmd/
 - **FHIR-native data layer** — Raw FHIR JSON stored in PostgreSQL JSONB. No heavy normalization. Views for common queries, not tables.
 - **Hybrid retrieval** — Vector search (pgvector) + Knowledge Graph (Neo4j) for context assembly.
 - **Conversational Canvas UI** — Single scrollable conversation; agent responses contain narrative, visualizations, insights, and suggested follow-ups.
-- **Simple deployment** — Single VPS + Docker Compose. No CI/CD complexity. `git pull && docker compose up`. VPS uses SSH deploy key at `/root/.ssh/id_ed25519` for GitHub access.
+- **Simple deployment** — Single VPS + Docker Compose. No CI/CD complexity. VPS uses SSH deploy key at `/root/.ssh/id_ed25519` for GitHub access. Deploy with: `ssh cruxmd "cd /root/CruxMD && git pull && docker compose up -d --build"`
 - **Fixture-based testing** — Deterministic, fast tests using Synthea patient bundles.
