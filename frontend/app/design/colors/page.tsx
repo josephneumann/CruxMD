@@ -22,8 +22,8 @@ const PALETTE = {
     { name: "Manilla", value: "#EBDBBC", description: "Warm highlights" },
   ],
   accent: [
-    { name: "Sage", value: "#7D8B6F", description: "Positive/success" },
-    { name: "Periwinkle", value: "#8B8FC7", description: "Chart tertiary" },
+    { name: "Sage", value: "#7D8B6F", description: "Positive states, success indicators, nature/growth metaphors" },
+    { name: "Periwinkle", value: "#8B8FC7", description: "Links, selections, interactive highlights, data visualization" },
   ],
   utility: [
     { name: "Focus Blue", value: "#61AAF2", description: "Info/focus states" },
@@ -104,7 +104,31 @@ export default function ColorsPage() {
         <ColorGroup title="Cloud (Grays)" colors={PALETTE.cloud} />
         <ColorGroup title="Ivory (Lights)" colors={PALETTE.ivory} />
         <ColorGroup title="Warm (Brand)" colors={PALETTE.warm} />
-        <ColorGroup title="Accent" colors={PALETTE.accent} />
+
+        {/* Accent Colors with expanded description */}
+        <div className="space-y-3">
+          <div>
+            <h3 className="text-lg font-medium">Accent Colors</h3>
+            <p className="text-sm text-muted-foreground mt-1">
+              Secondary accent colors that complement the warm brand palette. Sage evokes
+              nature and growth, used for positive states and success indicators. Periwinkle
+              provides a cool counterpoint for interactive elements, selections, links, and
+              data visualization where warm tones would conflict.
+            </p>
+          </div>
+          <div className="grid grid-cols-2 md:grid-cols-4 gap-3">
+            {PALETTE.accent.map((color) => (
+              <ColorSwatch
+                key={color.name}
+                name={color.name}
+                value={color.value}
+                description={color.description}
+                large
+              />
+            ))}
+          </div>
+        </div>
+
         <ColorGroup title="Utility" colors={PALETTE.utility} />
       </div>
 
