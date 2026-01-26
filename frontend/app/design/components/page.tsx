@@ -1,9 +1,10 @@
 import Link from "next/link";
 import { Button } from "@/components/ui/button";
-import { Card, CardHeader, CardTitle, CardDescription } from "@/components/ui/card";
-import { Alert, AlertTitle, AlertDescription } from "@/components/ui/alert";
+import { Badge } from "@/components/ui/badge";
+import { Card } from "@/components/ui/card";
+import { Alert, AlertTitle } from "@/components/ui/alert";
 import { Avatar, AvatarFallback } from "@/components/ui/avatar";
-import { Info } from "lucide-react";
+import { Info, Heart, TrendingUp } from "lucide-react";
 
 const components = [
   {
@@ -18,15 +19,29 @@ const components = [
     ),
   },
   {
+    name: "Badge",
+    description: "Status indicators and category labels",
+    href: "/design/components/badge",
+    preview: (
+      <div className="flex gap-2">
+        <Badge variant="positive" size="sm">Positive</Badge>
+        <Badge variant="warning" size="sm">Warning</Badge>
+      </div>
+    ),
+  },
+  {
     name: "Card",
     description: "Container for grouping related content",
     href: "/design/components/card",
     preview: (
-      <Card className="w-40">
-        <CardHeader className="py-3 px-4">
-          <CardTitle className="text-sm">Card</CardTitle>
-          <CardDescription className="text-xs">Description</CardDescription>
-        </CardHeader>
+      <Card className="px-3 py-2 w-[160px]">
+        <div className="flex items-center gap-2">
+          <Heart className="size-4 text-primary" strokeWidth={1.5} />
+          <span className="text-sm font-semibold">72</span>
+          <span className="text-xs text-muted-foreground">bpm</span>
+          <div className="flex-1" />
+          <TrendingUp className="size-3 text-muted-foreground/40" />
+        </div>
       </Card>
     ),
   },
