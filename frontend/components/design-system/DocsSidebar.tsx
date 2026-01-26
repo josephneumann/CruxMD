@@ -35,6 +35,7 @@ const navigation: NavItem[] = [
     icon: Component,
     children: [
       { title: "Button", href: "/design/components/button" },
+      { title: "Badge", href: "/design/components/badge" },
       { title: "Card", href: "/design/components/card" },
       { title: "Alert", href: "/design/components/alert" },
       { title: "InsightCard", href: "/design/components/insight-card" },
