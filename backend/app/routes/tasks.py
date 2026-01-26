@@ -1,18 +1,20 @@
 """Task API routes.
 
 CRUD endpoints for clinical tasks with filtering by patient, category, and status.
+Tasks are stored as FHIR Task resources with projections for fast indexed queries.
 """
 
 import uuid
-from datetime import datetime
 
 from fastapi import APIRouter, Depends, HTTPException, Query, status
-from sqlalchemy import func, select
 from sqlalchemy.ext.asyncio import AsyncSession
 
 from app.auth import verify_api_key
 from app.database import get_db
-from app.models.task import Task, TaskCategory, TaskStatus
+from app.models.fhir import FhirResource
+from app.models.projections.task import TaskProjection
+from app.projections.extractors.task import register_task_projection
+from app.repositories.task import TaskRepository
 from app.schemas.task import (
     TaskCategory as TaskCategorySchema,
     TaskCreate,
@@ -26,10 +28,42 @@ from app.schemas.task import (
 
 router = APIRouter(prefix="/tasks", tags=["tasks"])
 
-
 # Pagination defaults
 DEFAULT_PAGE_SIZE = 50
 MAX_PAGE_SIZE = 100
+
+# Register task projection on module load
+register_task_projection()
+
+
+def _to_response(resource: FhirResource, projection: TaskProjection) -> TaskResponse:
+    """Convert FhirResource and TaskProjection to TaskResponse.
+
+    Args:
+        resource: The FhirResource containing FHIR Task JSON.
+        projection: The TaskProjection with extracted/indexed fields.
+
+    Returns:
+        TaskResponse for API response.
+    """
+    return TaskResponse(
+        id=resource.id,
+        type=TaskTypeSchema(projection.task_type) if projection.task_type else TaskTypeSchema.CUSTOM,
+        category=TaskCategorySchema(projection.category) if projection.category else TaskCategorySchema.ROUTINE,
+        status=TaskStatusSchema(projection.status),
+        priority=projection.priority,
+        priority_score=projection.priority_score,
+        title=projection.title,
+        description=resource.data.get("note", [{}])[0].get("text") if resource.data.get("note") else None,
+        patient_id=resource.patient_id,
+        session_id=uuid.UUID(projection.session_id) if projection.session_id else None,
+        focus_resource_id=uuid.UUID(projection.focus_resource_id) if projection.focus_resource_id else None,
+        provenance=projection.provenance,
+        context_config=projection.context_config,
+        due_on=projection.due_on,
+        created_at=resource.created_at,
+        modified_at=projection.projected_at,
+    )
 
 
 @router.get("", response_model=TaskListResponse)
@@ -56,35 +90,18 @@ async def list_tasks(
     Returns:
         Paginated list of tasks.
     """
-    # Build base query
-    query = select(Task)
-
-    # Apply filters
-    if patient_id is not None:
-        query = query.where(Task.patient_id == patient_id)
-    if category is not None:
-        query = query.where(Task.category == category.value)
-    if status is not None:
-        query = query.where(Task.status == status.value)
-    if type is not None:
-        query = query.where(Task.type == type.value)
-
-    # Get total count
-    count_query = select(func.count()).select_from(query.subquery())
-    total_result = await db.execute(count_query)
-    total = total_result.scalar() or 0
-
-    # Apply ordering and pagination
-    query = query.order_by(
-        Task.priority_score.desc().nullslast(),
-        Task.created_at.desc(),
-    ).offset(skip).limit(limit)
-
-    result = await db.execute(query)
-    tasks = result.scalars().all()
+    repo = TaskRepository(db)
+    rows, total = await repo.list_tasks(
+        patient_id=patient_id,
+        status=status.value if status else None,
+        category=category.value if category else None,
+        task_type=type.value if type else None,
+        skip=skip,
+        limit=limit,
+    )
 
     return TaskListResponse(
-        items=[TaskResponse.model_validate(task) for task in tasks],
+        items=[_to_response(res, proj) for res, proj in rows],
         total=total,
         skip=skip,
         limit=limit,
@@ -110,49 +127,21 @@ async def get_task_queue(
     Returns:
         Tasks organized by category.
     """
-    # Build base query for active tasks
-    query = select(Task)
-
-    if patient_id is not None:
-        query = query.where(Task.patient_id == patient_id)
-
-    if not include_completed:
-        query = query.where(
-            Task.status.in_([
-                TaskStatus.PENDING,
-                TaskStatus.IN_PROGRESS,
-                TaskStatus.PAUSED,
-            ])
-        )
-
-    # Order by priority score
-    query = query.order_by(
-        Task.priority_score.desc().nullslast(),
-        Task.created_at.desc(),
+    repo = TaskRepository(db)
+    grouped = await repo.get_queue(
+        patient_id=patient_id,
+        include_completed=include_completed,
     )
 
-    result = await db.execute(query)
-    tasks = result.scalars().all()
-
-    # Group by category
-    grouped: dict[str, list[TaskResponse]] = {
-        "critical": [],
-        "routine": [],
-        "schedule": [],
-        "research": [],
-    }
-
-    for task in tasks:
-        category_key = task.category.value
-        if category_key in grouped:
-            grouped[category_key].append(TaskResponse.model_validate(task))
+    # Count total tasks
+    total = sum(len(tasks) for tasks in grouped.values())
 
     return TaskQueueResponse(
-        critical=grouped["critical"],
-        routine=grouped["routine"],
-        schedule=grouped["schedule"],
-        research=grouped["research"],
-        total=len(tasks),
+        critical=[_to_response(res, proj) for res, proj in grouped["critical"]],
+        routine=[_to_response(res, proj) for res, proj in grouped["routine"]],
+        schedule=[_to_response(res, proj) for res, proj in grouped["schedule"]],
+        research=[_to_response(res, proj) for res, proj in grouped["research"]],
+        total=total,
     )
 
 
@@ -173,16 +162,47 @@ async def get_task(
     Raises:
         HTTPException: 404 if task not found.
     """
-    result = await db.execute(select(Task).where(Task.id == task_id))
-    task = result.scalar_one_or_none()
+    repo = TaskRepository(db)
+    result = await repo.get_by_id(task_id)
 
-    if task is None:
+    if result is None:
         raise HTTPException(
             status_code=status.HTTP_404_NOT_FOUND,
             detail="Task not found",
         )
 
-    return TaskResponse.model_validate(task)
+    resource, projection = result
+    return _to_response(resource, projection)
+
+
+@router.get("/{task_id}/fhir")
+async def get_task_fhir(
+    task_id: uuid.UUID,
+    db: AsyncSession = Depends(get_db),
+    _api_key: str = Depends(verify_api_key),
+) -> dict:
+    """Get the raw FHIR Task JSON for a task.
+
+    Args:
+        task_id: The task UUID.
+
+    Returns:
+        The FHIR Task resource JSON.
+
+    Raises:
+        HTTPException: 404 if task not found.
+    """
+    repo = TaskRepository(db)
+    result = await repo.get_by_id(task_id)
+
+    if result is None:
+        raise HTTPException(
+            status_code=status.HTTP_404_NOT_FOUND,
+            detail="Task not found",
+        )
+
+    resource, _ = result
+    return resource.data
 
 
 @router.post("", response_model=TaskResponse, status_code=status.HTTP_201_CREATED)
@@ -199,27 +219,9 @@ async def create_task(
     Returns:
         The created task.
     """
-    task = Task(
-        type=task_data.type.value,
-        category=task_data.category.value,
-        status=TaskStatus.PENDING,
-        priority=task_data.priority.value,
-        priority_score=task_data.priority_score,
-        title=task_data.title,
-        description=task_data.description,
-        patient_id=task_data.patient_id,
-        session_id=task_data.session_id,
-        focus_resource_id=task_data.focus_resource_id,
-        provenance=task_data.provenance.model_dump() if task_data.provenance else None,
-        context_config=task_data.context_config.model_dump() if task_data.context_config else None,
-        due_on=task_data.due_on,
-    )
-
-    db.add(task)
-    await db.flush()
-    await db.refresh(task)
-
-    return TaskResponse.model_validate(task)
+    repo = TaskRepository(db)
+    resource, projection = await repo.create(task_data)
+    return _to_response(resource, projection)
 
 
 @router.patch("/{task_id}", response_model=TaskResponse)
@@ -241,36 +243,17 @@ async def update_task(
     Raises:
         HTTPException: 404 if task not found.
     """
-    result = await db.execute(select(Task).where(Task.id == task_id))
-    task = result.scalar_one_or_none()
+    repo = TaskRepository(db)
 
-    if task is None:
+    try:
+        resource, projection = await repo.update(task_id, task_data)
+    except ValueError:
         raise HTTPException(
             status_code=status.HTTP_404_NOT_FOUND,
             detail="Task not found",
         )
 
-    # Update fields that are provided
-    update_data = task_data.model_dump(exclude_unset=True)
-
-    for field, value in update_data.items():
-        if field == "status" and value is not None:
-            setattr(task, field, value)
-        elif field == "priority" and value is not None:
-            setattr(task, field, value)
-        elif field == "provenance" and value is not None:
-            setattr(task, field, value)
-        elif field == "context_config" and value is not None:
-            setattr(task, field, value)
-        elif value is not None:
-            setattr(task, field, value)
-
-    task.modified_at = datetime.utcnow()
-
-    await db.flush()
-    await db.refresh(task)
-
-    return TaskResponse.model_validate(task)
+    return _to_response(resource, projection)
 
 
 @router.delete("/{task_id}", status_code=status.HTTP_204_NO_CONTENT)
@@ -287,13 +270,11 @@ async def delete_task(
     Raises:
         HTTPException: 404 if task not found.
     """
-    result = await db.execute(select(Task).where(Task.id == task_id))
-    task = result.scalar_one_or_none()
+    repo = TaskRepository(db)
+    deleted = await repo.delete(task_id)
 
-    if task is None:
+    if not deleted:
         raise HTTPException(
             status_code=status.HTTP_404_NOT_FOUND,
             detail="Task not found",
         )
-
-    await db.delete(task)

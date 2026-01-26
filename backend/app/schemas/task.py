@@ -224,11 +224,11 @@ class TaskResponse(BaseModel):
     type: TaskType
     category: TaskCategory
     status: TaskStatus
-    priority: TaskPriority
+    priority: str = Field(description="FHIR-aligned priority (routine, urgent, asap, stat)")
     priority_score: int | None
     title: str
     description: str | None
-    patient_id: UUID
+    patient_id: UUID | None  # Nullable since patient reference might not exist
     session_id: UUID | None
     focus_resource_id: UUID | None
     provenance: dict | None

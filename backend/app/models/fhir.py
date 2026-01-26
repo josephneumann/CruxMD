@@ -1,15 +1,20 @@
 """SQLAlchemy models for FHIR resources."""
 
+from __future__ import annotations
+
 import uuid
 from datetime import datetime
-from typing import Any
+from typing import TYPE_CHECKING, Any
 
 from pgvector.sqlalchemy import Vector
 from sqlalchemy import DateTime, Index, String, Text, text
 from sqlalchemy.dialects.postgresql import JSONB, UUID
-from sqlalchemy.orm import Mapped, mapped_column
+from sqlalchemy.orm import Mapped, mapped_column, relationship
 
 from app.database import Base
+
+if TYPE_CHECKING:
+    from app.models.projections.task import TaskProjection
 
 
 class FhirResource(Base):
@@ -49,6 +54,13 @@ class FhirResource(Base):
     created_at: Mapped[datetime] = mapped_column(
         DateTime(timezone=True),
         server_default=text("now()"),
+    )
+
+    # Relationships to projection tables
+    task_projection: Mapped["TaskProjection | None"] = relationship(
+        back_populates="fhir_resource",
+        uselist=False,
+        cascade="all, delete-orphan",
     )
 
     __table_args__ = (
