@@ -1,7 +1,19 @@
 import Link from "next/link";
-import { Palette, Type, Component, Smile } from "lucide-react";
+import { Palette, Type, Component, Smile, BookOpen, Image } from "lucide-react";
 
 const sections = [
+  {
+    title: "Brand",
+    description: "Brand identity, voice, principles, and visual guidelines",
+    href: "/design/brand",
+    icon: BookOpen,
+  },
+  {
+    title: "Assets",
+    description: "Logos, wordmarks, and downloadable brand assets",
+    href: "/design/assets",
+    icon: Image,
+  },
   {
     title: "Colors",
     description: "Brand palette, semantic tokens, and clinical insight colors",
@@ -16,7 +28,7 @@ const sections = [
   },
   {
     title: "Components",
-    description: "Buttons, cards, alerts, and interactive elements",
+    description: "Buttons, cards, tables, charts, and interactive elements",
     href: "/design/components",
     icon: Component,
   },
@@ -80,7 +92,7 @@ export default function DesignOverviewPage() {
       {/* Quick Links */}
       <div className="space-y-4">
         <h2 className="text-2xl font-medium">Explore</h2>
-        <div className="grid gap-4 md:grid-cols-2">
+        <div className="grid gap-4 md:grid-cols-2 lg:grid-cols-3">
           {sections.map((section) => {
             const Icon = section.icon;
             return (
@@ -104,44 +116,6 @@ export default function DesignOverviewPage() {
             );
           })}
         </div>
-      </div>
-
-      {/* Color Palette Preview */}
-      <div className="space-y-4">
-        <h2 className="text-2xl font-medium">Color Palette Preview</h2>
-        <div className="flex flex-wrap gap-2">
-          {[
-            { name: "Slate Dark", color: "#191919" },
-            { name: "Slate Medium", color: "#262625" },
-            { name: "Slate Light", color: "#40403E" },
-            { name: "Cloud Dark", color: "#666663" },
-            { name: "Cloud Medium", color: "#91918D" },
-            { name: "Cloud Light", color: "#BFBFBA" },
-            { name: "Ivory Dark", color: "#E5E4DF" },
-            { name: "Ivory Medium", color: "#F0F0EB" },
-            { name: "Ivory Light", color: "#FAFAF7" },
-            { name: "Book Cloth", color: "#CC785C" },
-            { name: "Kraft", color: "#D4A27F" },
-            { name: "Manilla", color: "#EBDBBC" },
-            { name: "Sage", color: "#7D8B6F" },
-            { name: "Periwinkle", color: "#8B8FC7" },
-            { name: "Focus Blue", color: "#61AAF2" },
-            { name: "Error Red", color: "#BF4D43" },
-          ].map((color) => (
-            <div
-              key={color.name}
-              className="size-12 rounded-md border shadow-sm"
-              style={{ backgroundColor: color.color }}
-              title={`${color.name}: ${color.color}`}
-            />
-          ))}
-        </div>
-        <Link
-          href="/design/colors"
-          className="text-sm text-primary hover:underline"
-        >
-          View full color documentation →
-        </Link>
       </div>
     </div>
   );
