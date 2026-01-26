@@ -8,9 +8,21 @@ import {
   CardAction,
 } from "@/components/ui/card";
 import { Button } from "@/components/ui/button";
+import { Badge } from "@/components/ui/badge";
+import { Avatar, AvatarFallback } from "@/components/ui/avatar";
 import { ComponentPreview, PreviewGrid } from "@/components/design-system/ComponentPreview";
 import { PropsTable } from "@/components/design-system/PropsTable";
-import { MoreHorizontal } from "lucide-react";
+import {
+  MoreHorizontal,
+  Heart,
+  Activity,
+  Thermometer,
+  Wind,
+  Droplets,
+  TrendingUp,
+  Minus,
+  AlertCircle,
+} from "lucide-react";
 
 const cardComponents = [
   {
@@ -208,6 +220,183 @@ export default function CardPage() {
             </CardContent>
           </Card>
         </PreviewGrid>
+      </div>
+
+      {/* Vital Signs */}
+      <div className="space-y-6">
+        <h2 className="text-2xl font-medium">Vital Signs Cards</h2>
+        <p className="text-muted-foreground">
+          Compact cards for displaying individual vital sign measurements with status indicators.
+        </p>
+        <div className="grid grid-cols-2 md:grid-cols-3 lg:grid-cols-6 gap-3">
+          {/* Heart Rate */}
+          <Card className="p-4">
+            <div className="flex items-center justify-between mb-3">
+              <Heart className="size-5 text-primary" />
+              <Minus className="size-4 text-muted-foreground" />
+            </div>
+            <div className="space-y-1">
+              <div className="flex items-baseline gap-1">
+                <span className="text-3xl font-semibold">72</span>
+                <span className="text-sm text-muted-foreground">bpm</span>
+              </div>
+              <p className="text-sm text-muted-foreground">Heart Rate</p>
+            </div>
+            <Badge variant="sage" size="sm" className="mt-3 w-full justify-center">
+              Normal
+            </Badge>
+            <p className="text-xs text-muted-foreground mt-2">10:30 AM</p>
+          </Card>
+
+          {/* Blood Pressure */}
+          <Card className="p-4">
+            <div className="flex items-center justify-between mb-3">
+              <Activity className="size-5 text-primary" />
+              <TrendingUp className="size-4 text-muted-foreground" />
+            </div>
+            <div className="space-y-1">
+              <div className="flex items-baseline gap-1">
+                <span className="text-3xl font-semibold">120/80</span>
+                <span className="text-sm text-muted-foreground">mmHg</span>
+              </div>
+              <p className="text-sm text-muted-foreground">Blood Pressure</p>
+            </div>
+            <Badge variant="sage" size="sm" className="mt-3 w-full justify-center">
+              Normal
+            </Badge>
+            <p className="text-xs text-muted-foreground mt-2">10:30 AM</p>
+          </Card>
+
+          {/* Temperature */}
+          <Card className="p-4">
+            <div className="flex items-center justify-between mb-3">
+              <Thermometer className="size-5 text-[#8B8FC7]" />
+              <Minus className="size-4 text-muted-foreground" />
+            </div>
+            <div className="space-y-1">
+              <div className="flex items-baseline gap-1">
+                <span className="text-3xl font-semibold">98.6</span>
+                <span className="text-sm text-muted-foreground">°F</span>
+              </div>
+              <p className="text-sm text-muted-foreground">Temperature</p>
+            </div>
+            <Badge variant="sage" size="sm" className="mt-3 w-full justify-center">
+              Normal
+            </Badge>
+            <p className="text-xs text-muted-foreground mt-2">10:30 AM</p>
+          </Card>
+
+          {/* Respiratory Rate */}
+          <Card className="p-4">
+            <div className="flex items-center justify-between mb-3">
+              <Wind className="size-5 text-primary" />
+              <Minus className="size-4 text-muted-foreground" />
+            </div>
+            <div className="space-y-1">
+              <div className="flex items-baseline gap-1">
+                <span className="text-3xl font-semibold">16</span>
+                <span className="text-sm text-muted-foreground">bpm</span>
+              </div>
+              <p className="text-sm text-muted-foreground">Respiratory Rate</p>
+            </div>
+            <Badge variant="sage" size="sm" className="mt-3 w-full justify-center">
+              Normal
+            </Badge>
+            <p className="text-xs text-muted-foreground mt-2">10:30 AM</p>
+          </Card>
+
+          {/* O2 Saturation */}
+          <Card className="p-4">
+            <div className="flex items-center justify-between mb-3">
+              <Droplets className="size-5 text-[#8B8FC7]" />
+              <Minus className="size-4 text-muted-foreground" />
+            </div>
+            <div className="space-y-1">
+              <div className="flex items-baseline gap-1">
+                <span className="text-3xl font-semibold">98</span>
+                <span className="text-sm text-muted-foreground">%</span>
+              </div>
+              <p className="text-sm text-muted-foreground">O₂ Saturation</p>
+            </div>
+            <Badge variant="sage" size="sm" className="mt-3 w-full justify-center">
+              Normal
+            </Badge>
+            <p className="text-xs text-muted-foreground mt-2">10:30 AM</p>
+          </Card>
+
+          {/* Blood Glucose */}
+          <Card className="p-4">
+            <div className="flex items-center justify-between mb-3">
+              <Activity className="size-5 text-primary" />
+              <Minus className="size-4 text-muted-foreground" />
+            </div>
+            <div className="space-y-1">
+              <div className="flex items-baseline gap-1">
+                <span className="text-3xl font-semibold">95</span>
+                <span className="text-sm text-muted-foreground">mg/dL</span>
+              </div>
+              <p className="text-sm text-muted-foreground">Blood Glucose</p>
+            </div>
+            <Badge variant="sage" size="sm" className="mt-3 w-full justify-center">
+              Normal
+            </Badge>
+            <p className="text-xs text-muted-foreground mt-2">10:30 AM</p>
+          </Card>
+        </div>
+      </div>
+
+      {/* Patient Summary Card */}
+      <div className="space-y-6">
+        <h2 className="text-2xl font-medium">Patient Summary Card</h2>
+        <p className="text-muted-foreground">
+          A comprehensive card for displaying patient information at a glance.
+        </p>
+        <div className="max-w-md">
+          <Card className="p-5">
+            <div className="flex items-start gap-4">
+              <Avatar className="size-12 bg-primary/20">
+                <AvatarFallback className="bg-primary/20 text-primary font-medium">
+                  J
+                </AvatarFallback>
+              </Avatar>
+              <div className="flex-1 min-w-0">
+                <div className="flex items-start justify-between gap-2">
+                  <div>
+                    <h3 className="font-semibold">Johnson, Emily</h3>
+                    <p className="text-sm text-muted-foreground">Dr. Williams</p>
+                  </div>
+                  <Badge variant="sage" size="sm">Low Risk</Badge>
+                </div>
+                <div className="mt-2 space-y-0.5 text-sm text-muted-foreground">
+                  <p>MRN: MRN-789012</p>
+                  <p>49y, Female • DOB: 06/22/1975</p>
+                </div>
+              </div>
+            </div>
+
+            <div className="mt-4 pt-4 border-t space-y-3">
+              <div className="flex items-start gap-2">
+                <AlertCircle className="size-4 text-destructive mt-0.5" />
+                <div>
+                  <p className="text-sm font-medium">Allergies</p>
+                  <div className="flex flex-wrap gap-1.5 mt-1">
+                    <Badge variant="outline" size="sm">Penicillin</Badge>
+                    <Badge variant="outline" size="sm">Latex</Badge>
+                  </div>
+                </div>
+              </div>
+
+              <div>
+                <p className="text-sm">
+                  <span className="font-medium">Conditions:</span>{" "}
+                  <span className="text-muted-foreground">
+                    Hypertension, Type 2 Diabetes
+                  </span>
+                </p>
+              </div>
+            </div>
+          </Card>
+        </div>
       </div>
 
       {/* Sub-components */}
