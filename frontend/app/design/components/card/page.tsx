@@ -194,28 +194,22 @@ export default function CardPage() {
                   </div>
                   <Badge variant="sage" size="sm">Low Risk</Badge>
                 </div>
-                <div className="mt-2 space-y-0.5 text-sm text-muted-foreground">
+                <div className="mt-2 text-sm text-muted-foreground">
                   <p>MRN: MRN-789012</p>
                   <p>49y, Female • DOB: 06/22/1975</p>
+                </div>
+                <div className="flex flex-wrap gap-1.5 mt-2">
+                  <Badge variant="neutral" size="sm">Hypertension</Badge>
+                  <Badge variant="neutral" size="sm">Type 2 Diabetes</Badge>
                 </div>
               </div>
             </div>
 
-            <div className="mt-4 pt-4 border-t space-y-3">
-              <div>
-                <p className="text-sm font-medium mb-1.5">Allergies</p>
-                <div className="flex flex-wrap gap-1.5">
-                  <Badge variant="outline" size="sm">Penicillin</Badge>
-                  <Badge variant="outline" size="sm">Latex</Badge>
-                </div>
-              </div>
-
-              <div>
-                <p className="text-sm font-medium mb-1.5">Conditions</p>
-                <div className="flex flex-wrap gap-1.5">
-                  <Badge variant="neutral" size="sm">Hypertension</Badge>
-                  <Badge variant="neutral" size="sm">Type 2 Diabetes</Badge>
-                </div>
+            <div className="mt-4 pt-4 border-t">
+              <p className="text-sm font-medium mb-1.5">Allergies</p>
+              <div className="flex flex-wrap gap-1.5">
+                <Badge variant="outline" size="sm">Penicillin</Badge>
+                <Badge variant="outline" size="sm">Latex</Badge>
               </div>
             </div>
           </Card>
