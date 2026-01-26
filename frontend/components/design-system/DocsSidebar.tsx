@@ -1,0 +1,99 @@
+"use client";
+
+import Link from "next/link";
+import { usePathname } from "next/navigation";
+import { cn } from "@/lib/utils";
+import {
+  Palette,
+  Type,
+  Component,
+  Smile,
+  Home,
+} from "lucide-react";
+
+interface NavItem {
+  title: string;
+  href: string;
+  icon?: React.ComponentType<{ className?: string }>;
+  children?: { title: string; href: string }[];
+}
+
+const navigation: NavItem[] = [
+  { title: "Overview", href: "/design", icon: Home },
+  { title: "Colors", href: "/design/colors", icon: Palette },
+  { title: "Typography", href: "/design/typography", icon: Type },
+  {
+    title: "Components",
+    href: "/design/components",
+    icon: Component,
+    children: [
+      { title: "Button", href: "/design/components/button" },
+      { title: "Card", href: "/design/components/card" },
+      { title: "Alert", href: "/design/components/alert" },
+      { title: "InsightCard", href: "/design/components/insight-card" },
+      { title: "Avatar", href: "/design/components/avatar" },
+      { title: "Select", href: "/design/components/select" },
+    ],
+  },
+  { title: "Icons", href: "/design/icons", icon: Smile },
+];
+
+export function DocsSidebar() {
+  const pathname = usePathname();
+
+  return (
+    <aside className="w-64 border-r bg-muted/30 p-6 overflow-y-auto">
+      <div className="mb-8">
+        <Link href="/design" className="flex items-center gap-2">
+          <span className="text-lg font-semibold">Design System</span>
+        </Link>
+        <p className="text-sm text-muted-foreground mt-1">CruxMD Components</p>
+      </div>
+      <nav className="space-y-1">
+        {navigation.map((item) => {
+          const isActive = pathname === item.href;
+          const isParentActive = item.children?.some((child) => pathname === child.href);
+          const Icon = item.icon;
+
+          return (
+            <div key={item.href}>
+              <Link
+                href={item.href}
+                className={cn(
+                  "flex items-center gap-3 rounded-md px-3 py-2 text-sm transition-colors",
+                  isActive || isParentActive
+                    ? "bg-primary/10 text-primary font-medium"
+                    : "text-muted-foreground hover:bg-muted hover:text-foreground"
+                )}
+              >
+                {Icon && <Icon className="size-4" />}
+                {item.title}
+              </Link>
+              {item.children && (
+                <div className="ml-7 mt-1 space-y-1 border-l pl-3">
+                  {item.children.map((child) => {
+                    const isChildActive = pathname === child.href;
+                    return (
+                      <Link
+                        key={child.href}
+                        href={child.href}
+                        className={cn(
+                          "block rounded-md px-3 py-1.5 text-sm transition-colors",
+                          isChildActive
+                            ? "text-primary font-medium"
+                            : "text-muted-foreground hover:text-foreground"
+                        )}
+                      >
+                        {child.title}
+                      </Link>
+                    );
+                  })}
+                </div>
+              )}
+            </div>
+          );
+        })}
+      </nav>
+    </aside>
+  );
+}
