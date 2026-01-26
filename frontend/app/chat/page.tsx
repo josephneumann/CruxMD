@@ -5,6 +5,7 @@
  */
 
 import { useState, useEffect } from "react";
+import { useRouter } from "next/navigation";
 import Image from "next/image";
 import dynamic from "next/dynamic";
 import {
@@ -38,6 +39,7 @@ const THINKING_VERBS = [
 ];
 
 export default function ChatPage() {
+  const router = useRouter();
   const [inputValue, setInputValue] = useState("");
   const [isThinking, setIsThinking] = useState(false);
   const [thinkingVerbIndex, setThinkingVerbIndex] = useState(0);
@@ -59,11 +61,24 @@ export default function ChatPage() {
     return () => clearInterval(interval);
   }, [isThinking]);
 
-  // Handle message submission
+  // Handle message submission - create new session and redirect
   const handleSubmit = () => {
     if (!inputValue.trim()) return;
+
+    // Generate a unique session ID
+    const sessionId = crypto.randomUUID();
+
+    // Store the initial message for the new session
+    sessionStorage.setItem(`chat-init-${sessionId}`, inputValue.trim());
+
+    // Show brief thinking state then redirect
     setIsThinking(true);
     setInputValue("");
+
+    // Small delay so user sees the thinking indicator before redirect
+    setTimeout(() => {
+      router.push(`/chat/${sessionId}`);
+    }, 300);
   };
 
   // Get time-based greeting
