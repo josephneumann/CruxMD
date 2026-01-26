@@ -6,6 +6,7 @@ import Image from "next/image";
 import { Check, Copy } from "lucide-react";
 import { cn } from "@/lib/utils";
 import { CodeBlock } from "@/components/design-system/CodeBlock";
+import { useCopyToClipboard } from "@/lib/hooks/use-copy-to-clipboard";
 
 const Lottie = dynamic(() => import("lottie-react"), { ssr: false });
 
@@ -19,13 +20,7 @@ interface AssetCardProps {
 }
 
 function AssetCard({ name, src, description, bgClass = "bg-white", width = 200, height = 60 }: AssetCardProps) {
-  const [copied, setCopied] = useState(false);
-
-  const handleCopy = async () => {
-    await navigator.clipboard.writeText(src);
-    setCopied(true);
-    setTimeout(() => setCopied(false), 2000);
-  };
+  const { copied, copy } = useCopyToClipboard();
 
   return (
     <div className="group rounded-lg border overflow-hidden transition-all hover:shadow-md">
@@ -48,7 +43,7 @@ function AssetCard({ name, src, description, bgClass = "bg-white", width = 200, 
             <p className="text-xs font-mono text-muted-foreground mt-1">{src}</p>
           </div>
           <button
-            onClick={handleCopy}
+            onClick={() => copy(src)}
             className="p-1.5 rounded hover:bg-muted transition-colors"
             title="Copy path"
           >
@@ -80,19 +75,13 @@ function AssetSection({ title, description, children }: { title: string; descrip
 
 export default function AssetsPage() {
   const [lottieData, setLottieData] = useState<object | null>(null);
-  const [copied, setCopied] = useState(false);
+  const { copied, copy } = useCopyToClipboard();
 
   useEffect(() => {
     fetch("/brand/crux-spin.json")
       .then((res) => res.json())
       .then((data) => setLottieData(data));
   }, []);
-
-  const handleCopyPath = async (path: string) => {
-    await navigator.clipboard.writeText(path);
-    setCopied(true);
-    setTimeout(() => setCopied(false), 2000);
-  };
 
   return (
     <div className="space-y-12">
@@ -234,7 +223,7 @@ export default function AssetsPage() {
               <div className="flex items-center justify-between">
                 <code className="text-sm font-mono bg-muted px-2 py-1 rounded">/brand/crux-spin.json</code>
                 <button
-                  onClick={() => handleCopyPath("/brand/crux-spin.json")}
+                  onClick={() => copy("/brand/crux-spin.json")}
                   className="p-1.5 rounded hover:bg-muted transition-colors"
                   title="Copy path"
                 >
@@ -253,7 +242,7 @@ export default function AssetsPage() {
               <div className="flex items-center justify-between">
                 <code className="text-sm font-mono bg-muted px-2 py-1 rounded">/brand/crux-spin.lottie</code>
                 <button
-                  onClick={() => handleCopyPath("/brand/crux-spin.lottie")}
+                  onClick={() => copy("/brand/crux-spin.lottie")}
                   className="p-1.5 rounded hover:bg-muted transition-colors"
                   title="Copy path"
                 >

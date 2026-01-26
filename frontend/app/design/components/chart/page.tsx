@@ -16,6 +16,17 @@ import {
   AreaChart,
 } from "recharts";
 
+interface ChartTooltipProps {
+  active?: boolean;
+  payload?: Array<{
+    name: string;
+    value: number;
+    color?: string;
+    payload?: { event?: string };
+  }>;
+  label?: string;
+}
+
 const hba1cData = [
   { date: "Jan 24", value: 8.2 },
   { date: "Apr 24", value: 7.9 },
@@ -34,12 +45,12 @@ const bpData = [
   { date: "Jan 15", systolic: 124, diastolic: 80, event: null },
 ];
 
-const CustomTooltip = ({ active, payload, label }: any) => {
+function CustomTooltip({ active, payload, label }: ChartTooltipProps) {
   if (active && payload && payload.length) {
     return (
       <div className="rounded-lg border bg-card p-3 shadow-md">
         <p className="text-sm font-medium">{label}</p>
-        {payload.map((entry: any, index: number) => (
+        {payload.map((entry, index) => (
           <p key={index} className="text-sm" style={{ color: entry.color }}>
             {entry.name}: {entry.value}
             {entry.name === "HbA1c" ? "%" : " mmHg"}
@@ -54,7 +65,7 @@ const CustomTooltip = ({ active, payload, label }: any) => {
     );
   }
   return null;
-};
+}
 
 export default function ChartPage() {
   return (

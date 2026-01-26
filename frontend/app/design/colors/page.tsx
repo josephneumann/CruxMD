@@ -1,8 +1,8 @@
 "use client";
 
-import { useState } from "react";
 import { Check, Copy } from "lucide-react";
 import { ColorSwatch, ColorGroup } from "@/components/design-system/ColorSwatch";
+import { useCopyToClipboardMulti } from "@/lib/hooks/use-copy-to-clipboard";
 
 interface InsightColorCardProps {
   name: string;
@@ -12,13 +12,7 @@ interface InsightColorCardProps {
 }
 
 function InsightColorCard({ name, value, foreground, description }: InsightColorCardProps) {
-  const [copied, setCopied] = useState<string | null>(null);
-
-  const handleCopy = async (text: string, type: string) => {
-    await navigator.clipboard.writeText(text);
-    setCopied(type);
-    setTimeout(() => setCopied(null), 2000);
-  };
+  const { copiedKey, copy } = useCopyToClipboardMulti<"bg" | "fg">();
 
   return (
     <div
@@ -38,11 +32,11 @@ function InsightColorCard({ name, value, foreground, description }: InsightColor
       </div>
       <div className="flex border-t border-white/20">
         <button
-          onClick={() => handleCopy(value, "bg")}
+          onClick={() => copy(value, "bg")}
           className="flex-1 flex items-center justify-center gap-1.5 py-2 text-xs font-mono transition-all hover:bg-black/10"
           style={{ color: foreground }}
         >
-          {copied === "bg" ? (
+          {copiedKey === "bg" ? (
             <>
               <Check className="size-3" />
               Copied
@@ -56,11 +50,11 @@ function InsightColorCard({ name, value, foreground, description }: InsightColor
         </button>
         <div className="w-px bg-white/20" />
         <button
-          onClick={() => handleCopy(foreground, "fg")}
+          onClick={() => copy(foreground, "fg")}
           className="flex-1 flex items-center justify-center gap-1.5 py-2 text-xs font-mono transition-all hover:bg-black/10"
           style={{ color: foreground }}
         >
-          {copied === "fg" ? (
+          {copiedKey === "fg" ? (
             <>
               <Check className="size-3" />
               Copied

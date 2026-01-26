@@ -1,9 +1,10 @@
 "use client";
 
 import { useState } from "react";
-import { Check, Copy } from "lucide-react";
+import { Check } from "lucide-react";
 import { cn } from "@/lib/utils";
 import { CodeBlock } from "@/components/design-system/CodeBlock";
+import { useCopyToClipboard } from "@/lib/hooks/use-copy-to-clipboard";
 
 // Clinical & Medical Icons
 import {
@@ -118,6 +119,7 @@ import {
   Clock,
   Code,
   Component,
+  Copy,
   Database,
   Github,
   Heart,
@@ -346,17 +348,11 @@ const categoryOrder = [
 ];
 
 function IconCard({ icon: Icon, name }: { icon: React.ComponentType<{ className?: string }>; name: string }) {
-  const [copied, setCopied] = useState(false);
-
-  const handleCopy = async () => {
-    await navigator.clipboard.writeText(`<${name} />`);
-    setCopied(true);
-    setTimeout(() => setCopied(false), 2000);
-  };
+  const { copied, copy } = useCopyToClipboard();
 
   return (
     <button
-      onClick={handleCopy}
+      onClick={() => copy(`<${name} />`)}
       className={cn(
         "group flex flex-col items-center gap-2 rounded-lg border bg-card p-4 transition-all",
         "hover:bg-muted/50 hover:shadow-sm",

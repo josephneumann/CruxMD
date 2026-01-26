@@ -1,8 +1,9 @@
 "use client";
 
-import { useState } from "react";
 import { Check, Copy } from "lucide-react";
 import { cn } from "@/lib/utils";
+import { getContrastTextClass } from "@/lib/color-utils";
+import { useCopyToClipboard } from "@/lib/hooks/use-copy-to-clipboard";
 
 interface ColorSwatchProps {
   name: string;
@@ -19,29 +20,12 @@ export function ColorSwatch({
   className,
   large = false,
 }: ColorSwatchProps) {
-  const [copied, setCopied] = useState(false);
-
-  const handleCopy = async () => {
-    await navigator.clipboard.writeText(value);
-    setCopied(true);
-    setTimeout(() => setCopied(false), 2000);
-  };
-
-  // Determine if the color is light or dark for text contrast
-  const isLightColor = (hex: string) => {
-    const color = hex.replace("#", "");
-    const r = parseInt(color.substring(0, 2), 16);
-    const g = parseInt(color.substring(2, 4), 16);
-    const b = parseInt(color.substring(4, 6), 16);
-    const luminance = (0.299 * r + 0.587 * g + 0.114 * b) / 255;
-    return luminance > 0.5;
-  };
-
-  const textColor = isLightColor(value) ? "text-slate-900" : "text-white";
+  const { copied, copy } = useCopyToClipboard();
+  const textColor = getContrastTextClass(value);
 
   return (
     <button
-      onClick={handleCopy}
+      onClick={() => copy(value)}
       className={cn(
         "group relative flex flex-col rounded-lg border overflow-hidden transition-all hover:shadow-md hover:scale-[1.02] active:scale-100",
         large ? "h-32" : "h-24",

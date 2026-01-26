@@ -6,6 +6,7 @@ import Link from "next/link";
 import { usePathname } from "next/navigation";
 import { useTheme } from "next-themes";
 import { cn } from "@/lib/utils";
+import { designSystemNav } from "@/lib/design-system-nav";
 import {
   Palette,
   Type,
@@ -15,39 +16,19 @@ import {
   Image as ImageIcon,
   BookOpen,
   LayoutGrid,
+  type LucideIcon,
 } from "lucide-react";
 
-interface NavItem {
-  title: string;
-  href: string;
-  icon?: React.ComponentType<{ className?: string }>;
-  children?: { title: string; href: string }[];
-}
-
-const navigation: NavItem[] = [
-  { title: "Overview", href: "/design", icon: Home },
-  { title: "Brand", href: "/design/brand", icon: BookOpen },
-  { title: "Assets", href: "/design/assets", icon: ImageIcon },
-  { title: "Colors", href: "/design/colors", icon: Palette },
-  { title: "Typography", href: "/design/typography", icon: Type },
-  { title: "Layout", href: "/design/layout", icon: LayoutGrid },
-  {
-    title: "Components",
-    href: "/design/components",
-    icon: Component,
-    children: [
-      { title: "Button", href: "/design/components/button" },
-      { title: "Badge", href: "/design/components/badge" },
-      { title: "Card", href: "/design/components/card" },
-      { title: "Table", href: "/design/components/table" },
-      { title: "Chart", href: "/design/components/chart" },
-      { title: "Alert", href: "/design/components/alert" },
-      { title: "Avatar", href: "/design/components/avatar" },
-      { title: "Select", href: "/design/components/select" },
-    ],
-  },
-  { title: "Icons", href: "/design/icons", icon: Smile },
-];
+const iconMap: Record<string, LucideIcon> = {
+  home: Home,
+  book: BookOpen,
+  image: ImageIcon,
+  palette: Palette,
+  type: Type,
+  layout: LayoutGrid,
+  component: Component,
+  smile: Smile,
+};
 
 export function DocsSidebar() {
   const pathname = usePathname();
@@ -77,10 +58,10 @@ export function DocsSidebar() {
         <p className="text-sm text-muted-foreground mt-1">Design System</p>
       </div>
       <nav className="space-y-1">
-        {navigation.map((item) => {
+        {designSystemNav.map((item) => {
           const isActive = pathname === item.href;
           const isParentActive = item.children?.some((child) => pathname === child.href);
-          const Icon = item.icon;
+          const Icon = iconMap[item.icon];
 
           return (
             <div key={item.href}>
