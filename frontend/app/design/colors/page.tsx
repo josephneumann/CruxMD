@@ -1,4 +1,81 @@
+"use client";
+
+import { useState } from "react";
+import { Check, Copy } from "lucide-react";
 import { ColorSwatch, ColorGroup } from "@/components/design-system/ColorSwatch";
+
+interface InsightColorCardProps {
+  name: string;
+  value: string;
+  foreground: string;
+  description: string;
+}
+
+function InsightColorCard({ name, value, foreground, description }: InsightColorCardProps) {
+  const [copied, setCopied] = useState<string | null>(null);
+
+  const handleCopy = async (text: string, type: string) => {
+    await navigator.clipboard.writeText(text);
+    setCopied(type);
+    setTimeout(() => setCopied(null), 2000);
+  };
+
+  return (
+    <div
+      className="group rounded-lg border overflow-hidden transition-all hover:shadow-md hover:scale-[1.01]"
+      style={{ backgroundColor: value }}
+    >
+      <div className="flex items-center gap-3 p-3">
+        <span
+          className="text-sm font-medium flex-1"
+          style={{ color: foreground }}
+        >
+          {name}
+        </span>
+        <p className="text-xs opacity-75" style={{ color: foreground }}>
+          {description}
+        </p>
+      </div>
+      <div className="flex border-t border-white/20">
+        <button
+          onClick={() => handleCopy(value, "bg")}
+          className="flex-1 flex items-center justify-center gap-1.5 py-2 text-xs font-mono transition-all hover:bg-black/10"
+          style={{ color: foreground }}
+        >
+          {copied === "bg" ? (
+            <>
+              <Check className="size-3" />
+              Copied
+            </>
+          ) : (
+            <>
+              <Copy className="size-3 opacity-0 group-hover:opacity-100 transition-opacity" />
+              bg: {value}
+            </>
+          )}
+        </button>
+        <div className="w-px bg-white/20" />
+        <button
+          onClick={() => handleCopy(foreground, "fg")}
+          className="flex-1 flex items-center justify-center gap-1.5 py-2 text-xs font-mono transition-all hover:bg-black/10"
+          style={{ color: foreground }}
+        >
+          {copied === "fg" ? (
+            <>
+              <Check className="size-3" />
+              Copied
+            </>
+          ) : (
+            <>
+              <Copy className="size-3 opacity-0 group-hover:opacity-100 transition-opacity" />
+              fg: {foreground}
+            </>
+          )}
+        </button>
+      </div>
+    </div>
+  );
+}
 
 const PALETTE = {
   slate: [
@@ -223,26 +300,13 @@ export default function ColorsPage() {
             <h3 className="text-lg font-medium">Light Mode</h3>
             <div className="space-y-2">
               {INSIGHT_COLORS.light.map((color) => (
-                <div
+                <InsightColorCard
                   key={color.name}
-                  className="flex items-center gap-3 rounded-lg border p-3"
-                  style={{ backgroundColor: color.value }}
-                >
-                  <span
-                    className="text-sm font-medium flex-1"
-                    style={{ color: color.foreground }}
-                  >
-                    {color.name}
-                  </span>
-                  <div className="text-right">
-                    <p className="text-xs font-mono" style={{ color: color.foreground }}>
-                      bg: {color.value}
-                    </p>
-                    <p className="text-xs font-mono opacity-75" style={{ color: color.foreground }}>
-                      fg: {color.foreground}
-                    </p>
-                  </div>
-                </div>
+                  name={color.name}
+                  value={color.value}
+                  foreground={color.foreground}
+                  description={color.description}
+                />
               ))}
             </div>
           </div>
@@ -251,26 +315,13 @@ export default function ColorsPage() {
             <h3 className="text-lg font-medium">Dark Mode</h3>
             <div className="space-y-2">
               {INSIGHT_COLORS.dark.map((color) => (
-                <div
+                <InsightColorCard
                   key={color.name}
-                  className="flex items-center gap-3 rounded-lg border p-3"
-                  style={{ backgroundColor: color.value }}
-                >
-                  <span
-                    className="text-sm font-medium flex-1"
-                    style={{ color: color.foreground }}
-                  >
-                    {color.name}
-                  </span>
-                  <div className="text-right">
-                    <p className="text-xs font-mono" style={{ color: color.foreground }}>
-                      bg: {color.value}
-                    </p>
-                    <p className="text-xs font-mono opacity-75" style={{ color: color.foreground }}>
-                      fg: {color.foreground}
-                    </p>
-                  </div>
-                </div>
+                  name={color.name}
+                  value={color.value}
+                  foreground={color.foreground}
+                  description={color.description}
+                />
               ))}
             </div>
           </div>
