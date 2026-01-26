@@ -175,13 +175,15 @@ export default function AssetsPage() {
       </AssetSection>
 
       {/* Animated Spinner */}
-      <div className="space-y-4">
+      <div className="space-y-6">
         <div>
           <h2 className="text-2xl font-medium">Animated Spinner</h2>
           <p className="text-muted-foreground mt-1">
-            Lottie animation for loading states and thinking indicators.
+            Lottie animation for loading states and thinking indicators. Works on both light and dark backgrounds.
           </p>
         </div>
+
+        {/* Preview on both backgrounds */}
         <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
           <div className="group rounded-lg border overflow-hidden transition-all hover:shadow-md">
             <div className="flex items-center justify-center p-8 min-h-[120px] bg-white">
@@ -198,24 +200,7 @@ export default function AssetsPage() {
               )}
             </div>
             <div className="bg-card p-4 border-t">
-              <div className="flex items-start justify-between gap-2">
-                <div>
-                  <p className="font-medium text-sm">Crux Spinner</p>
-                  <p className="text-xs text-muted-foreground mt-0.5">Lottie animation for loading states</p>
-                  <p className="text-xs font-mono text-muted-foreground mt-1">/brand/crux-spin.json</p>
-                </div>
-                <button
-                  onClick={() => handleCopyPath("/brand/crux-spin.json")}
-                  className="p-1.5 rounded hover:bg-muted transition-colors"
-                  title="Copy path"
-                >
-                  {copied ? (
-                    <Check className="size-4 text-primary" />
-                  ) : (
-                    <Copy className="size-4 text-muted-foreground" />
-                  )}
-                </button>
-              </div>
+              <p className="font-medium text-sm">Light Background</p>
             </div>
           </div>
           <div className="group rounded-lg border overflow-hidden transition-all hover:shadow-md">
@@ -233,12 +218,40 @@ export default function AssetsPage() {
               )}
             </div>
             <div className="bg-card p-4 border-t">
-              <div className="flex items-start justify-between gap-2">
-                <div>
-                  <p className="font-medium text-sm">Crux Spinner (Dark BG)</p>
-                  <p className="text-xs text-muted-foreground mt-0.5">Works on both light and dark backgrounds</p>
-                  <p className="text-xs font-mono text-muted-foreground mt-1">/brand/crux-spin.lottie</p>
-                </div>
+              <p className="font-medium text-sm">Dark Background</p>
+            </div>
+          </div>
+        </div>
+
+        {/* File Format Options */}
+        <div className="rounded-lg border bg-card p-5 space-y-4">
+          <h3 className="font-medium">File Formats</h3>
+          <p className="text-sm text-muted-foreground">
+            The spinner is available in two Lottie formats. Both contain the same animation and work on any background.
+          </p>
+          <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
+            <div className="space-y-2">
+              <div className="flex items-center justify-between">
+                <code className="text-sm font-mono bg-muted px-2 py-1 rounded">/brand/crux-spin.json</code>
+                <button
+                  onClick={() => handleCopyPath("/brand/crux-spin.json")}
+                  className="p-1.5 rounded hover:bg-muted transition-colors"
+                  title="Copy path"
+                >
+                  {copied ? (
+                    <Check className="size-4 text-primary" />
+                  ) : (
+                    <Copy className="size-4 text-muted-foreground" />
+                  )}
+                </button>
+              </div>
+              <p className="text-sm text-muted-foreground">
+                <strong>JSON format.</strong> Human-readable, easy to inspect and modify. Works directly with lottie-react via fetch + JSON parse. Recommended for web.
+              </p>
+            </div>
+            <div className="space-y-2">
+              <div className="flex items-center justify-between">
+                <code className="text-sm font-mono bg-muted px-2 py-1 rounded">/brand/crux-spin.lottie</code>
                 <button
                   onClick={() => handleCopyPath("/brand/crux-spin.lottie")}
                   className="p-1.5 rounded hover:bg-muted transition-colors"
@@ -251,12 +264,16 @@ export default function AssetsPage() {
                   )}
                 </button>
               </div>
+              <p className="text-sm text-muted-foreground">
+                <strong>dotLottie format.</strong> Compressed binary (zip) containing JSON + embedded assets. Smaller file size. Requires @dotlottie/react-player or similar library.
+              </p>
             </div>
           </div>
         </div>
+
         <CodeBlock
           collapsible
-          label="Usage with lottie-react"
+          label="Usage with lottie-react (.json)"
           code={`import dynamic from "next/dynamic";
 import { useState, useEffect } from "react";
 
