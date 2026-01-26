@@ -18,6 +18,7 @@ import {
   ChevronDown,
 } from "lucide-react";
 import { Button } from "@/components/ui/button";
+import { Sidebar } from "@/components/Sidebar";
 
 // Dynamically import Lottie to avoid SSR issues
 const Lottie = dynamic(() => import("lottie-react"), { ssr: false });
@@ -74,7 +75,9 @@ export default function ChatPage() {
   };
 
   return (
-    <div className="flex min-h-screen flex-col bg-background">
+    <div className="flex min-h-screen bg-background">
+      {/* Sidebar */}
+      <Sidebar />
 
       {/* Main content - centered */}
       <main className="flex-1 flex flex-col items-center justify-center px-4 pb-32">

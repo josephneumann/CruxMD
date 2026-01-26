@@ -157,15 +157,15 @@
 .dark {
   /*
    * Dark Mode - Anthropic Palette
-   * Background: Slate Dark | Surface: Slate Medium | Text: Ivory Light
+   * Background: Slate Dark | Surface: Slate Light | Text: Ivory Light
    */
   --background: #191919;
   --foreground: #FAFAF7;
 
-  --card: #262625;
+  --card: #40403E;
   --card-foreground: #FAFAF7;
 
-  --popover: #262625;
+  --popover: #40403E;
   --popover-foreground: #FAFAF7;
 
   /* Primary: Book Cloth (stays warm) */
