@@ -1,3 +1,6 @@
+"use client";
+
+import { useState } from "react";
 import {
   Card,
   CardHeader,
@@ -12,6 +15,7 @@ import { Badge } from "@/components/ui/badge";
 import { Avatar, AvatarFallback } from "@/components/ui/avatar";
 import { ComponentPreview, PreviewGrid } from "@/components/design-system/ComponentPreview";
 import { PropsTable } from "@/components/design-system/PropsTable";
+import { cn } from "@/lib/utils";
 import {
   MoreHorizontal,
   Heart,
@@ -223,113 +227,7 @@ export default function CardPage() {
       </div>
 
       {/* Vital Signs */}
-      <div className="space-y-6">
-        <h2 className="text-2xl font-medium">Vital Signs Cards</h2>
-        <p className="text-muted-foreground">
-          Compact cards for displaying individual vital sign measurements with status indicators.
-        </p>
-
-        {/* Expanded State */}
-        <div className="space-y-3">
-          <h3 className="text-lg font-medium">Expanded</h3>
-          <div className="flex flex-wrap gap-3">
-            {/* Heart Rate - Normal */}
-            <Card className="w-[180px] p-3">
-              <div className="flex items-center justify-between">
-                <Heart className="size-4 text-primary" strokeWidth={1.5} />
-                <Minus className="size-3 text-muted-foreground/40" />
-              </div>
-              <div className="mt-1">
-                <span className="text-2xl font-semibold leading-none">72</span>
-                <span className="text-xs text-muted-foreground ml-1">bpm</span>
-              </div>
-              <p className="text-sm font-medium leading-tight">Heart Rate</p>
-              <Badge variant="sage" size="sm" className="mt-1.5">Normal</Badge>
-              <p className="text-xs text-muted-foreground mt-1.5">10:30 AM</p>
-            </Card>
-
-            {/* Blood Pressure - Abnormal */}
-            <Card className="w-[180px] p-3 border-destructive/50">
-              <div className="flex items-center justify-between">
-                <Activity className="size-4 text-destructive" strokeWidth={1.5} />
-                <TrendingUp className="size-3 text-destructive" />
-              </div>
-              <div className="mt-1">
-                <span className="text-2xl font-semibold leading-none">132/85</span>
-                <span className="text-xs text-muted-foreground ml-1">mmHg</span>
-              </div>
-              <p className="text-sm font-medium leading-tight">Blood Pressure</p>
-              <p className="text-xs text-muted-foreground leading-tight">Trending up last 3 visits</p>
-              <Badge variant="primary" size="sm" className="mt-1.5 bg-destructive text-destructive-foreground">Stage 1 HTN</Badge>
-              <p className="text-xs text-muted-foreground mt-1.5">10:30 AM</p>
-            </Card>
-
-            {/* Temperature - Normal */}
-            <Card className="w-[180px] p-3">
-              <div className="flex items-center justify-between">
-                <Thermometer className="size-4 text-[#8B8FC7]" strokeWidth={1.5} />
-                <Minus className="size-3 text-muted-foreground/40" />
-              </div>
-              <div className="mt-1">
-                <span className="text-2xl font-semibold leading-none">98.6</span>
-                <span className="text-xs text-muted-foreground ml-1">°F</span>
-              </div>
-              <p className="text-sm font-medium leading-tight">Temperature</p>
-              <Badge variant="sage" size="sm" className="mt-1.5">Normal</Badge>
-              <p className="text-xs text-muted-foreground mt-1.5">10:30 AM</p>
-            </Card>
-
-            {/* O2 Saturation - Normal */}
-            <Card className="w-[180px] p-3">
-              <div className="flex items-center justify-between">
-                <Droplets className="size-4 text-[#8B8FC7]" strokeWidth={1.5} />
-                <Minus className="size-3 text-muted-foreground/40" />
-              </div>
-              <div className="mt-1">
-                <span className="text-2xl font-semibold leading-none">98</span>
-                <span className="text-xs text-muted-foreground ml-1">%</span>
-              </div>
-              <p className="text-sm font-medium leading-tight">O₂ Saturation</p>
-              <Badge variant="sage" size="sm" className="mt-1.5">Normal</Badge>
-              <p className="text-xs text-muted-foreground mt-1.5">10:30 AM</p>
-            </Card>
-          </div>
-        </div>
-
-        {/* Collapsed State */}
-        <div className="space-y-3">
-          <h3 className="text-lg font-medium">Collapsed</h3>
-          <div className="flex flex-wrap gap-3">
-            <Card className="px-3 py-2 flex items-center gap-3">
-              <Heart className="size-4 text-primary" strokeWidth={1.5} />
-              <span className="text-sm font-medium">Heart Rate</span>
-              <span className="text-sm font-semibold">72 bpm</span>
-              <Minus className="size-3 text-muted-foreground/40" />
-            </Card>
-
-            <Card className="px-3 py-2 flex items-center gap-3 border-destructive/50">
-              <Activity className="size-4 text-destructive" strokeWidth={1.5} />
-              <span className="text-sm font-medium">Blood Pressure</span>
-              <span className="text-sm font-semibold">132/85</span>
-              <TrendingUp className="size-3 text-destructive" />
-            </Card>
-
-            <Card className="px-3 py-2 flex items-center gap-3">
-              <Thermometer className="size-4 text-[#8B8FC7]" strokeWidth={1.5} />
-              <span className="text-sm font-medium">Temperature</span>
-              <span className="text-sm font-semibold">98.6°F</span>
-              <Minus className="size-3 text-muted-foreground/40" />
-            </Card>
-
-            <Card className="px-3 py-2 flex items-center gap-3">
-              <Droplets className="size-4 text-[#8B8FC7]" strokeWidth={1.5} />
-              <span className="text-sm font-medium">O₂ Sat</span>
-              <span className="text-sm font-semibold">98%</span>
-              <Minus className="size-3 text-muted-foreground/40" />
-            </Card>
-          </div>
-        </div>
-      </div>
+      <VitalSignsDemo />
 
       {/* Patient Summary Card */}
       <div className="space-y-6">
@@ -390,6 +288,160 @@ export default function CardPage() {
         <h2 className="text-2xl font-medium">Sub-components</h2>
         <PropsTable props={cardComponents} />
       </div>
+    </div>
+  );
+}
+
+// Interactive Vital Sign Card Component
+interface VitalSignCardProps {
+  icon: React.ReactNode;
+  label: string;
+  value: string;
+  unit: string;
+  time: string;
+  trend: "up" | "down" | "stable";
+  status: "normal" | "warning" | "critical";
+  statusLabel: string;
+  note?: string;
+  defaultExpanded?: boolean;
+}
+
+function VitalSignCard({
+  icon,
+  label,
+  value,
+  unit,
+  time,
+  trend,
+  status,
+  statusLabel,
+  note,
+  defaultExpanded = true,
+}: VitalSignCardProps) {
+  const [expanded, setExpanded] = useState(defaultExpanded);
+
+  const isAbnormal = status === "warning" || status === "critical";
+  const trendIcon = trend === "up" ? (
+    <TrendingUp className={cn("size-3", isAbnormal ? "text-destructive" : "text-muted-foreground/40")} />
+  ) : (
+    <Minus className="size-3 text-muted-foreground/40" />
+  );
+
+  const badgeVariant = status === "normal" ? "sage" : status === "warning" ? "ochre" : "primary";
+  const badgeClassName = status === "critical" ? "bg-destructive text-destructive-foreground" : "";
+
+  return (
+    <Card
+      className={cn(
+        "cursor-pointer transition-all duration-200 select-none",
+        isAbnormal && "border-destructive/50",
+        expanded ? "w-[180px] p-3" : "px-3 py-2"
+      )}
+      onClick={() => setExpanded(!expanded)}
+    >
+      {expanded ? (
+        <div className="flex flex-col h-full">
+          {/* Header row */}
+          <div className="flex items-center justify-between">
+            {icon}
+            {trendIcon}
+          </div>
+
+          {/* Value + time block */}
+          <div className="mt-1.5">
+            <div>
+              <span className="text-2xl font-semibold leading-none">{value}</span>
+              <span className="text-xs text-muted-foreground ml-1">{unit}</span>
+            </div>
+            <p className="text-xs text-muted-foreground mt-0.5">{time}</p>
+          </div>
+
+          {/* Label */}
+          <p className="text-sm font-medium leading-tight mt-1.5">{label}</p>
+
+          {/* Note if present */}
+          {note && (
+            <p className="text-xs text-muted-foreground leading-tight">{note}</p>
+          )}
+
+          {/* Spacer to push badge to bottom */}
+          <div className="flex-1 min-h-2" />
+
+          {/* Status badge at bottom */}
+          <Badge variant={badgeVariant} size="sm" className={cn("self-start", badgeClassName)}>
+            {statusLabel}
+          </Badge>
+        </div>
+      ) : (
+        <div className="flex items-center gap-3">
+          {icon}
+          <span className="text-sm font-medium">{label}</span>
+          <span className="text-sm font-semibold">{value} {unit}</span>
+          {trendIcon}
+        </div>
+      )}
+    </Card>
+  );
+}
+
+function VitalSignsDemo() {
+  return (
+    <div className="space-y-6">
+      <h2 className="text-2xl font-medium">Vital Signs Cards</h2>
+      <p className="text-muted-foreground">
+        Interactive cards for displaying vital sign measurements. Click any card to toggle between expanded and collapsed states.
+      </p>
+
+      <div className="flex flex-wrap gap-3 items-start">
+        <VitalSignCard
+          icon={<Heart className="size-4 text-primary" strokeWidth={1.5} />}
+          label="Heart Rate"
+          value="72"
+          unit="bpm"
+          time="10:30 AM"
+          trend="stable"
+          status="normal"
+          statusLabel="Normal"
+        />
+
+        <VitalSignCard
+          icon={<Activity className="size-4 text-destructive" strokeWidth={1.5} />}
+          label="Blood Pressure"
+          value="132/85"
+          unit="mmHg"
+          time="10:30 AM"
+          trend="up"
+          status="critical"
+          statusLabel="Stage 1 HTN"
+          note="Trending up last 3 visits"
+        />
+
+        <VitalSignCard
+          icon={<Thermometer className="size-4 text-[#8B8FC7]" strokeWidth={1.5} />}
+          label="Temperature"
+          value="98.6"
+          unit="°F"
+          time="10:30 AM"
+          trend="stable"
+          status="normal"
+          statusLabel="Normal"
+        />
+
+        <VitalSignCard
+          icon={<Droplets className="size-4 text-[#8B8FC7]" strokeWidth={1.5} />}
+          label="O₂ Saturation"
+          value="98"
+          unit="%"
+          time="10:30 AM"
+          trend="stable"
+          status="normal"
+          statusLabel="Normal"
+        />
+      </div>
+
+      <p className="text-sm text-muted-foreground">
+        <span className="font-medium">Tip:</span> Click any card above to see the collapsed state.
+      </p>
     </div>
   );
 }
