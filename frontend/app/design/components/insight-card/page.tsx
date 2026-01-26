@@ -188,13 +188,12 @@ export default function InsightCardPage() {
             { type: "Critical", color: "#BF4D43", icon: AlertCircle },
             { type: "Positive", color: "#7D8B6F", icon: CheckCircle },
           ].map((item) => (
-            <div key={item.type} className="flex items-center gap-3 rounded-lg border bg-card p-3">
-              <div
-                className="size-8 rounded flex items-center justify-center"
-                style={{ backgroundColor: `${item.color}20`, borderColor: item.color, borderWidth: 1 }}
-              >
-                <item.icon className="size-4" style={{ color: item.color }} />
-              </div>
+            <div
+              key={item.type}
+              className="flex items-center gap-3 rounded-r-lg border-l-4 p-3"
+              style={{ backgroundColor: `${item.color}15`, borderLeftColor: item.color }}
+            >
+              <item.icon className="size-4" style={{ color: item.color }} />
               <div>
                 <span className="text-sm font-medium">{item.type}</span>
                 <span className="block text-xs font-mono text-muted-foreground">{item.color}</span>
