@@ -51,8 +51,7 @@ export default function Home() {
 
         {/* Tagline */}
         <p className="text-lg text-muted-foreground text-center max-w-xl mb-8">
-          Clinical intelligence for physicians. A thinking partner that handles
-          the cognitive load so you can focus on what matters: the patient.
+          Clinical Intelligence Platform
         </p>
 
         {/* CTAs */}
@@ -68,7 +67,6 @@ export default function Home() {
 
       {/* Footer */}
       <footer className="flex items-center justify-center px-8 py-6 text-sm text-muted-foreground">
-        <p>Clinical Intelligence Platform</p>
       </footer>
     </div>
   );
