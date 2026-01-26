@@ -22,8 +22,10 @@ const PALETTE = {
     { name: "Manilla", value: "#EBDBBC", description: "Warm highlights" },
   ],
   accent: [
-    { name: "Sage", value: "#7D8B6F", description: "Positive states, success indicators, nature/growth metaphors" },
-    { name: "Periwinkle", value: "#8B8FC7", description: "Links, selections, interactive highlights, data visualization" },
+    { name: "Sage", value: "#7D8B6F", description: "Positive, success states" },
+    { name: "Periwinkle", value: "#8B8FC7", description: "Links, selections" },
+    { name: "Ochre", value: "#CCA43B", description: "Pending, warm highlights" },
+    { name: "Dusty Plum", value: "#5D4B63", description: "Depth, premium accents" },
   ],
   utility: [
     { name: "Focus Blue", value: "#61AAF2", description: "Info/focus states" },
@@ -110,10 +112,9 @@ export default function ColorsPage() {
           <div>
             <h3 className="text-lg font-medium">Accent Colors</h3>
             <p className="text-sm text-muted-foreground mt-1">
-              Secondary accent colors that complement the warm brand palette. Sage evokes
-              nature and growth, used for positive states and success indicators. Periwinkle
-              provides a cool counterpoint for interactive elements, selections, links, and
-              data visualization where warm tones would conflict.
+              Secondary accents that complement the warm brand palette. Sage and Ochre extend
+              the warm tones; Periwinkle and Dusty Plum provide cool counterpoints for
+              interactive states and visual depth.
             </p>
           </div>
           <div className="grid grid-cols-2 md:grid-cols-4 gap-3">
