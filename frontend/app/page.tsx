@@ -265,10 +265,14 @@ export default function Home() {
             <InsightCard
               insight={{
                 type: "warning",
-                title: "Creatinine trending up",
+                title: "Creatinine trend with context",
                 content:
-                  "1.2 → 1.5 → 1.8 mg/dL over 3 months. Consider renal function workup.",
-                citations: ["Observation/lab-001", "Observation/lab-002"],
+                  "Creatinine 1.2 → 1.5 → 1.8 mg/dL over 3 months. Of note: wife mentioned at last visit that he's been more fatigued. Long-standing hypertension, on lisinopril 20mg. Hasn't had nephrology follow-up since 2023.",
+                citations: [
+                  "Observation/lab-001",
+                  "Encounter/note-2024-11",
+                  "MedicationStatement/lisinopril",
+                ],
               }}
             />
           </div>
