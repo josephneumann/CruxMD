@@ -1,6 +1,6 @@
 import Image from "next/image";
 import Link from "next/link";
-import { Github } from "lucide-react";
+import { Github, Palette } from "lucide-react";
 import { Button } from "@/components/ui/button";
 
 export function Header() {
@@ -16,8 +16,10 @@ export function Header() {
         />
       </Link>
       <nav className="flex items-center gap-4">
-        <Button variant="ghost" size="sm" asChild>
-          <Link href="/design">Design System</Link>
+        <Button variant="ghost" size="icon" asChild>
+          <Link href="/design" aria-label="Design System">
+            <Palette className="size-5" />
+          </Link>
         </Button>
         <Button variant="ghost" size="icon" asChild>
           <a
