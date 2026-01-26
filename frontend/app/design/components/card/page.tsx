@@ -26,6 +26,8 @@ import {
   TrendingUp,
   Minus,
   AlertCircle,
+  Pill,
+  Stethoscope,
 } from "lucide-react";
 
 const cardComponents = [
@@ -196,32 +198,35 @@ export default function CardPage() {
       <div className="space-y-6">
         <h2 className="text-2xl font-medium">Card Grid</h2>
         <PreviewGrid cols={3}>
-          <Card>
+          <Card className="relative">
+            <Badge variant="secondary" size="sm" className="absolute top-3 right-3">12</Badge>
             <CardHeader>
-              <CardTitle>Medications</CardTitle>
+              <CardTitle className="flex items-center gap-2">
+                <Pill className="size-4" />
+                Medications
+              </CardTitle>
               <CardDescription>Active prescriptions</CardDescription>
             </CardHeader>
-            <CardContent>
-              <p className="text-2xl font-semibold">12</p>
-            </CardContent>
           </Card>
-          <Card>
+          <Card className="relative">
+            <Badge variant="secondary" size="sm" className="absolute top-3 right-3">3</Badge>
             <CardHeader>
-              <CardTitle>Allergies</CardTitle>
+              <CardTitle className="flex items-center gap-2">
+                <AlertCircle className="size-4" />
+                Allergies
+              </CardTitle>
               <CardDescription>Known allergies</CardDescription>
             </CardHeader>
-            <CardContent>
-              <p className="text-2xl font-semibold">3</p>
-            </CardContent>
           </Card>
-          <Card>
+          <Card className="relative">
+            <Badge variant="secondary" size="sm" className="absolute top-3 right-3">5</Badge>
             <CardHeader>
-              <CardTitle>Conditions</CardTitle>
+              <CardTitle className="flex items-center gap-2">
+                <Stethoscope className="size-4" />
+                Conditions
+              </CardTitle>
               <CardDescription>Active diagnoses</CardDescription>
             </CardHeader>
-            <CardContent>
-              <p className="text-2xl font-semibold">5</p>
-            </CardContent>
           </Card>
         </PreviewGrid>
       </div>
