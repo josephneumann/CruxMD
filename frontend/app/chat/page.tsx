@@ -12,7 +12,7 @@ import {
   Clock,
   ArrowUp,
   Phone,
-  Bell,
+  BookOpen,
   BarChart3,
   Users,
   ChevronDown,
@@ -57,7 +57,7 @@ export default function ChatPage() {
               height={40}
             />
             <h1 className="text-3xl md:text-4xl font-light text-foreground">
-              {getGreeting()}, <span className="font-normal">Dr. Chen</span>
+              {getGreeting()}, <span className="font-normal">Dr. Neumann</span>
             </h1>
           </div>
 
@@ -106,7 +106,7 @@ export default function ChatPage() {
                   variant="ghost"
                   className="h-8 px-3 text-sm text-muted-foreground hover:text-foreground gap-1"
                 >
-                  GPT-4o
+                  Opus 4.5
                   <ChevronDown className="h-4 w-4" />
                 </Button>
 
@@ -125,7 +125,7 @@ export default function ChatPage() {
           {/* Quick action chips */}
           <div className="flex flex-wrap items-center justify-center gap-2 mt-6">
             <QuickActionChip icon={Phone} label="Patients to call" />
-            <QuickActionChip icon={Bell} label="What's new" />
+            <QuickActionChip icon={BookOpen} label="Latest research" />
             <QuickActionChip icon={BarChart3} label="My performance" />
             <QuickActionChip icon={Users} label="Panel overview" />
           </div>
