@@ -1,7 +1,7 @@
 import { Button } from "@/components/ui/button";
 import { ComponentPreview, PreviewGrid } from "@/components/design-system/ComponentPreview";
 import { PropsTable } from "@/components/design-system/PropsTable";
-import { ArrowRight, Plus, Mail, Loader2, Heart, Settings } from "lucide-react";
+import { ArrowRight, Plus, Mail, Loader2, Heart, Settings, Github, X, Menu, Bell, Search } from "lucide-react";
 
 const buttonProps = [
   {
@@ -175,6 +175,67 @@ export default function ButtonPage() {
             </Button>
           </div>
         </ComponentPreview>
+      </div>
+
+      {/* Ghost Icon Buttons */}
+      <div className="space-y-6">
+        <h2 className="text-2xl font-medium">Ghost Icon Buttons</h2>
+        <p className="text-muted-foreground">
+          Minimal icon buttons for toolbars, headers, and secondary actions. Used for the GitHub link in the header.
+        </p>
+        <PreviewGrid cols={2}>
+          <ComponentPreview
+            title="Navigation icons"
+            description="Header and toolbar actions"
+            code={`<Button variant="ghost" size="icon">
+  <Github className="size-5" />
+</Button>
+<Button variant="ghost" size="icon">
+  <Menu className="size-5" />
+</Button>
+<Button variant="ghost" size="icon">
+  <X className="size-5" />
+</Button>`}
+          >
+            <div className="flex items-center gap-2">
+              <Button variant="ghost" size="icon">
+                <Github className="size-5" />
+              </Button>
+              <Button variant="ghost" size="icon">
+                <Menu className="size-5" />
+              </Button>
+              <Button variant="ghost" size="icon">
+                <X className="size-5" />
+              </Button>
+            </div>
+          </ComponentPreview>
+
+          <ComponentPreview
+            title="Action icons"
+            description="Search, notifications, settings"
+            code={`<Button variant="ghost" size="icon">
+  <Search className="size-5" />
+</Button>
+<Button variant="ghost" size="icon">
+  <Bell className="size-5" />
+</Button>
+<Button variant="ghost" size="icon">
+  <Settings className="size-5" />
+</Button>`}
+          >
+            <div className="flex items-center gap-2">
+              <Button variant="ghost" size="icon">
+                <Search className="size-5" />
+              </Button>
+              <Button variant="ghost" size="icon">
+                <Bell className="size-5" />
+              </Button>
+              <Button variant="ghost" size="icon">
+                <Settings className="size-5" />
+              </Button>
+            </div>
+          </ComponentPreview>
+        </PreviewGrid>
       </div>
 
       {/* States */}
