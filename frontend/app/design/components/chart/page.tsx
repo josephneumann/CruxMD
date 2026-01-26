@@ -208,6 +208,70 @@ export default function ChartPage() {
         </Card>
       </div>
 
+      {/* Design Principles */}
+      <div className="space-y-6">
+        <h2 className="text-2xl font-medium">Design Principles</h2>
+        <p className="text-muted-foreground">
+          Charts should embody clarity over decoration. Follow these principles:
+        </p>
+        <div className="grid md:grid-cols-2 gap-4">
+          <div className="rounded-lg border bg-card p-4">
+            <h3 className="font-medium text-sm mb-2">Data-Ink Ratio</h3>
+            <p className="text-sm text-muted-foreground">
+              Maximize data, minimize chrome. Every pixel should communicate information.
+            </p>
+          </div>
+          <div className="rounded-lg border bg-card p-4">
+            <h3 className="font-medium text-sm mb-2">Direct Labeling</h3>
+            <p className="text-sm text-muted-foreground">
+              Label data points directly when possible. Prefer inline labels over legends.
+            </p>
+          </div>
+          <div className="rounded-lg border bg-card p-4">
+            <h3 className="font-medium text-sm mb-2">Subtle Grid</h3>
+            <p className="text-sm text-muted-foreground">
+              Horizontal gridlines only, dashed, using Cloud Light (#E5E4DF). No vertical gridlines.
+            </p>
+          </div>
+          <div className="rounded-lg border bg-card p-4">
+            <h3 className="font-medium text-sm mb-2">Purposeful Color</h3>
+            <p className="text-sm text-muted-foreground">
+              Color encodes meaning, not decoration. Use clinical insight colors for thresholds.
+            </p>
+          </div>
+        </div>
+        <div className="rounded-lg border bg-muted/50 p-4">
+          <h3 className="font-medium text-sm mb-2">Line & Point Specifications</h3>
+          <div className="grid grid-cols-2 md:grid-cols-4 gap-4 text-sm">
+            <div>
+              <span className="text-muted-foreground">Stroke width:</span>
+              <span className="ml-2 font-mono">2px</span>
+            </div>
+            <div>
+              <span className="text-muted-foreground">Line caps:</span>
+              <span className="ml-2 font-mono">round</span>
+            </div>
+            <div>
+              <span className="text-muted-foreground">Data points:</span>
+              <span className="ml-2 font-mono">4-6px</span>
+            </div>
+            <div>
+              <span className="text-muted-foreground">Active dot:</span>
+              <span className="ml-2 font-mono">6px + ring</span>
+            </div>
+          </div>
+        </div>
+        <div className="rounded-lg border border-destructive/30 bg-destructive/5 p-4">
+          <h3 className="font-medium text-sm mb-2 text-destructive">Avoid</h3>
+          <ul className="text-sm text-muted-foreground space-y-1">
+            <li>3D effects, bevels, or drop shadows on chart elements</li>
+            <li>Gradients on bars or areas (solid fills only)</li>
+            <li>Decorative patterns or textures</li>
+            <li>Animations beyond subtle transitions</li>
+          </ul>
+        </div>
+      </div>
+
       {/* Color Reference */}
       <div className="space-y-6">
         <h2 className="text-2xl font-medium">Chart Colors</h2>

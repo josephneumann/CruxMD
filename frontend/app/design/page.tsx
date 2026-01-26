@@ -1,5 +1,5 @@
 import Link from "next/link";
-import { Palette, Type, Component, Smile, BookOpen, Image } from "lucide-react";
+import { Palette, Type, Component, Smile, BookOpen, Image, LayoutGrid } from "lucide-react";
 
 const sections = [
   {
@@ -25,6 +25,12 @@ const sections = [
     description: "Geist font family, heading scale, and body text styles",
     href: "/design/typography",
     icon: Type,
+  },
+  {
+    title: "Layout",
+    description: "Spacing scale, grid system, and content width guidelines",
+    href: "/design/layout",
+    icon: LayoutGrid,
   },
   {
     title: "Components",

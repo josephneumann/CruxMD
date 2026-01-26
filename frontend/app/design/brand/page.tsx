@@ -66,6 +66,25 @@ export default function BrandPage() {
         </p>
       </div>
 
+      {/* Mission & Vision */}
+      <div className="space-y-6">
+        <h2 className="text-2xl font-medium">Mission & Vision</h2>
+        <div className="grid md:grid-cols-2 gap-4">
+          <div className="rounded-lg border bg-card p-5">
+            <h3 className="font-medium text-sm text-muted-foreground uppercase tracking-wider mb-2">Mission</h3>
+            <p className="text-sm">
+              To give physicians the confidence that nothing is missed, so they can focus on what matters: the patient in front of them.
+            </p>
+          </div>
+          <div className="rounded-lg border bg-card p-5">
+            <h3 className="font-medium text-sm text-muted-foreground uppercase tracking-wider mb-2">Vision</h3>
+            <p className="text-sm">
+              A world where clinical intelligence amplifies human care rather than replacing it—where technology handles the exhaustive so physicians can handle the irreplaceable.
+            </p>
+          </div>
+        </div>
+      </div>
+
       {/* Brand Statement */}
       <div className="space-y-6">
         <h2 className="text-2xl font-medium">Brand Statement</h2>

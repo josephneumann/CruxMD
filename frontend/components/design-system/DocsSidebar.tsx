@@ -14,6 +14,7 @@ import {
   Home,
   Image as ImageIcon,
   BookOpen,
+  LayoutGrid,
 } from "lucide-react";
 
 interface NavItem {
@@ -29,6 +30,7 @@ const navigation: NavItem[] = [
   { title: "Assets", href: "/design/assets", icon: ImageIcon },
   { title: "Colors", href: "/design/colors", icon: Palette },
   { title: "Typography", href: "/design/typography", icon: Type },
+  { title: "Layout", href: "/design/layout", icon: LayoutGrid },
   {
     title: "Components",
     href: "/design/components",

@@ -280,6 +280,89 @@ function Logo() {
           </pre>
         </div>
       </div>
+
+      {/* HTML Implementation */}
+      <div className="space-y-6">
+        <h2 className="text-2xl font-medium">HTML Implementation</h2>
+        <p className="text-muted-foreground">
+          Add these tags to your document head for complete favicon and social sharing support.
+        </p>
+
+        <div className="space-y-4">
+          <div>
+            <h3 className="font-medium mb-2">Minimal (covers 99% of use cases)</h3>
+            <div className="rounded-lg border bg-muted p-4">
+              <pre className="text-sm font-mono overflow-x-auto">
+                <code>{`<!-- Favicon (SVG + ICO fallback) -->
+<link rel="icon" href="/favicon.svg" type="image/svg+xml">
+<link rel="icon" href="/favicon.ico" sizes="32x32">
+
+<!-- Apple Touch Icon -->
+<link rel="apple-touch-icon" href="/apple-touch-icon.png">
+
+<!-- Web App Manifest -->
+<link rel="manifest" href="/manifest.webmanifest">
+
+<!-- Theme Color -->
+<meta name="theme-color" content="#CC785C">`}</code>
+              </pre>
+            </div>
+          </div>
+
+          <div>
+            <h3 className="font-medium mb-2">Open Graph (Social Sharing)</h3>
+            <div className="rounded-lg border bg-muted p-4">
+              <pre className="text-sm font-mono overflow-x-auto">
+                <code>{`<!-- Open Graph -->
+<meta property="og:type" content="website">
+<meta property="og:image" content="https://cruxmd.ai/og-image.png">
+<meta property="og:image:width" content="1200">
+<meta property="og:image:height" content="630">
+<meta property="og:image:alt" content="CruxMD - Clinical Intelligence">
+
+<!-- Twitter Card -->
+<meta name="twitter:card" content="summary_large_image">
+<meta name="twitter:image" content="https://cruxmd.ai/og-image-twitter.png">`}</code>
+              </pre>
+            </div>
+          </div>
+
+          <div>
+            <h3 className="font-medium mb-2">manifest.webmanifest</h3>
+            <div className="rounded-lg border bg-muted p-4">
+              <pre className="text-sm font-mono overflow-x-auto">
+                <code>{`{
+  "name": "CruxMD",
+  "short_name": "CruxMD",
+  "description": "Clinical intelligence for physicians",
+  "start_url": "/",
+  "display": "standalone",
+  "background_color": "#FAFAF7",
+  "theme_color": "#CC785C",
+  "icons": [
+    {
+      "src": "/pwa-192x192.png",
+      "sizes": "192x192",
+      "type": "image/png"
+    },
+    {
+      "src": "/pwa-512x512.png",
+      "sizes": "512x512",
+      "type": "image/png"
+    },
+    {
+      "src": "/pwa-maskable-512x512.png",
+      "sizes": "512x512",
+      "type": "image/png",
+      "purpose": "maskable"
+    }
+  ]
+}`}</code>
+              </pre>
+            </div>
+          </div>
+        </div>
+      </div>
     </div>
   );
 }
