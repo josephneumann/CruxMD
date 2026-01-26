@@ -79,13 +79,22 @@ const INSIGHT_COLORS = {
   ],
 };
 
-const CHART_COLORS = [
-  { name: "Chart 1", value: "#CC785C", description: "Primary data" },
-  { name: "Chart 2", value: "#7D8B6F", description: "Secondary data" },
-  { name: "Chart 3", value: "#8B8FC7", description: "Tertiary data" },
-  { name: "Chart 4", value: "#D4A27F", description: "Quaternary data" },
-  { name: "Chart 5", value: "#61AAF2", description: "Quinary data" },
-];
+const CHART_COLORS = {
+  light: [
+    { name: "Chart 1", value: "#CC785C", description: "Primary data" },
+    { name: "Chart 2", value: "#7D8B6F", description: "Secondary data" },
+    { name: "Chart 3", value: "#8B8FC7", description: "Tertiary data" },
+    { name: "Chart 4", value: "#D4A27F", description: "Quaternary data" },
+    { name: "Chart 5", value: "#61AAF2", description: "Quinary data" },
+  ],
+  dark: [
+    { name: "Chart 1", value: "#D4907A", description: "Primary data" },
+    { name: "Chart 2", value: "#9AAB8F", description: "Secondary data" },
+    { name: "Chart 3", value: "#A5A9D6", description: "Tertiary data" },
+    { name: "Chart 4", value: "#EBDBBC", description: "Quaternary data" },
+    { name: "Chart 5", value: "#7BBAF5", description: "Quinary data" },
+  ],
+};
 
 export default function ColorsPage() {
   return (
@@ -235,24 +244,43 @@ export default function ColorsPage() {
       </div>
 
       {/* Chart Colors */}
-      <div className="space-y-4">
+      <div className="space-y-8">
         <div className="space-y-2">
           <h2 className="text-2xl font-medium">Chart Colors</h2>
           <p className="text-muted-foreground">
-            A harmonious palette for data visualization that maintains the warm
-            aesthetic while providing clear differentiation.
+            A harmonious palette for data visualization. Dark mode uses lighter
+            variants for better contrast on dark backgrounds.
           </p>
         </div>
-        <div className="grid grid-cols-2 md:grid-cols-5 gap-3">
-          {CHART_COLORS.map((color) => (
-            <ColorSwatch
-              key={color.name}
-              name={color.name}
-              value={color.value}
-              description={color.description}
-              large
-            />
-          ))}
+
+        <div className="grid md:grid-cols-2 gap-8">
+          <div className="space-y-3">
+            <h3 className="text-lg font-medium">Light Mode</h3>
+            <div className="grid grid-cols-2 sm:grid-cols-3 gap-3">
+              {CHART_COLORS.light.map((color) => (
+                <ColorSwatch
+                  key={color.name}
+                  name={color.name}
+                  value={color.value}
+                  description={color.description}
+                />
+              ))}
+            </div>
+          </div>
+
+          <div className="space-y-3">
+            <h3 className="text-lg font-medium">Dark Mode</h3>
+            <div className="grid grid-cols-2 sm:grid-cols-3 gap-3">
+              {CHART_COLORS.dark.map((color) => (
+                <ColorSwatch
+                  key={color.name}
+                  name={color.name}
+                  value={color.value}
+                  description={color.description}
+                />
+              ))}
+            </div>
+          </div>
         </div>
       </div>
     </div>
