@@ -24,7 +24,6 @@ const PALETTE = {
   accent: [
     { name: "Sage", value: "#7D8B6F", description: "Positive, success states" },
     { name: "Periwinkle", value: "#8B8FC7", description: "Links, selections" },
-    { name: "Ochre", value: "#CCA43B", description: "Pending, warm highlights" },
     { name: "Dusty Plum", value: "#5D4B63", description: "Depth, premium accents" },
   ],
   utility: [
@@ -121,7 +120,7 @@ export default function ColorsPage() {
           <div>
             <h3 className="text-lg font-medium">Accent Colors</h3>
             <p className="text-sm text-muted-foreground mt-1">
-              Secondary accents that complement the warm brand palette. Sage and Ochre extend
+              Secondary accents that complement the warm brand palette. Sage extends
               the warm tones; Periwinkle and Dusty Plum provide cool counterpoints for
               interactive states and visual depth.
             </p>

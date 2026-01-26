@@ -254,8 +254,7 @@ function VitalSignCard({
     <Minus className="size-3 text-muted-foreground/40" />
   );
 
-  const badgeVariant = status === "normal" ? "sage" : status === "warning" ? "ochre" : "primary";
-  const badgeClassName = status === "critical" ? "bg-destructive text-destructive-foreground" : "";
+  const badgeVariant = status === "normal" ? "positive" : status === "warning" ? "warning" : "critical";
 
   return (
     <Card
@@ -295,7 +294,7 @@ function VitalSignCard({
           <div className="flex-1 min-h-2" />
 
           {/* Status badge at bottom */}
-          <Badge variant={badgeVariant} size="sm" className={cn("self-start", badgeClassName)}>
+          <Badge variant={badgeVariant} size="sm" className="self-start">
             {statusLabel}
           </Badge>
         </div>
