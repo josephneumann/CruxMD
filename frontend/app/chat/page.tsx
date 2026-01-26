@@ -183,10 +183,9 @@ export default function ChatPage() {
             <QuickActionChip icon={Users} label="Panel overview" />
           </div>
 
-          {/* Disclaimer */}
-          <p className="text-xs text-muted-foreground text-center mt-8 max-w-md">
-            For demonstration purposes only. Not for clinical use. Always
-            verify information with primary sources.
+          {/* Copyright */}
+          <p className="text-xs text-muted-foreground text-center mt-8">
+            © {new Date().getFullYear()} CruxMD
           </p>
         </div>
       </main>
