@@ -35,24 +35,18 @@ export default function Home() {
 
           {/* Headline */}
           <h1 className="text-3xl md:text-5xl font-medium text-foreground text-center max-w-3xl mb-6 leading-tight">
-            The decisive point of care
+            The Clinically Intelligent AI
           </h1>
 
           {/* Subhead */}
           <p className="text-lg md:text-xl text-muted-foreground text-center max-w-2xl mb-10">
-            CruxMD handles the exhaustive review of every lab, medication, and clinical note —
-            so you can be fully present with every patient.
+            Be present with every patient. Never miss a detail. Automate the toil.
           </p>
 
-          {/* CTAs */}
-          <div className="flex flex-col sm:flex-row items-center gap-4">
-            <Button asChild size="lg">
-              <Link href="/chat">Open CruxMD</Link>
-            </Button>
-            <Button asChild variant="ghost" size="lg">
-              <a href="#how-it-works">Learn more</a>
-            </Button>
-          </div>
+          {/* CTA */}
+          <Button asChild size="lg">
+            <Link href="/chat">Start Now</Link>
+          </Button>
         </section>
 
         {/* Trust Bar */}
