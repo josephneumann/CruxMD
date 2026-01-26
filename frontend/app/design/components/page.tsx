@@ -2,9 +2,8 @@ import Link from "next/link";
 import { Button } from "@/components/ui/button";
 import { Badge } from "@/components/ui/badge";
 import { Card } from "@/components/ui/card";
-import { Alert, AlertTitle } from "@/components/ui/alert";
 import { Avatar, AvatarFallback } from "@/components/ui/avatar";
-import { Info, Heart, TrendingUp } from "lucide-react";
+import { Heart, TrendingUp } from "lucide-react";
 
 const components = [
   {
@@ -43,17 +42,6 @@ const components = [
           <TrendingUp className="size-3 text-muted-foreground/40" />
         </div>
       </Card>
-    ),
-  },
-  {
-    name: "Alert",
-    description: "Display important messages and feedback",
-    href: "/design/components/alert",
-    preview: (
-      <Alert className="w-48">
-        <Info className="size-4" />
-        <AlertTitle className="text-sm">Alert Title</AlertTitle>
-      </Alert>
     ),
   },
   {
