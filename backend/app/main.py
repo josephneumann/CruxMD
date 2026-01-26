@@ -8,6 +8,7 @@ from fastapi.middleware.cors import CORSMiddleware
 from starlette.middleware.base import BaseHTTPMiddleware
 
 from app.config import settings
+from app.projections.extractors.task import register_task_projection
 from app.routes import chat, data, fhir, patients, tasks
 from app.services.graph import KnowledgeGraph
 
@@ -17,6 +18,9 @@ logger = logging.getLogger(__name__)
 @asynccontextmanager
 async def lifespan(app: FastAPI):
     """Application lifespan events for startup/shutdown."""
+    # Register projections
+    register_task_projection()
+
     # Startup: ensure Neo4j indexes exist
     graph = KnowledgeGraph()
     try:

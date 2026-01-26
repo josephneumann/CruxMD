@@ -11,8 +11,6 @@ from verified clinical facts (allergies, medications, conditions).
 import logging
 from typing import Any
 
-from sqlalchemy.ext.asyncio import AsyncSession
-
 from app.schemas.context import (
     ContextMeta,
     PatientContext,

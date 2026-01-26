@@ -8,11 +8,12 @@ import pytest
 
 from app.projections.registry import FieldExtractor, ProjectionConfig, ProjectionRegistry
 from app.projections.serializers.task import TaskFhirSerializer
+from app.projections.status import get_cruxmd_status, get_fhir_status
 from app.projections.extractors.task import (
     extract_status,
     extract_priority,
     extract_category,
-    extract_type,
+    extract_task_type,
     extract_title,
     extract_due_on,
     extract_priority_score,
@@ -27,7 +28,7 @@ class TestProjectionRegistry:
 
     def setup_method(self):
         """Clear registry before each test."""
-        ProjectionRegistry.clear()
+        ProjectionRegistry._clear_for_testing()
 
     def test_register_and_get(self):
         """Test registering and retrieving a projection config."""
@@ -209,21 +210,21 @@ class TestTaskFhirSerializer:
 
     def test_status_mapping(self):
         """Test status mapping from CruxMD to FHIR."""
-        assert TaskFhirSerializer.get_fhir_status("pending") == "requested"
-        assert TaskFhirSerializer.get_fhir_status("in_progress") == "in-progress"
-        assert TaskFhirSerializer.get_fhir_status("paused") == "on-hold"
-        assert TaskFhirSerializer.get_fhir_status("completed") == "completed"
-        assert TaskFhirSerializer.get_fhir_status("cancelled") == "cancelled"
-        assert TaskFhirSerializer.get_fhir_status("deferred") == "on-hold"
+        assert get_fhir_status("pending") == "requested"
+        assert get_fhir_status("in_progress") == "in-progress"
+        assert get_fhir_status("paused") == "on-hold"
+        assert get_fhir_status("completed") == "completed"
+        assert get_fhir_status("cancelled") == "cancelled"
+        assert get_fhir_status("deferred") == "on-hold"
 
     def test_reverse_status_mapping(self):
         """Test status mapping from FHIR to CruxMD."""
-        assert TaskFhirSerializer.get_cruxmd_status("requested") == "pending"
-        assert TaskFhirSerializer.get_cruxmd_status("in-progress") == "in_progress"
-        assert TaskFhirSerializer.get_cruxmd_status("on-hold") == "paused"
-        assert TaskFhirSerializer.get_cruxmd_status("on-hold", is_deferred=True) == "deferred"
-        assert TaskFhirSerializer.get_cruxmd_status("completed") == "completed"
-        assert TaskFhirSerializer.get_cruxmd_status("cancelled") == "cancelled"
+        assert get_cruxmd_status("requested") == "pending"
+        assert get_cruxmd_status("in-progress") == "in_progress"
+        assert get_cruxmd_status("on-hold") == "paused"
+        assert get_cruxmd_status("on-hold", is_deferred=True) == "deferred"
+        assert get_cruxmd_status("completed") == "completed"
+        assert get_cruxmd_status("cancelled") == "cancelled"
 
 
 class TestTaskExtractors:
@@ -284,7 +285,7 @@ class TestTaskExtractors:
                 ]
             }
         }
-        assert extract_type(fhir_data) == "critical_lab_review"
+        assert extract_task_type(fhir_data) == "critical_lab_review"
 
     def test_extract_title(self):
         """Test extracting title from description."""
@@ -379,7 +380,7 @@ class TestRoundTrip:
         assert extract_status(fhir) == "in_progress"
         assert extract_priority(fhir) == "urgent"
         assert extract_category(fhir) == "critical"
-        assert extract_type(fhir) == "critical_lab_review"
+        assert extract_task_type(fhir) == "critical_lab_review"
         assert extract_title(fhir) == "Review critical potassium"
         assert extract_priority_score(fhir) == 90
 

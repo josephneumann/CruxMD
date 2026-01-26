@@ -22,7 +22,8 @@ depends_on: Union[str, Sequence[str], None] = None
 
 def upgrade() -> None:
     """Create tasks table with enums and indexes."""
-    # Create enum types
+    # Create enum types manually with checkfirst, then set create_type=False
+    # to prevent SQLAlchemy from trying to create them again during table creation
     task_type_enum = postgresql.ENUM(
         "critical_lab_review",
         "abnormal_result",
@@ -36,7 +37,7 @@ def upgrade() -> None:
         "order_signature",
         "custom",
         name="task_type",
-        create_type=True,
+        create_type=False,
     )
     task_type_enum.create(op.get_bind(), checkfirst=True)
 
@@ -46,7 +47,7 @@ def upgrade() -> None:
         "schedule",
         "research",
         name="task_category",
-        create_type=True,
+        create_type=False,
     )
     task_category_enum.create(op.get_bind(), checkfirst=True)
 
@@ -58,7 +59,7 @@ def upgrade() -> None:
         "cancelled",
         "deferred",
         name="task_status",
-        create_type=True,
+        create_type=False,
     )
     task_status_enum.create(op.get_bind(), checkfirst=True)
 
@@ -68,7 +69,7 @@ def upgrade() -> None:
         "asap",
         "stat",
         name="task_priority",
-        create_type=True,
+        create_type=False,
     )
     task_priority_enum.create(op.get_bind(), checkfirst=True)
 

@@ -5,11 +5,56 @@ task_projections table.
 """
 
 import json
+import logging
 from datetime import date
 from typing import Any
 
+from app.projections.constants import (
+    EXT_CONTEXT_CONFIG,
+    EXT_IS_DEFERRED,
+    EXT_PRIORITY_SCORE,
+    EXT_SESSION_ID,
+    EXT_TASK_PROVENANCE,
+    SYSTEM_TASK_CATEGORY,
+    SYSTEM_TASK_TYPE,
+)
 from app.projections.registry import FieldExtractor, ProjectionConfig, ProjectionRegistry
-from app.projections.serializers.task import TaskFhirSerializer
+from app.projections.status import get_cruxmd_status
+
+logger = logging.getLogger(__name__)
+
+
+def _get_extension_value(data: dict, url_suffix: str, value_key: str = "valueString") -> Any:
+    """Get extension value by URL suffix.
+
+    Args:
+        data: FHIR resource data.
+        url_suffix: End of extension URL (e.g., "priority-score").
+        value_key: Key for the value (e.g., "valueInteger", "valueString").
+
+    Returns:
+        Extension value or None if not found.
+    """
+    for ext in data.get("extension", []):
+        if ext.get("url", "").endswith(f"/{url_suffix}"):
+            return ext.get(value_key)
+    return None
+
+
+def _get_coding_value(data: dict, system_url: str) -> str | None:
+    """Get code from coding array by system URL.
+
+    Args:
+        data: FHIR resource data.
+        system_url: System URL to match.
+
+    Returns:
+        Code value or None if not found.
+    """
+    for coding in data.get("code", {}).get("coding", []):
+        if coding.get("system") == system_url:
+            return coding.get("code")
+    return None
 
 
 def extract_status(data: dict) -> str:
@@ -22,15 +67,8 @@ def extract_status(data: dict) -> str:
         CruxMD status value.
     """
     fhir_status = data.get("status", "requested")
-
-    # Check for deferred extension
-    is_deferred = False
-    for ext in data.get("extension", []):
-        if ext.get("url", "").endswith("/is-deferred"):
-            is_deferred = ext.get("valueBoolean", False)
-            break
-
-    return TaskFhirSerializer.get_cruxmd_status(fhir_status, is_deferred)
+    is_deferred = _get_extension_value(data, EXT_IS_DEFERRED, "valueBoolean") or False
+    return get_cruxmd_status(fhir_status, is_deferred)
 
 
 def extract_priority(data: dict) -> str:
@@ -48,25 +86,17 @@ def extract_priority(data: dict) -> str:
 def extract_category(data: dict) -> str | None:
     """Extract CruxMD category from FHIR Task.code.
 
-    Looks for the category coding in Task.code.coding array.
-
     Args:
         data: FHIR Task JSON.
 
     Returns:
         Category value or None.
     """
-    codings = data.get("code", {}).get("coding", [])
-    for coding in codings:
-        if coding.get("system") == "https://cruxmd.com/fhir/task-category":
-            return coding.get("code")
-    return None
+    return _get_coding_value(data, SYSTEM_TASK_CATEGORY)
 
 
-def extract_type(data: dict) -> str | None:
+def extract_task_type(data: dict) -> str | None:
     """Extract CruxMD task type from FHIR Task.code.
-
-    Looks for the type coding in Task.code.coding array.
 
     Args:
         data: FHIR Task JSON.
@@ -74,11 +104,7 @@ def extract_type(data: dict) -> str | None:
     Returns:
         Task type value or None.
     """
-    codings = data.get("code", {}).get("coding", [])
-    for coding in codings:
-        if coding.get("system") == "https://cruxmd.com/fhir/task-type":
-            return coding.get("code")
-    return None
+    return _get_coding_value(data, SYSTEM_TASK_TYPE)
 
 
 def extract_title(data: dict) -> str:
@@ -103,7 +129,7 @@ def extract_description(data: dict) -> str | None:
         Description text or None.
     """
     notes = data.get("note", [])
-    if notes and len(notes) > 0:
+    if notes:
         return notes[0].get("text")
     return None
 
@@ -139,10 +165,7 @@ def extract_priority_score(data: dict) -> int | None:
     Returns:
         Priority score (0-100) or None.
     """
-    for ext in data.get("extension", []):
-        if ext.get("url", "").endswith("/priority-score"):
-            return ext.get("valueInteger")
-    return None
+    return _get_extension_value(data, EXT_PRIORITY_SCORE, "valueInteger")
 
 
 def extract_provenance(data: dict) -> dict[str, Any] | None:
@@ -154,14 +177,13 @@ def extract_provenance(data: dict) -> dict[str, Any] | None:
     Returns:
         Provenance dict or None.
     """
-    for ext in data.get("extension", []):
-        if ext.get("url", "").endswith("/task-provenance"):
-            value_str = ext.get("valueString")
-            if value_str:
-                try:
-                    return json.loads(value_str)
-                except json.JSONDecodeError:
-                    return None
+    value_str = _get_extension_value(data, EXT_TASK_PROVENANCE, "valueString")
+    if value_str:
+        try:
+            return json.loads(value_str)
+        except json.JSONDecodeError:
+            logger.warning("Failed to parse provenance JSON: %s", value_str[:100])
+            return None
     return None
 
 
@@ -174,14 +196,13 @@ def extract_context_config(data: dict) -> dict[str, Any] | None:
     Returns:
         Context config dict or None.
     """
-    for ext in data.get("extension", []):
-        if ext.get("url", "").endswith("/task-context-config"):
-            value_str = ext.get("valueString")
-            if value_str:
-                try:
-                    return json.loads(value_str)
-                except json.JSONDecodeError:
-                    return None
+    value_str = _get_extension_value(data, EXT_CONTEXT_CONFIG, "valueString")
+    if value_str:
+        try:
+            return json.loads(value_str)
+        except json.JSONDecodeError:
+            logger.warning("Failed to parse context_config JSON: %s", value_str[:100])
+            return None
     return None
 
 
@@ -194,10 +215,7 @@ def extract_session_id(data: dict) -> str | None:
     Returns:
         Session ID string or None.
     """
-    for ext in data.get("extension", []):
-        if ext.get("url", "").endswith("/session-id"):
-            return ext.get("valueString")
-    return None
+    return _get_extension_value(data, EXT_SESSION_ID, "valueString")
 
 
 def extract_focus_resource_id(data: dict) -> str | None:
@@ -224,6 +242,7 @@ def register_task_projection() -> None:
     """
     # Import here to avoid circular imports
     from app.models.projections.task import TaskProjection
+    from app.projections.serializers.task import TaskFhirSerializer
 
     config = ProjectionConfig(
         resource_type="Task",
@@ -234,8 +253,9 @@ def register_task_projection() -> None:
             FieldExtractor("status", extract_status),
             FieldExtractor("priority", extract_priority),
             FieldExtractor("category", extract_category),
-            FieldExtractor("task_type", extract_type),
+            FieldExtractor("task_type", extract_task_type),
             FieldExtractor("title", extract_title),
+            FieldExtractor("description", extract_description),
             FieldExtractor("due_on", extract_due_on),
             FieldExtractor("priority_score", extract_priority_score),
             FieldExtractor("provenance", extract_provenance),

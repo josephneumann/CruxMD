@@ -8,255 +8,111 @@ import uuid
 from datetime import datetime, timezone
 from typing import Any
 
+from app.projections.constants import (
+    EXT_CONTEXT_CONFIG,
+    EXT_IS_DEFERRED,
+    EXT_PRIORITY_SCORE,
+    EXT_SESSION_ID,
+    EXT_TASK_PROVENANCE,
+    SYSTEM_TASK_CATEGORY,
+    SYSTEM_TASK_TYPE,
+    extension_url,
+)
+from app.projections.status import get_fhir_status
+
+
+def _unwrap_enum(value: Any) -> Any:
+    """Extract .value from enum if present, otherwise return as-is."""
+    return value.value if hasattr(value, "value") else value
+
 
 class TaskFhirSerializer:
     """Serializes CruxMD task data to FHIR Task resources.
 
     FHIR Task reference: https://www.hl7.org/fhir/task.html
-
-    CruxMD extensions are stored under a custom extension URL to preserve
-    application-specific data while maintaining FHIR compliance.
     """
 
-    CRUXMD_EXTENSION_BASE = "https://cruxmd.com/fhir/extensions"
-
-    # Map CruxMD category to FHIR Task.code coding
-    CATEGORY_CODES = {
-        "critical": {
-            "system": "https://cruxmd.com/fhir/task-category",
-            "code": "critical",
-            "display": "Critical",
-        },
-        "routine": {
-            "system": "https://cruxmd.com/fhir/task-category",
-            "code": "routine",
-            "display": "Routine",
-        },
-        "schedule": {
-            "system": "https://cruxmd.com/fhir/task-category",
-            "code": "schedule",
-            "display": "Schedule",
-        },
-        "research": {
-            "system": "https://cruxmd.com/fhir/task-category",
-            "code": "research",
-            "display": "Research",
-        },
-    }
-
-    # Map CruxMD task type to FHIR coding
-    TYPE_CODES = {
-        "critical_lab_review": {
-            "system": "https://cruxmd.com/fhir/task-type",
-            "code": "critical_lab_review",
-            "display": "Critical Lab Review",
-        },
-        "abnormal_result": {
-            "system": "https://cruxmd.com/fhir/task-type",
-            "code": "abnormal_result",
-            "display": "Abnormal Result",
-        },
-        "hospitalization_alert": {
-            "system": "https://cruxmd.com/fhir/task-type",
-            "code": "hospitalization_alert",
-            "display": "Hospitalization Alert",
-        },
-        "patient_message": {
-            "system": "https://cruxmd.com/fhir/task-type",
-            "code": "patient_message",
-            "display": "Patient Message",
-        },
-        "external_result": {
-            "system": "https://cruxmd.com/fhir/task-type",
-            "code": "external_result",
-            "display": "External Result",
-        },
-        "pre_visit_prep": {
-            "system": "https://cruxmd.com/fhir/task-type",
-            "code": "pre_visit_prep",
-            "display": "Pre-Visit Prep",
-        },
-        "follow_up": {
-            "system": "https://cruxmd.com/fhir/task-type",
-            "code": "follow_up",
-            "display": "Follow-Up",
-        },
-        "appointment": {
-            "system": "https://cruxmd.com/fhir/task-type",
-            "code": "appointment",
-            "display": "Appointment",
-        },
-        "research_review": {
-            "system": "https://cruxmd.com/fhir/task-type",
-            "code": "research_review",
-            "display": "Research Review",
-        },
-        "order_signature": {
-            "system": "https://cruxmd.com/fhir/task-type",
-            "code": "order_signature",
-            "display": "Order Signature",
-        },
-        "custom": {
-            "system": "https://cruxmd.com/fhir/task-type",
-            "code": "custom",
-            "display": "Custom",
-        },
-    }
-
-    # Map CruxMD status to FHIR Task status
-    STATUS_MAP = {
-        "pending": "requested",
-        "in_progress": "in-progress",
-        "paused": "on-hold",
-        "completed": "completed",
-        "cancelled": "cancelled",
-        "deferred": "on-hold",  # FHIR doesn't have deferred, use on-hold with extension
-    }
-
-    # Reverse map: FHIR status to CruxMD status
-    STATUS_MAP_REVERSE = {
-        "requested": "pending",
-        "in-progress": "in_progress",
-        "on-hold": "paused",  # Default mapping; deferred uses extension
-        "completed": "completed",
-        "cancelled": "cancelled",
-        "draft": "pending",
-        "received": "pending",
-        "accepted": "in_progress",
-        "rejected": "cancelled",
-        "ready": "pending",
-        "failed": "cancelled",
-        "entered-in-error": "cancelled",
-    }
-
     @classmethod
-    def to_fhir(
-        cls,
-        task_data: Any,
-        task_id: uuid.UUID | None = None,
-    ) -> dict:
-        """Convert CruxMD task data to FHIR Task JSON.
-
-        Args:
-            task_data: TaskCreate schema or dict with task fields.
-            task_id: Optional UUID to use as the FHIR Task.id.
-
-        Returns:
-            FHIR Task resource as dict.
-        """
-        # Handle both Pydantic models and dicts
-        if hasattr(task_data, "model_dump"):
-            data = task_data.model_dump()
-        else:
-            data = dict(task_data)
-
+    def to_fhir(cls, task_data: Any, task_id: uuid.UUID | None = None) -> dict:
+        """Convert CruxMD task data to FHIR Task JSON."""
+        data = task_data.model_dump() if hasattr(task_data, "model_dump") else dict(task_data)
         fhir_id = str(task_id) if task_id else str(uuid.uuid4())
 
-        # Get status, handling enum values
-        status_value = data.get("status", "pending")
-        if hasattr(status_value, "value"):
-            status_value = status_value.value
-        fhir_status = cls.STATUS_MAP.get(status_value, "requested")
+        status_value = _unwrap_enum(data.get("status", "pending"))
+        task_type = _unwrap_enum(data.get("type", "custom"))
+        category = _unwrap_enum(data.get("category", "routine"))
+        priority = _unwrap_enum(data.get("priority", "routine"))
 
-        # Get type and category, handling enum values
-        task_type = data.get("type", "custom")
-        if hasattr(task_type, "value"):
-            task_type = task_type.value
-
-        category = data.get("category", "routine")
-        if hasattr(category, "value"):
-            category = category.value
-
-        priority = data.get("priority", "routine")
-        if hasattr(priority, "value"):
-            priority = priority.value
-
-        # Build base FHIR Task
         fhir_task: dict[str, Any] = {
             "resourceType": "Task",
             "id": fhir_id,
-            "status": fhir_status,
+            "status": get_fhir_status(status_value),
             "intent": "order",
             "priority": priority,
             "description": data.get("title", ""),
             "authoredOn": datetime.now(timezone.utc).isoformat(),
+            "code": {
+                "coding": [
+                    {
+                        "system": SYSTEM_TASK_TYPE,
+                        "code": task_type,
+                        "display": task_type.replace("_", " ").title(),
+                    },
+                    {
+                        "system": SYSTEM_TASK_CATEGORY,
+                        "code": category,
+                        "display": category.replace("_", " ").title(),
+                    },
+                ]
+            },
         }
 
-        # Add code (task type)
-        type_code = cls.TYPE_CODES.get(task_type, cls.TYPE_CODES["custom"])
-        fhir_task["code"] = {
-            "coding": [
-                type_code,
-                cls.CATEGORY_CODES.get(category, cls.CATEGORY_CODES["routine"]),
-            ]
-        }
-
-        # Add patient reference
-        patient_id = data.get("patient_id")
-        if patient_id:
+        # Optional references
+        if patient_id := data.get("patient_id"):
             fhir_task["for"] = {"reference": f"Patient/{patient_id}"}
 
-        # Add focus resource reference
-        focus_resource_id = data.get("focus_resource_id")
-        if focus_resource_id:
+        if focus_resource_id := data.get("focus_resource_id"):
             fhir_task["focus"] = {"reference": f"Resource/{focus_resource_id}"}
 
-        # Add due date as restriction period
-        due_on = data.get("due_on")
-        if due_on:
+        if due_on := data.get("due_on"):
             due_str = due_on.isoformat() if hasattr(due_on, "isoformat") else str(due_on)
             fhir_task["restriction"] = {"period": {"end": due_str}}
 
-        # Add description as note if provided
-        description = data.get("description")
-        if description:
+        if description := data.get("description"):
             fhir_task["note"] = [{"text": description}]
 
         # Build extensions
         extensions = []
 
-        # Priority score extension
-        priority_score = data.get("priority_score")
-        if priority_score is not None:
+        if (priority_score := data.get("priority_score")) is not None:
             extensions.append({
-                "url": f"{cls.CRUXMD_EXTENSION_BASE}/priority-score",
+                "url": extension_url(EXT_PRIORITY_SCORE),
                 "valueInteger": priority_score,
             })
 
-        # Provenance extension
-        provenance = data.get("provenance")
-        if provenance:
-            prov_value = provenance
-            if hasattr(provenance, "model_dump"):
-                prov_value = provenance.model_dump()
+        if provenance := data.get("provenance"):
+            prov_value = provenance.model_dump() if hasattr(provenance, "model_dump") else provenance
             extensions.append({
-                "url": f"{cls.CRUXMD_EXTENSION_BASE}/task-provenance",
+                "url": extension_url(EXT_TASK_PROVENANCE),
                 "valueString": json.dumps(prov_value),
             })
 
-        # Context config extension
-        context_config = data.get("context_config")
-        if context_config:
-            config_value = context_config
-            if hasattr(context_config, "model_dump"):
-                config_value = context_config.model_dump()
+        if context_config := data.get("context_config"):
+            config_value = context_config.model_dump() if hasattr(context_config, "model_dump") else context_config
             extensions.append({
-                "url": f"{cls.CRUXMD_EXTENSION_BASE}/task-context-config",
+                "url": extension_url(EXT_CONTEXT_CONFIG),
                 "valueString": json.dumps(config_value),
             })
 
-        # Session ID extension
-        session_id = data.get("session_id")
-        if session_id:
+        if session_id := data.get("session_id"):
             extensions.append({
-                "url": f"{cls.CRUXMD_EXTENSION_BASE}/session-id",
+                "url": extension_url(EXT_SESSION_ID),
                 "valueString": str(session_id),
             })
 
-        # Deferred flag extension (for distinguishing deferred from paused)
         if status_value == "deferred":
             extensions.append({
-                "url": f"{cls.CRUXMD_EXTENSION_BASE}/is-deferred",
+                "url": extension_url(EXT_IS_DEFERRED),
                 "valueBoolean": True,
             })
 
@@ -266,28 +122,96 @@ class TaskFhirSerializer:
         return fhir_task
 
     @classmethod
-    def get_fhir_status(cls, cruxmd_status: str) -> str:
-        """Convert CruxMD status to FHIR status.
+    def update_fhir_data(cls, fhir_data: dict, updates: dict) -> dict:
+        """Apply updates to existing FHIR data."""
+        data = fhir_data.copy()
 
-        Args:
-            cruxmd_status: CruxMD status value.
+        for field, value in updates.items():
+            if field == "status":
+                cls._set_status(data, value)
+            elif field == "priority" and value:
+                data["priority"] = _unwrap_enum(value)
+            elif field == "title" and value:
+                data["description"] = value
+            elif field == "description":
+                cls._set_note(data, value)
+            elif field == "due_on":
+                cls._set_due_date(data, value)
+            elif field == "priority_score":
+                cls._set_extension_value(data, EXT_PRIORITY_SCORE, "valueInteger", value)
+            elif field == "session_id":
+                cls._set_extension_value(data, EXT_SESSION_ID, "valueString", str(value) if value else None)
+            elif field == "provenance":
+                cls._set_extension_json(data, EXT_TASK_PROVENANCE, value)
+            elif field == "context_config":
+                cls._set_extension_json(data, EXT_CONTEXT_CONFIG, value)
 
-        Returns:
-            FHIR Task status value.
-        """
-        return cls.STATUS_MAP.get(cruxmd_status, "requested")
+        return data
 
     @classmethod
-    def get_cruxmd_status(cls, fhir_status: str, is_deferred: bool = False) -> str:
-        """Convert FHIR status to CruxMD status.
+    def _set_status(cls, data: dict, status: Any) -> None:
+        """Set status with deferred extension handling."""
+        if status is None:
+            return
+        status = _unwrap_enum(status)
+        data["status"] = get_fhir_status(status)
 
-        Args:
-            fhir_status: FHIR Task status value.
-            is_deferred: Whether the deferred extension is set.
+        if status == "deferred":
+            cls._set_extension_value(data, EXT_IS_DEFERRED, "valueBoolean", True)
+        else:
+            cls._remove_extension(data, EXT_IS_DEFERRED)
 
-        Returns:
-            CruxMD status value.
-        """
-        if fhir_status == "on-hold" and is_deferred:
-            return "deferred"
-        return cls.STATUS_MAP_REVERSE.get(fhir_status, "pending")
+    @classmethod
+    def _set_note(cls, data: dict, text: str | None) -> None:
+        """Set or remove note."""
+        if text:
+            data["note"] = [{"text": text}]
+        else:
+            data.pop("note", None)
+
+    @classmethod
+    def _set_due_date(cls, data: dict, due_on: Any) -> None:
+        """Set or remove due date."""
+        if due_on:
+            due_str = due_on.isoformat() if hasattr(due_on, "isoformat") else str(due_on)
+            data["restriction"] = {"period": {"end": due_str}}
+        else:
+            data.pop("restriction", None)
+
+    @classmethod
+    def _set_extension_value(cls, data: dict, suffix: str, value_key: str, value: Any) -> None:
+        """Set or update an extension value."""
+        url = extension_url(suffix)
+        if value is None:
+            cls._remove_extension(data, suffix)
+            return
+
+        if "extension" not in data:
+            data["extension"] = []
+
+        for ext in data["extension"]:
+            if ext.get("url") == url:
+                ext[value_key] = value
+                return
+
+        data["extension"].append({"url": url, value_key: value})
+
+    @classmethod
+    def _set_extension_json(cls, data: dict, suffix: str, value: Any) -> None:
+        """Set extension with JSON-encoded value."""
+        if value is None:
+            cls._remove_extension(data, suffix)
+            return
+        if hasattr(value, "model_dump"):
+            value = value.model_dump()
+        cls._set_extension_value(data, suffix, "valueString", json.dumps(value))
+
+    @classmethod
+    def _remove_extension(cls, data: dict, suffix: str) -> None:
+        """Remove an extension by URL suffix."""
+        if "extension" not in data:
+            return
+        url = extension_url(suffix)
+        data["extension"] = [e for e in data["extension"] if e.get("url") != url]
+        if not data["extension"]:
+            del data["extension"]

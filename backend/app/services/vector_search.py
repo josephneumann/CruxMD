@@ -138,7 +138,7 @@ class VectorSearchService:
             try:
                 patient_id = uuid.UUID(patient_id)
             except ValueError:
-                logger.warning(f"Invalid patient_id format attempted")
+                logger.warning("Invalid patient_id format attempted")
                 raise ValueError("Invalid patient_id format") from None
 
         # pgvector's <=> operator returns cosine distance (0 = identical, 2 = opposite)
@@ -275,13 +275,13 @@ class VectorSearchService:
             try:
                 patient_id = uuid.UUID(patient_id)
             except ValueError:
-                logger.warning(f"Invalid patient_id format attempted")
+                logger.warning("Invalid patient_id format attempted")
                 raise ValueError("Invalid patient_id format") from None
         if isinstance(resource_id, str):
             try:
                 resource_id = uuid.UUID(resource_id)
             except ValueError:
-                logger.warning(f"Invalid resource_id format attempted")
+                logger.warning("Invalid resource_id format attempted")
                 raise ValueError("Invalid resource_id format") from None
 
         # First, get the embedding of the source resource

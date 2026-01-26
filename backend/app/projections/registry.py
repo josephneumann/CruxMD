@@ -47,6 +47,10 @@ class ProjectionConfig:
         return {e.target_column: e.extractor(fhir_data) for e in self.extractors}
 
 
+# Module-level storage (not class-level to avoid shared mutable state)
+_registry_configs: dict[str, ProjectionConfig] = {}
+
+
 class ProjectionRegistry:
     """Registry of projection configurations by resource type.
 
@@ -55,8 +59,6 @@ class ProjectionRegistry:
     are saved.
     """
 
-    _configs: dict[str, ProjectionConfig] = {}
-
     @classmethod
     def register(cls, config: ProjectionConfig) -> None:
         """Register a projection configuration.
@@ -64,7 +66,7 @@ class ProjectionRegistry:
         Args:
             config: The projection configuration to register.
         """
-        cls._configs[config.resource_type] = config
+        _registry_configs[config.resource_type] = config
 
     @classmethod
     def get(cls, resource_type: str) -> ProjectionConfig | None:
@@ -76,7 +78,7 @@ class ProjectionRegistry:
         Returns:
             ProjectionConfig if registered, None otherwise.
         """
-        return cls._configs.get(resource_type)
+        return _registry_configs.get(resource_type)
 
     @classmethod
     def has_projection(cls, resource_type: str) -> bool:
@@ -88,7 +90,7 @@ class ProjectionRegistry:
         Returns:
             True if projection is registered.
         """
-        return resource_type in cls._configs
+        return resource_type in _registry_configs
 
     @classmethod
     def all_configs(cls) -> dict[str, ProjectionConfig]:
@@ -97,9 +99,9 @@ class ProjectionRegistry:
         Returns:
             Dictionary mapping resource types to configs.
         """
-        return cls._configs.copy()
+        return _registry_configs.copy()
 
     @classmethod
-    def clear(cls) -> None:
-        """Clear all registered configurations. For testing only."""
-        cls._configs.clear()
+    def _clear_for_testing(cls) -> None:
+        """Clear all registered configurations. Internal use in tests only."""
+        _registry_configs.clear()

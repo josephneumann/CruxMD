@@ -46,6 +46,7 @@ class TaskProjection(Base):
 
     # Content fields
     title: Mapped[str] = mapped_column(String(200), nullable=False)
+    description: Mapped[str | None] = mapped_column(String(2000), nullable=True)
     due_on: Mapped[date | None] = mapped_column(Date, nullable=True)
 
     # Reference fields (stored as strings for flexibility)
