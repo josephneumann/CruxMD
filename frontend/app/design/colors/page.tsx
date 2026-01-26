@@ -65,16 +65,16 @@ const SEMANTIC_TOKENS = {
 
 const INSIGHT_COLORS = {
   light: [
-    { name: "Info", value: "#61AAF2", description: "General information" },
-    { name: "Warning", value: "#D4A27F", description: "Caution indicators" },
-    { name: "Critical", value: "#BF4D43", description: "Urgent alerts" },
-    { name: "Positive", value: "#7D8B6F", description: "Favorable findings" },
+    { name: "Info", value: "#61AAF2", foreground: "#FFFFFF", description: "General information" },
+    { name: "Warning", value: "#D4A27F", foreground: "#191919", description: "Caution indicators" },
+    { name: "Critical", value: "#BF4D43", foreground: "#FFFFFF", description: "Urgent alerts" },
+    { name: "Positive", value: "#7D8B6F", foreground: "#FFFFFF", description: "Favorable findings" },
   ],
   dark: [
-    { name: "Info", value: "#7BBAF5", description: "General information" },
-    { name: "Warning", value: "#EBDBBC", description: "Caution indicators" },
-    { name: "Critical", value: "#D4645A", description: "Urgent alerts" },
-    { name: "Positive", value: "#9AAB8F", description: "Favorable findings" },
+    { name: "Info", value: "#7BBAF5", foreground: "#191919", description: "General information" },
+    { name: "Warning", value: "#EBDBBC", foreground: "#191919", description: "Caution indicators" },
+    { name: "Critical", value: "#D4645A", foreground: "#FFFFFF", description: "Urgent alerts" },
+    { name: "Positive", value: "#9AAB8F", foreground: "#191919", description: "Favorable findings" },
   ],
 };
 
@@ -148,6 +148,13 @@ export default function ColorsPage() {
           <p className="text-muted-foreground">
             These CSS variables adapt automatically between light and dark modes.
           </p>
+          <div className="rounded-lg border bg-muted/50 p-4 text-sm">
+            <p className="font-medium mb-2">Design Notes</p>
+            <ul className="text-muted-foreground space-y-1">
+              <li><strong>Dark mode accent</strong> — Intentionally neutral (Slate) rather than warm for better contrast and reduced eye strain</li>
+              <li><strong>Secondary = Border</strong> — In light mode, secondary background matches border color for seamless subtle backgrounds</li>
+            </ul>
+          </div>
         </div>
 
         <div className="grid md:grid-cols-2 gap-8">
@@ -207,35 +214,63 @@ export default function ColorsPage() {
           <h2 className="text-2xl font-medium">Clinical Insight Colors</h2>
           <p className="text-muted-foreground">
             Color-coded severity levels for clinical alerts and insights. Each type
-            has specific background, border, and icon colors.
+            has specific background and foreground colors for proper contrast.
           </p>
         </div>
 
         <div className="grid md:grid-cols-2 gap-8">
           <div className="space-y-3">
             <h3 className="text-lg font-medium">Light Mode</h3>
-            <div className="grid grid-cols-2 gap-3">
+            <div className="space-y-2">
               {INSIGHT_COLORS.light.map((color) => (
-                <ColorSwatch
+                <div
                   key={color.name}
-                  name={color.name}
-                  value={color.value}
-                  description={color.description}
-                />
+                  className="flex items-center gap-3 rounded-lg border p-3"
+                  style={{ backgroundColor: color.value }}
+                >
+                  <span
+                    className="text-sm font-medium flex-1"
+                    style={{ color: color.foreground }}
+                  >
+                    {color.name}
+                  </span>
+                  <div className="text-right">
+                    <p className="text-xs font-mono" style={{ color: color.foreground }}>
+                      bg: {color.value}
+                    </p>
+                    <p className="text-xs font-mono opacity-75" style={{ color: color.foreground }}>
+                      fg: {color.foreground}
+                    </p>
+                  </div>
+                </div>
               ))}
             </div>
           </div>
 
           <div className="space-y-3">
             <h3 className="text-lg font-medium">Dark Mode</h3>
-            <div className="grid grid-cols-2 gap-3">
+            <div className="space-y-2">
               {INSIGHT_COLORS.dark.map((color) => (
-                <ColorSwatch
+                <div
                   key={color.name}
-                  name={color.name}
-                  value={color.value}
-                  description={color.description}
-                />
+                  className="flex items-center gap-3 rounded-lg border p-3"
+                  style={{ backgroundColor: color.value }}
+                >
+                  <span
+                    className="text-sm font-medium flex-1"
+                    style={{ color: color.foreground }}
+                  >
+                    {color.name}
+                  </span>
+                  <div className="text-right">
+                    <p className="text-xs font-mono" style={{ color: color.foreground }}>
+                      bg: {color.value}
+                    </p>
+                    <p className="text-xs font-mono opacity-75" style={{ color: color.foreground }}>
+                      fg: {color.foreground}
+                    </p>
+                  </div>
+                </div>
               ))}
             </div>
           </div>

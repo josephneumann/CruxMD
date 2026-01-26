@@ -101,6 +101,82 @@ export default function BadgePage() {
         </div>
       </div>
 
+      {/* Color Mapping */}
+      <div className="space-y-6">
+        <h2 className="text-2xl font-medium">Color Mapping</h2>
+        <p className="text-muted-foreground">
+          How badge variants map to design system colors.
+        </p>
+        <div className="rounded-lg border overflow-hidden">
+          <table className="w-full text-sm">
+            <thead className="bg-muted">
+              <tr>
+                <th className="text-left p-3 font-medium">Variant</th>
+                <th className="text-left p-3 font-medium">Background</th>
+                <th className="text-left p-3 font-medium">Foreground</th>
+                <th className="text-left p-3 font-medium">Use Case</th>
+              </tr>
+            </thead>
+            <tbody className="divide-y">
+              <tr>
+                <td className="p-3"><Badge variant="primary" size="sm">primary</Badge></td>
+                <td className="p-3 font-mono text-xs">Book Cloth (#CC785C)</td>
+                <td className="p-3 font-mono text-xs">#FFFFFF</td>
+                <td className="p-3 text-muted-foreground">Primary actions, emphasis</td>
+              </tr>
+              <tr>
+                <td className="p-3"><Badge variant="secondary" size="sm">secondary</Badge></td>
+                <td className="p-3 font-mono text-xs">Ivory Dark (#E5E4DF)</td>
+                <td className="p-3 font-mono text-xs">Slate Dark (#191919)</td>
+                <td className="p-3 text-muted-foreground">Subtle labels, counts</td>
+              </tr>
+              <tr>
+                <td className="p-3"><Badge variant="sage" size="sm">sage</Badge></td>
+                <td className="p-3 font-mono text-xs">Sage (#7D8B6F)</td>
+                <td className="p-3 font-mono text-xs">#FFFFFF</td>
+                <td className="p-3 text-muted-foreground">Success, active status</td>
+              </tr>
+              <tr>
+                <td className="p-3"><Badge variant="periwinkle" size="sm">periwinkle</Badge></td>
+                <td className="p-3 font-mono text-xs">Periwinkle (#8B8FC7)</td>
+                <td className="p-3 font-mono text-xs">#FFFFFF</td>
+                <td className="p-3 text-muted-foreground">Links, selections, labs</td>
+              </tr>
+              <tr>
+                <td className="p-3"><Badge variant="plum" size="sm">plum</Badge></td>
+                <td className="p-3 font-mono text-xs">Dusty Plum (#5D4B63)</td>
+                <td className="p-3 font-mono text-xs">#FFFFFF</td>
+                <td className="p-3 text-muted-foreground">Premium, encounters</td>
+              </tr>
+              <tr>
+                <td className="p-3"><Badge variant="info" size="sm">info</Badge></td>
+                <td className="p-3 font-mono text-xs">Focus Blue (#61AAF2)</td>
+                <td className="p-3 font-mono text-xs">#FFFFFF</td>
+                <td className="p-3 text-muted-foreground">Informational alerts</td>
+              </tr>
+              <tr>
+                <td className="p-3"><Badge variant="warning" size="sm">warning</Badge></td>
+                <td className="p-3 font-mono text-xs">Kraft (#D4A27F)</td>
+                <td className="p-3 font-mono text-xs">Slate Dark (#191919)</td>
+                <td className="p-3 text-muted-foreground">Caution, attention needed</td>
+              </tr>
+              <tr>
+                <td className="p-3"><Badge variant="critical" size="sm">critical</Badge></td>
+                <td className="p-3 font-mono text-xs">Error Red (#BF4D43)</td>
+                <td className="p-3 font-mono text-xs">#FFFFFF</td>
+                <td className="p-3 text-muted-foreground">Urgent, critical alerts</td>
+              </tr>
+              <tr>
+                <td className="p-3"><Badge variant="positive" size="sm">positive</Badge></td>
+                <td className="p-3 font-mono text-xs">Sage (#7D8B6F)</td>
+                <td className="p-3 font-mono text-xs">#FFFFFF</td>
+                <td className="p-3 text-muted-foreground">Favorable findings</td>
+              </tr>
+            </tbody>
+          </table>
+        </div>
+      </div>
+
       {/* Code Example */}
       <CodeBlock
         collapsible

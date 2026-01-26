@@ -149,16 +149,26 @@ export default function TypographyPage() {
         <h2 className="text-2xl font-medium">Font Weights</h2>
         <div className="grid grid-cols-2 md:grid-cols-4 gap-4">
           {[
-            { weight: "font-light", label: "Light (300)" },
-            { weight: "font-normal", label: "Regular (400)" },
-            { weight: "font-medium", label: "Medium (500)" },
-            { weight: "font-semibold", label: "Semibold (600)" },
+            { weight: "font-light", label: "Light (300)", use: "Hero text, large display" },
+            { weight: "font-normal", label: "Regular (400)", use: "Body text, descriptions" },
+            { weight: "font-medium", label: "Medium (500)", use: "Headings, emphasis" },
+            { weight: "font-semibold", label: "Semibold (600)", use: "Card titles, buttons" },
           ].map((item) => (
             <div key={item.weight} className="rounded-lg border bg-card p-4 text-center">
               <p className={`text-2xl ${item.weight} mb-2`}>Aa</p>
-              <p className="text-xs text-muted-foreground">{item.label}</p>
+              <p className="text-xs font-medium">{item.label}</p>
+              <p className="text-xs text-muted-foreground mt-1">{item.use}</p>
             </div>
           ))}
+        </div>
+        <div className="rounded-lg border bg-muted/50 p-4">
+          <h3 className="font-medium text-sm mb-2">Usage Guidelines</h3>
+          <ul className="text-sm text-muted-foreground space-y-1">
+            <li><strong>Light (300)</strong> — Reserved for large hero text (36px+) where the size provides sufficient visual weight</li>
+            <li><strong>Regular (400)</strong> — Default for all body text, form labels, and descriptions</li>
+            <li><strong>Medium (500)</strong> — Page and section headings (H1-H4), emphasizing key information</li>
+            <li><strong>Semibold (600)</strong> — Card titles, button text, and smaller headings (H5-H6) that need extra prominence</li>
+          </ul>
         </div>
       </div>
 

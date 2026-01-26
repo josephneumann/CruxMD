@@ -266,7 +266,7 @@ export default function ChartPage() {
           <h3 className="font-medium text-sm mb-2 text-destructive">Avoid</h3>
           <ul className="text-sm text-muted-foreground space-y-1">
             <li>3D effects, bevels, or drop shadows on chart elements</li>
-            <li>Gradients on bars or areas (solid fills only)</li>
+            <li>Bold gradients on bars (subtle area fills with opacity fade are acceptable)</li>
             <li>Decorative patterns or textures</li>
             <li>Animations beyond subtle transitions</li>
           </ul>
