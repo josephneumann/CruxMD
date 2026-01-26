@@ -202,24 +202,20 @@ export default function CardPage() {
             </div>
 
             <div className="mt-4 pt-4 border-t space-y-3">
-              <div className="flex items-start gap-2">
-                <AlertCircle className="size-4 text-destructive mt-0.5" />
-                <div>
-                  <p className="text-sm font-medium">Allergies</p>
-                  <div className="flex flex-wrap gap-1.5 mt-1">
-                    <Badge variant="outline" size="sm">Penicillin</Badge>
-                    <Badge variant="outline" size="sm">Latex</Badge>
-                  </div>
+              <div>
+                <p className="text-sm font-medium mb-1.5">Allergies</p>
+                <div className="flex flex-wrap gap-1.5">
+                  <Badge variant="outline" size="sm">Penicillin</Badge>
+                  <Badge variant="outline" size="sm">Latex</Badge>
                 </div>
               </div>
 
               <div>
-                <p className="text-sm">
-                  <span className="font-medium">Conditions:</span>{" "}
-                  <span className="text-muted-foreground">
-                    Hypertension, Type 2 Diabetes
-                  </span>
-                </p>
+                <p className="text-sm font-medium mb-1.5">Conditions</p>
+                <div className="flex flex-wrap gap-1.5">
+                  <Badge variant="neutral" size="sm">Hypertension</Badge>
+                  <Badge variant="neutral" size="sm">Type 2 Diabetes</Badge>
+                </div>
               </div>
             </div>
           </Card>
