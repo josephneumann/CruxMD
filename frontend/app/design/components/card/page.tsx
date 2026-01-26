@@ -22,12 +22,14 @@ import {
   Thermometer,
   Droplets,
   TrendingUp,
+  TrendingDown,
   Minus,
   AlertCircle,
   Pill,
   Stethoscope,
   FileText,
   TestTube,
+  FlaskConical,
 } from "lucide-react";
 
 const cardComponents = [
@@ -167,8 +169,8 @@ export default function CardPage() {
         </PreviewGrid>
       </div>
 
-      {/* Vital Signs */}
-      <VitalSignsDemo />
+      {/* Clinical Observation Cards */}
+      <ClinicalObservationCardsDemo />
 
       {/* Patient Summary Card */}
       <div className="space-y-6">
@@ -264,6 +266,8 @@ function VitalSignCard({
   const isAbnormal = status === "warning" || status === "critical";
   const trendIcon = trend === "up" ? (
     <TrendingUp className={cn("size-3", isAbnormal ? "text-destructive" : "text-muted-foreground/40")} />
+  ) : trend === "down" ? (
+    <TrendingDown className={cn("size-3", status === "normal" ? "text-[#7D8B6F]" : "text-[#7D8B6F]")} />
   ) : (
     <Minus className="size-3 text-muted-foreground/40" />
   );
@@ -318,6 +322,7 @@ function VitalSignCard({
           {icon}
           <span className="text-sm font-semibold">{value}</span>
           <span className="text-xs text-muted-foreground">{unit}</span>
+          <div className="flex-1" />
           {trendIcon}
         </div>
       )}
@@ -325,12 +330,12 @@ function VitalSignCard({
   );
 }
 
-function VitalSignsDemo() {
+function ClinicalObservationCardsDemo() {
   return (
     <div className="space-y-6">
-      <h2 className="text-2xl font-medium">Vital Signs Cards</h2>
+      <h2 className="text-2xl font-medium">Clinical Observation Cards</h2>
       <p className="text-muted-foreground">
-        Interactive cards for displaying vital sign measurements. Click any card to toggle between expanded and collapsed states.
+        Interactive cards for displaying clinical measurements and lab results. Click any card to toggle between expanded and collapsed states.
       </p>
 
       <div className="flex flex-wrap gap-3 items-start">
@@ -377,6 +382,18 @@ function VitalSignsDemo() {
           trend="stable"
           status="normal"
           statusLabel="Normal"
+        />
+
+        <VitalSignCard
+          icon={<FlaskConical className="size-4 text-[#CCA43B]" strokeWidth={1.5} />}
+          label="HbA1c"
+          value="7.2"
+          unit="%"
+          time="Jan 15"
+          trend="down"
+          status="normal"
+          statusLabel="Normal"
+          note="Down from 7.8% in Oct"
         />
       </div>
 
