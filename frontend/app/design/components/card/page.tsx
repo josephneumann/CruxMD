@@ -195,7 +195,7 @@ export default function CardPage() {
                   <Badge variant="sage" size="sm">Low Risk</Badge>
                 </div>
                 <div className="mt-2 text-sm text-muted-foreground">
-                  <p>MRN: MRN-789012</p>
+                  <p>MRN: 789012</p>
                   <p>49y, Female • DOB: 06/22/1975</p>
                 </div>
                 <div className="flex flex-wrap gap-1.5 mt-2">
