@@ -1,10 +1,13 @@
 "use client";
 
-import { useState } from "react";
+import { useState, useEffect } from "react";
+import dynamic from "next/dynamic";
 import Image from "next/image";
-import { Check, Copy, Download } from "lucide-react";
+import { Check, Copy } from "lucide-react";
 import { cn } from "@/lib/utils";
 import { CodeBlock } from "@/components/design-system/CodeBlock";
+
+const Lottie = dynamic(() => import("lottie-react"), { ssr: false });
 
 interface AssetCardProps {
   name: string;
@@ -76,6 +79,21 @@ function AssetSection({ title, description, children }: { title: string; descrip
 }
 
 export default function AssetsPage() {
+  const [lottieData, setLottieData] = useState<object | null>(null);
+  const [copied, setCopied] = useState(false);
+
+  useEffect(() => {
+    fetch("/brand/crux-spin.json")
+      .then((res) => res.json())
+      .then((data) => setLottieData(data));
+  }, []);
+
+  const handleCopyPath = async (path: string) => {
+    await navigator.clipboard.writeText(path);
+    setCopied(true);
+    setTimeout(() => setCopied(false), 2000);
+  };
+
   return (
     <div className="space-y-12">
       <div className="space-y-4">
@@ -155,6 +173,118 @@ export default function AssetsPage() {
           height={48}
         />
       </AssetSection>
+
+      {/* Animated Spinner */}
+      <div className="space-y-4">
+        <div>
+          <h2 className="text-2xl font-medium">Animated Spinner</h2>
+          <p className="text-muted-foreground mt-1">
+            Lottie animation for loading states and thinking indicators.
+          </p>
+        </div>
+        <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
+          <div className="group rounded-lg border overflow-hidden transition-all hover:shadow-md">
+            <div className="flex items-center justify-center p-8 min-h-[120px] bg-white">
+              {lottieData ? (
+                <div className="w-16 h-16">
+                  <Lottie
+                    animationData={lottieData}
+                    loop={true}
+                    style={{ width: "100%", height: "100%" }}
+                  />
+                </div>
+              ) : (
+                <div className="w-16 h-16 rounded-full bg-muted animate-pulse" />
+              )}
+            </div>
+            <div className="bg-card p-4 border-t">
+              <div className="flex items-start justify-between gap-2">
+                <div>
+                  <p className="font-medium text-sm">Crux Spinner</p>
+                  <p className="text-xs text-muted-foreground mt-0.5">Lottie animation for loading states</p>
+                  <p className="text-xs font-mono text-muted-foreground mt-1">/brand/crux-spin.json</p>
+                </div>
+                <button
+                  onClick={() => handleCopyPath("/brand/crux-spin.json")}
+                  className="p-1.5 rounded hover:bg-muted transition-colors"
+                  title="Copy path"
+                >
+                  {copied ? (
+                    <Check className="size-4 text-primary" />
+                  ) : (
+                    <Copy className="size-4 text-muted-foreground" />
+                  )}
+                </button>
+              </div>
+            </div>
+          </div>
+          <div className="group rounded-lg border overflow-hidden transition-all hover:shadow-md">
+            <div className="flex items-center justify-center p-8 min-h-[120px] bg-slate-900">
+              {lottieData ? (
+                <div className="w-16 h-16">
+                  <Lottie
+                    animationData={lottieData}
+                    loop={true}
+                    style={{ width: "100%", height: "100%" }}
+                  />
+                </div>
+              ) : (
+                <div className="w-16 h-16 rounded-full bg-slate-700 animate-pulse" />
+              )}
+            </div>
+            <div className="bg-card p-4 border-t">
+              <div className="flex items-start justify-between gap-2">
+                <div>
+                  <p className="font-medium text-sm">Crux Spinner (Dark BG)</p>
+                  <p className="text-xs text-muted-foreground mt-0.5">Works on both light and dark backgrounds</p>
+                  <p className="text-xs font-mono text-muted-foreground mt-1">/brand/crux-spin.lottie</p>
+                </div>
+                <button
+                  onClick={() => handleCopyPath("/brand/crux-spin.lottie")}
+                  className="p-1.5 rounded hover:bg-muted transition-colors"
+                  title="Copy path"
+                >
+                  {copied ? (
+                    <Check className="size-4 text-primary" />
+                  ) : (
+                    <Copy className="size-4 text-muted-foreground" />
+                  )}
+                </button>
+              </div>
+            </div>
+          </div>
+        </div>
+        <CodeBlock
+          collapsible
+          label="Usage with lottie-react"
+          code={`import dynamic from "next/dynamic";
+import { useState, useEffect } from "react";
+
+const Lottie = dynamic(() => import("lottie-react"), { ssr: false });
+
+function SpinningLogo() {
+  const [lottieData, setLottieData] = useState<object | null>(null);
+
+  useEffect(() => {
+    fetch("/brand/crux-spin.json")
+      .then((res) => res.json())
+      .then((data) => setLottieData(data));
+  }, []);
+
+  if (!lottieData) return null;
+
+  return (
+    <div className="w-10 h-10">
+      <Lottie
+        animationData={lottieData}
+        loop={true}
+        style={{ width: "100%", height: "100%" }}
+      />
+    </div>
+  );
+}`}
+        />
+      </div>
 
       {/* Favicons */}
       <AssetSection
