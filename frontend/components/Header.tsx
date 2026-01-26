@@ -16,6 +16,9 @@ export function Header() {
         />
       </Link>
       <nav className="flex items-center gap-4">
+        <Button variant="ghost" size="sm" asChild>
+          <Link href="/design">Design System</Link>
+        </Button>
         <Button variant="ghost" size="icon" asChild>
           <a
             href="https://github.com/josephneumann/CruxMD"

@@ -309,10 +309,10 @@ export default function Home() {
               GitHub
             </a>
             <Link
-              href="/design-system"
+              href="/design"
               className="hover:text-foreground transition-colors"
             >
-              Documentation
+              Design System
             </Link>
           </nav>
         </div>

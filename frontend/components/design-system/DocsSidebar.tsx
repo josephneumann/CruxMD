@@ -13,6 +13,7 @@ import {
   Smile,
   Home,
   Image as ImageIcon,
+  BookOpen,
 } from "lucide-react";
 
 interface NavItem {
@@ -24,6 +25,7 @@ interface NavItem {
 
 const navigation: NavItem[] = [
   { title: "Overview", href: "/design", icon: Home },
+  { title: "Brand", href: "/design/brand", icon: BookOpen },
   { title: "Assets", href: "/design/assets", icon: ImageIcon },
   { title: "Colors", href: "/design/colors", icon: Palette },
   { title: "Typography", href: "/design/typography", icon: Type },
