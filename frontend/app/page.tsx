@@ -35,12 +35,12 @@ export default function Home() {
 
           {/* Headline */}
           <h1 className="text-3xl md:text-5xl font-medium text-foreground text-center max-w-3xl mb-6 leading-tight">
-            The Clinically Intelligent AI
+            Human Presence. Machine Precision.
           </h1>
 
           {/* Subhead */}
           <p className="text-lg md:text-xl text-muted-foreground text-center max-w-2xl mb-10">
-            Be present with every patient. Never miss a detail. Automate the toil.
+            The Clinically Intelligent AI
           </p>
 
           {/* CTA */}
