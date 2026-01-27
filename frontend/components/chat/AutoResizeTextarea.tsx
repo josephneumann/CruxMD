@@ -9,6 +9,7 @@ interface AutoResizeTextareaProps {
   onSubmit: () => void;
   placeholder?: string;
   disabled?: boolean;
+  autoFocus?: boolean;
   className?: string;
 }
 
@@ -21,6 +22,7 @@ export function AutoResizeTextarea({
   onSubmit,
   placeholder = "Type a message...",
   disabled = false,
+  autoFocus = false,
   className,
 }: AutoResizeTextareaProps) {
   const textareaRef = useRef<HTMLTextAreaElement>(null);
@@ -52,6 +54,7 @@ export function AutoResizeTextarea({
       onKeyDown={handleKeyDown}
       placeholder={placeholder}
       disabled={disabled}
+      autoFocus={autoFocus}
       rows={1}
       className={cn(
         "w-full bg-transparent text-foreground placeholder:text-muted-foreground",

@@ -218,8 +218,9 @@ export default function ChatSessionPage() {
                   value={inputValue}
                   onChange={setInputValue}
                   onSubmit={handleSubmit}
-                  placeholder="Type / for commands"
+                  placeholder="What can I help you with today?"
                   disabled={isThinking}
+                  autoFocus
                 />
               </div>
               <div className="flex items-center justify-between px-4 pb-4">

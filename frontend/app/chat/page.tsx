@@ -47,7 +47,7 @@ export default function ChatPage() {
               height={40}
             />
             <h1 className="text-3xl md:text-4xl font-light text-foreground">
-              {getGreeting()}, <span className="font-normal">Dr. Neumann</span>
+              {getGreeting()}, <span className="font-normal">Joe</span>
             </h1>
           </div>
 
@@ -58,7 +58,8 @@ export default function ChatPage() {
                 value={inputValue}
                 onChange={setInputValue}
                 onSubmit={handleSubmit}
-                placeholder="Type / for commands"
+                placeholder="What can I help you with today?"
+                autoFocus
               />
             </div>
             <div className="flex items-center justify-between px-4 pb-4">
