@@ -7,7 +7,6 @@
 import { useState, useEffect } from "react";
 import { useRouter } from "next/navigation";
 import Image from "next/image";
-import dynamic from "next/dynamic";
 import {
   Plus,
   Clock,
@@ -20,9 +19,6 @@ import {
 } from "lucide-react";
 import { Button } from "@/components/ui/button";
 import { Sidebar } from "@/components/Sidebar";
-
-// Dynamically import Lottie to avoid SSR issues
-const Lottie = dynamic(() => import("lottie-react"), { ssr: false });
 
 // Clinical reasoning verbs for the thinking animation
 const THINKING_VERBS = [
@@ -43,14 +39,6 @@ export default function ChatPage() {
   const [inputValue, setInputValue] = useState("");
   const [isThinking, setIsThinking] = useState(false);
   const [thinkingVerbIndex, setThinkingVerbIndex] = useState(0);
-  const [lottieData, setLottieData] = useState<object | null>(null);
-
-  // Load Lottie animation data
-  useEffect(() => {
-    fetch("/brand/crux-spin.json")
-      .then((res) => res.json())
-      .then((data) => setLottieData(data));
-  }, []);
 
   // Cycle through thinking verbs
   useEffect(() => {
@@ -99,23 +87,12 @@ export default function ChatPage() {
         <div className="w-full max-w-2xl flex flex-col items-center">
           {/* Greeting with mark */}
           <div className="flex items-center gap-3 mb-8">
-            {/* Animated mark when thinking, static mark otherwise */}
-            {isThinking && lottieData ? (
-              <div className="w-10 h-10">
-                <Lottie
-                  animationData={lottieData}
-                  loop={true}
-                  style={{ width: "100%", height: "100%" }}
-                />
-              </div>
-            ) : (
-              <Image
-                src="/brand/mark-primary.svg"
-                alt=""
-                width={40}
-                height={40}
-              />
-            )}
+            <Image
+              src="/brand/mark-primary.svg"
+              alt=""
+              width={40}
+              height={40}
+            />
             <h1 className="text-3xl md:text-4xl font-light text-foreground">
               {getGreeting()}, <span className="font-normal">Dr. Neumann</span>
             </h1>

@@ -7,6 +7,7 @@
 
 import { useState, useEffect, useRef } from "react";
 import { useParams } from "next/navigation";
+import Image from "next/image";
 import dynamic from "next/dynamic";
 import {
   ChevronDown,
@@ -142,49 +143,75 @@ export default function ChatSessionPage() {
         {/* Messages area */}
         <div className="flex-1 overflow-y-auto">
           <div className="max-w-3xl mx-auto px-4 py-8">
-            {messages.map((message) => (
-              <div key={message.id} className="mb-8">
-                {message.role === "user" ? (
-                  // User message - right aligned
-                  <div className="flex justify-end">
-                    <div className="bg-muted rounded-2xl px-4 py-3 max-w-[80%]">
+            {messages.map((message, index) => {
+              const isLastAssistantMessage =
+                message.role === "assistant" &&
+                index === messages.length - 1;
+
+              return (
+                <div key={message.id} className="mb-8">
+                  {message.role === "user" ? (
+                    // User message - right aligned
+                    <div className="flex justify-end">
+                      <div className="bg-muted rounded-2xl px-4 py-3 max-w-[80%]">
+                        <p className="text-foreground">{message.content}</p>
+                      </div>
+                    </div>
+                  ) : (
+                    // Assistant message - left aligned with thinking and actions
+                    <div className="space-y-3">
+                      {/* Thinking section (collapsible) */}
+                      {message.thinking && (
+                        <button
+                          onClick={() => toggleThinking(message.id)}
+                          className="flex items-center justify-between w-full max-w-2xl bg-muted/50 hover:bg-muted rounded-xl px-4 py-3 text-left transition-colors"
+                        >
+                          <span className="text-sm text-muted-foreground">
+                            {message.thinking}
+                          </span>
+                          {expandedThinking[message.id] ? (
+                            <ChevronUp className="h-4 w-4 text-muted-foreground" />
+                          ) : (
+                            <ChevronDown className="h-4 w-4 text-muted-foreground" />
+                          )}
+                        </button>
+                      )}
+
+                      {/* Message content */}
                       <p className="text-foreground">{message.content}</p>
-                    </div>
-                  </div>
-                ) : (
-                  // Assistant message - left aligned with thinking and actions
-                  <div className="space-y-3">
-                    {/* Thinking section (collapsible) */}
-                    {message.thinking && (
-                      <button
-                        onClick={() => toggleThinking(message.id)}
-                        className="flex items-center justify-between w-full max-w-2xl bg-muted/50 hover:bg-muted rounded-xl px-4 py-3 text-left transition-colors"
-                      >
-                        <span className="text-sm text-muted-foreground">
-                          {message.thinking}
-                        </span>
-                        {expandedThinking[message.id] ? (
-                          <ChevronUp className="h-4 w-4 text-muted-foreground" />
-                        ) : (
-                          <ChevronDown className="h-4 w-4 text-muted-foreground" />
-                        )}
-                      </button>
-                    )}
 
-                    {/* Message content */}
-                    <p className="text-foreground">{message.content}</p>
+                      {/* Action buttons */}
+                      <div className="flex items-center gap-1">
+                        <ActionButton icon={Copy} label="Copy" />
+                        <ActionButton icon={ThumbsUp} label="Good response" />
+                        <ActionButton icon={ThumbsDown} label="Bad response" />
+                        <ActionButton icon={RotateCcw} label="Retry" />
+                      </div>
 
-                    {/* Action buttons */}
-                    <div className="flex items-center gap-1">
-                      <ActionButton icon={Copy} label="Copy" />
-                      <ActionButton icon={ThumbsUp} label="Good response" />
-                      <ActionButton icon={ThumbsDown} label="Bad response" />
-                      <ActionButton icon={RotateCcw} label="Retry" />
+                      {/* Static mark - show below last assistant message when not thinking */}
+                      {isLastAssistantMessage && !isThinking && (
+                        <div className="mt-2">
+                          <Image
+                            src="/brand/mark-primary.svg"
+                            alt=""
+                            width={32}
+                            height={32}
+                            className="dark:hidden"
+                          />
+                          <Image
+                            src="/brand/mark-reversed.svg"
+                            alt=""
+                            width={32}
+                            height={32}
+                            className="hidden dark:block"
+                          />
+                        </div>
+                      )}
                     </div>
-                  </div>
-                )}
-              </div>
-            ))}
+                  )}
+                </div>
+              );
+            })}
 
             {/* Thinking indicator */}
             {isThinking && (
