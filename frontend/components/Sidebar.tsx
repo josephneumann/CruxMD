@@ -13,6 +13,9 @@ import {
   CheckSquare,
   ChevronDown,
   ChevronUp,
+  Sun,
+  Moon,
+  Monitor,
 } from "lucide-react";
 import { cn } from "@/lib/utils";
 import { Button } from "@/components/ui/button";
@@ -41,7 +44,7 @@ const NAV_ITEMS = [
 export function Sidebar({ className }: SidebarProps) {
   const [isExpanded, setIsExpanded] = useState(false);
   const [isRecentsExpanded, setIsRecentsExpanded] = useState(true);
-  const { resolvedTheme } = useTheme();
+  const { theme, setTheme, resolvedTheme } = useTheme();
   const [mounted, setMounted] = useState(false);
 
   // Avoid hydration mismatch by only rendering theme-dependent content after mount
@@ -155,8 +158,34 @@ export function Sidebar({ className }: SidebarProps) {
         </div>
       )}
 
+      {/* Theme Toggle */}
+      <div className={cn(
+        "px-2 py-2",
+        !isExpanded && "flex justify-center"
+      )}>
+        <Button
+          variant="ghost"
+          size="icon"
+          className="h-8 w-8 text-muted-foreground hover:text-foreground"
+          onClick={() => {
+            if (theme === "light") setTheme("dark");
+            else if (theme === "dark") setTheme("system");
+            else setTheme("light");
+          }}
+          aria-label="Toggle theme"
+        >
+          {mounted && (
+            <>
+              {theme === "light" && <Sun className="h-5 w-5" />}
+              {theme === "dark" && <Moon className="h-5 w-5" />}
+              {theme === "system" && <Monitor className="h-5 w-5" />}
+            </>
+          )}
+        </Button>
+      </div>
+
       {/* Footer - User Profile */}
-      <div className="mt-auto border-t border-border">
+      <div className="border-t border-border">
         <button
           className={cn(
             "flex items-center gap-3 w-full px-3 py-3 hover:bg-muted transition-colors",
