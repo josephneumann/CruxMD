@@ -35,7 +35,7 @@ export default function Home() {
 
           {/* Headline */}
           <h1 className="text-3xl md:text-5xl font-medium text-foreground text-center max-w-3xl mb-6 leading-tight">
-            Human Presence. Machine Precision.
+            Human Presence.<br />Machine Precision.
           </h1>
 
           {/* Subhead */}
