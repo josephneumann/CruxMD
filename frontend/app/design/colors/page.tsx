@@ -89,13 +89,13 @@ const PALETTE = {
   ],
   warm: [
     { name: "Vibrant Forest", value: "#2F5E52", description: "Primary brand" },
-    { name: "Golden Resin", value: "#D9A036", description: "Warning accents" },
     { name: "Alabaster", value: "#F0EAD6", description: "Warm highlights" },
   ],
   accent: [
     { name: "Jade Green", value: "#388E3C", description: "Positive, success states" },
     { name: "Glacier Teal", value: "#5A7D7C", description: "Links, selections" },
     { name: "Midnight Pine", value: "#1B3A34", description: "Depth, premium accents" },
+    { name: "Golden Resin", value: "#D9A036", description: "Warning accents" },
   ],
   utility: [
     { name: "Steel Blue", value: "#4A7A8C", description: "Info/focus states" },
@@ -180,10 +180,10 @@ export default function ColorsPage() {
       {/* Core Palette */}
       <div className="space-y-8">
         <h2 className="text-2xl font-medium">Core Palette</h2>
+        <ColorGroup title="Brand (Vibrant Forest)" colors={PALETTE.warm} />
         <ColorGroup title="Slate (Darks)" colors={PALETTE.slate} />
         <ColorGroup title="Cloud (Grays)" colors={PALETTE.cloud} />
         <ColorGroup title="Ivory (Lights)" colors={PALETTE.ivory} />
-        <ColorGroup title="Warm (Brand)" colors={PALETTE.warm} />
 
         {/* Accent Colors with expanded description */}
         <div className="space-y-3">
