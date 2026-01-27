@@ -174,30 +174,42 @@ Following the CruxMD brand identity: Book Cloth terracotta, Ivory backgrounds, h
 
 ```
 CruxMD
-├── Main Hub (Home)
-│   ├── Conversational Canvas (open-ended queries)
-│   ├── Quick Launch Actions (contextual pills)
-│   └── Task Queue Sidebar
-│       ├── Critical Alerts
-│       ├── Routine Coordination
-│       ├── My Schedule
-│       └── Latest Research
+├── Left Navigation (persistent, collapsible rail)
+│   ├── New Chat
+│   ├── Search
+│   ├── Patients
+│   ├── Tasks → /tasks page
+│   ├── Recent Sessions (when expanded)
+│   └── User Profile (bottom)
 │
-├── Task Engaged View
-│   ├── Focused Conversational Canvas
+├── Main Hub (/chat - Home)
+│   ├── Conversational Canvas (open-ended queries)
+│   └── Quick Launch Actions (contextual pills)
+│
+├── Tasks Page (/tasks)
+│   ├── Task queue organized by category
+│   │   ├── Critical Alerts
+│   │   ├── Routine Coordination
+│   │   ├── My Schedule
+│   │   └── Latest Research
+│   └── Click task → navigates to engaged view
+│
+├── Task Engaged View (/chat?task=xxx)
+│   ├── Focused Conversational Canvas (left/center)
 │   │   ├── Task header and summary
 │   │   ├── AI analysis and conversation
 │   │   ├── Inline visualizations
 │   │   └── Quick action pills
-│   └── Context Sidebar (transforms per task type)
+│   └── Context Panel (right sidebar)
 │       ├── Patient header
 │       ├── Relevant clinical data
 │       ├── Quick actions
 │       └── Full chart access
 │
-├── Session Inventory (paused sessions)
+├── Session Inventory (modal or /sessions)
+│   └── Paused sessions for resumption
 │
-└── Full Chart View (escape hatch to traditional EHR)
+└── Full Chart View (/patient/xxx/chart)
     ├── Overview
     ├── Medications
     ├── Labs
@@ -205,6 +217,15 @@ CruxMD
     ├── Notes
     └── Timeline
 ```
+
+### Navigation Mental Model
+
+| Location | Purpose | Content Type |
+|----------|---------|--------------|
+| **Left nav** | "Where do I go?" | Routes, navigation, session history |
+| **Canvas** | "What am I doing?" | Conversation, AI interaction, exploration |
+| **Right panel** | "What data supports this?" | Structured clinical context for current task |
+| **Tasks page** | "What work awaits?" | Prioritized work queue (separate from chat) |
 
 ### Task Categories
 
@@ -238,60 +259,93 @@ Proactive learning and protocol management:
 
 ## Layout System
 
+### Dual Sidebar Architecture
+
+CruxMD uses a **dual sidebar model** following established productivity tool patterns (Figma, VS Code, Notion):
+
+| Sidebar | Position | Purpose | Behavior |
+|---------|----------|---------|----------|
+| **Left Nav** | Left edge | Navigation, wayfinding, session history | Collapsed by default, fixed width (56px collapsed, 256px expanded) |
+| **Right Context** | Right edge | Task-specific structured content | Visible when task engaged, resizable width (300-400px) |
+
+**Key Principle:** Left = navigation/structure, Right = contextual properties of selected item.
+
+This separation creates clear mental models:
+- Need to go somewhere? → Left sidebar
+- Need to see data about current work? → Right sidebar
+
 ### Desktop Layout (≥1024px)
 
-Horizontal split: Conversational canvas on left (~65%), structured sidebar on right (~35%).
+Three-column layout: Left nav rail, conversational canvas (center), context panel (right).
 
 ```
-┌──────────────────────────────────────────────────────────────────────────────┐
-│  HEADER                                                                      │
-│  Logo                                                        [User Menu]    │
-├──────────────────────────────────────────────────────┬───────────────────────┤
-│                                                      │                       │
-│                                                      │                       │
-│                                                      │                       │
-│                 CONVERSATIONAL                       │       SIDEBAR         │
-│                    CANVAS                            │                       │
-│                                                      │    Task Queue (hub)   │
-│                 (~65% width)                         │         or            │
-│                                                      │    Task Context       │
-│                                                      │     (engaged)         │
-│                                                      │                       │
-│                                                      │     (~35% width)      │
-│                                                      │                       │
-│                                                      │                       │
-│  ┌────────────────────────────────────────────────┐  │                       │
-│  │  Input...                                  [→] │  │                       │
-│  └────────────────────────────────────────────────┘  │                       │
-│  [Quick Action] [Quick Action] [Quick Action]        │                       │
-│                                                      │                       │
-└──────────────────────────────────────────────────────┴───────────────────────┘
+┌───┬──────────────────────────────────────────────────┬───────────────────────┐
+│   │                                                  │                       │
+│ N │                                                  │                       │
+│ A │                                                  │     CONTEXT PANEL     │
+│ V │              CONVERSATIONAL                      │                       │
+│   │                 CANVAS                           │   Patient Header      │
+│ R │                                                  │   Relevant Meds       │
+│ A │              (flexible width)                    │   Labs Panel          │
+│ I │                                                  │   Allergies           │
+│ L │                                                  │   Quick Actions       │
+│   │                                                  │                       │
+│ ↔ │  ┌────────────────────────────────────────────┐  │   (300-400px,        │
+│   │  │  Input...                              [→] │  │    resizable)        │
+│56px│  └────────────────────────────────────────────┘  │                       │
+│   │  [Quick Action] [Quick Action] [Quick Action]    │  ─────────────────    │
+│   │                                                  │  [✓ Complete task]    │
+│   │                                                  │  [Expand chart →]     │
+└───┴──────────────────────────────────────────────────┴───────────────────────┘
 ```
+
+**Left Nav Rail (collapsed by default):**
+- Logo/mark
+- New Chat
+- Search
+- Patients
+- Tasks (→ /tasks page)
+- Recent Sessions (when expanded)
+- User profile (bottom)
+
+**Right Context Panel (visible when task engaged):**
+- Patient-specific structured data
+- Task-relevant clinical context
+- Quick actions for current task
+- Full chart access
+
+### Sidebar Behavior Best Practices
+
+| Behavior | Implementation |
+|----------|----------------|
+| **Resize handles** | Right sidebar has drag handle for width adjustment (300-400px range) |
+| **Collapse states** | Left nav shows icon rail when collapsed (maintains spatial memory) |
+| **Keyboard shortcuts** | `[` / `]` toggle sidebars, `Cmd+B` for left, `Cmd+Shift+B` for right |
+| **Animation** | 150-200ms ease-out for expand/collapse |
+| **State persistence** | Remember collapsed/expanded state and width across sessions (localStorage) |
 
 ### Tablet Layout (768-1023px)
 
-Similar to desktop with narrower sidebar. Sidebar may be collapsible.
+Left nav always collapsed to rail. Right context panel collapsible with toggle.
 
 ```
-┌────────────────────────────────────────────────────────────────┐
-│  HEADER                                          [User] [«]   │
-├──────────────────────────────────────────┬─────────────────────┤
-│                                          │                     │
-│              CANVAS                      │      SIDEBAR        │
-│              (~70%)                      │       (~30%)        │
-│                                          │                     │
-│                                          │   [Collapsible]     │
-│                                          │                     │
-└──────────────────────────────────────────┴─────────────────────┘
+┌───┬────────────────────────────────────────┬─────────────────────┐
+│   │                                        │                     │
+│ R │              CANVAS                    │    CONTEXT PANEL    │
+│ A │              (flexible)                │      (collapsible)  │
+│ I │                                        │                     │
+│ L │                                        │      [Toggle «]     │
+│   │                                        │                     │
+└───┴────────────────────────────────────────┴─────────────────────┘
 ```
 
 ### Mobile Layout (<768px)
 
-Full-width canvas with bottom sheet for structured content.
+Left nav becomes hamburger menu. Right context becomes bottom sheet.
 
 ```
 ┌─────────────────────────────────────┐
-│  HEADER                       [≡]  │
+│  [≡] CruxMD                   [···] │
 ├─────────────────────────────────────┤
 │                                     │
 │                                     │
@@ -328,116 +382,172 @@ Full-width canvas with bottom sheet for structured content.
 
 ### Experience 1: Main Hub
 
-The default state when opening CruxMD. Designed to answer: "What do I need to do?"
+The default state when opening CruxMD. Designed to answer: "What can I help with?"
 
 ```
-┌──────────────────────────────────────────────────────────────────────────────┐
-│  CruxMD                                                    [Dr. Neumann ▼]  │
-├──────────────────────────────────────────────────────┬───────────────────────┤
-│                                                      │                       │
-│                                                      │  📋 ACTION QUEUE      │
-│     [X Logo]                                         │                       │
-│                                                      │  🚨 Critical (3)      │
-│     Good morning, Dr. Neumann                        │  ├─ K+ 6.2 - R. Chen  │
-│                                                      │  ├─ Discharge - M. Jo │
-│                                                      │  └─ CT finding - J. S │
-│     ┌──────────────────────────────────────────┐    │                       │
-│     │  How can I help you today?           [→] │    │  📬 Routine (12)      │
-│     └──────────────────────────────────────────┘    │  ├─ 5 messages        │
-│                                                      │  └─ 7 results         │
-│     [Prepare for the day] [My next patient]         │                       │
-│     [Panel overview]                                 │  📅 Schedule          │
-│                                                      │  ├─ ▶ 9:00 S. Williams│
-│                                                      │  ├─ 9:30 T. Brown     │
-│                                                      │  └─ 10:00 A. Garcia   │
-│                                                      │                       │
-│                                                      │  📚 Learning (1)      │
-│                                                      │  └─ GLP-1 update      │
-│                                                      │                       │
-│                                                      │  ─────────────────    │
-│                                                      │  [Tab] to navigate    │
-│                                                      │  [Enter] to engage    │
-│                                                      │                       │
-└──────────────────────────────────────────────────────┴───────────────────────┘
+┌───┬──────────────────────────────────────────────────────────────────────────┐
+│   │                                                                          │
+│ N │                                                                          │
+│ A │       [X Logo]                                                           │
+│ V │                                                                          │
+│   │       Good morning, Dr. Neumann                                          │
+│ R │                                                                          │
+│ A │                                                                          │
+│ I │       ┌────────────────────────────────────────────────────────────┐    │
+│ L │       │  How can I help you today?                             [→] │    │
+│   │       └────────────────────────────────────────────────────────────┘    │
+│   │                                                                          │
+│   │       [Patients to call] [My next patient] [Panel overview] [Tasks]     │
+│   │                                                                          │
+│   │                                                                          │
+│   │       ─────────────────────────────────────────────────────────────     │
+│   │       For demo purposes only. Not for clinical use.                      │
+│   │                                                                          │
+└───┴──────────────────────────────────────────────────────────────────────────┘
 ```
+
+**Note:** The Main Hub is a clean, focused canvas without the task queue. Tasks are accessed via:
+- The "Tasks" quick action pill
+- The "Tasks" link in the left navigation rail
 
 #### Hub Components
 
 | Component | Purpose |
 |-----------|---------|
+| **Left Nav Rail** | Persistent navigation (collapsed by default) |
 | **Greeting** | Time-aware, personalized ("Good morning, Dr. Neumann") |
 | **Open Input** | Free-form queries to the AI |
-| **Quick Launch Pills** | Contextual shortcuts (Prepare for the day, My next patient) |
-| **Task Queue Sidebar** | Categorized, prioritized work items |
+| **Quick Launch Pills** | Contextual shortcuts (Tasks, My next patient, etc.) |
 
 #### Hub Interactions
 
 | Action | Trigger | Result |
 |--------|---------|--------|
 | Open-ended query | Type in input, press Enter | Starts orchestrating session conversation |
-| Launch task | Tab to task, press Enter | Transitions to Task Engaged view |
-| Quick launch | Click pill or Tab+Enter | Starts specific workflow |
+| View tasks | Click "Tasks" pill or nav link | Navigates to /tasks page |
+| Quick launch | Click pill | Starts specific workflow |
+| Expand nav | Click hamburger or `Cmd+B` | Shows full left sidebar with labels |
+
+---
+
+### Experience 1b: Tasks Page
+
+A dedicated page for viewing and triaging the prioritized task queue.
+
+```
+┌───┬──────────────────────────────────────────────────────────────────────────┐
+│   │                                                                          │
+│ N │   TASKS                                                    [Filter ▼]   │
+│ A │   ═══════════════════════════════════════════════════════════════════   │
+│ V │                                                                          │
+│   │   🚨 CRITICAL (3)                                                        │
+│ R │   ┌──────────────────────────────────────────────────────────────────┐  │
+│ A │   │ K+ 6.2 mEq/L                              Robert Chen │ 10m ago │  │
+│ I │   │ Critical hyperkalemia on dual K+-sparing therapy                 │  │
+│ L │   └──────────────────────────────────────────────────────────────────┘  │
+│   │   ┌──────────────────────────────────────────────────────────────────┐  │
+│   │   │ Hospital Discharge                        Maria Johnson │ 1h ago │  │
+│   │   │ High-risk care transition, follow-up needed                      │  │
+│   │   └──────────────────────────────────────────────────────────────────┘  │
+│   │                                                                          │
+│   │   📬 ROUTINE (12)                                              [expand] │
+│   │   ├─ 5 patient messages                                                 │
+│   │   └─ 7 results to review                                                │
+│   │                                                                          │
+│   │   📅 SCHEDULE                                                  [expand] │
+│   │   └─ 8 appointments today                                               │
+│   │                                                                          │
+│   │   ─────────────────────────────────────────────────────────────────     │
+│   │   [Tab] to navigate • [Enter] to engage • [Esc] to return               │
+│   │                                                                          │
+└───┴──────────────────────────────────────────────────────────────────────────┘
+```
+
+#### Tasks Page Components
+
+| Component | Purpose |
+|-----------|---------|
+| **Category Headers** | Group tasks by priority/type (Critical, Routine, Schedule, Research) |
+| **Task Cards** | Compact cards showing task type, patient, time, summary |
+| **Filters** | Filter by category, patient, date range |
+| **Keyboard Nav** | Tab through tasks, Enter to engage, Esc to return to hub |
+
+#### Task Interactions
+
+| Action | Trigger | Result |
+|--------|---------|--------|
+| Engage task | Click card or Enter on focused | Navigates to /chat?task=xxx with context panel |
+| Filter tasks | Click filter dropdown | Shows only matching tasks |
+| Return to hub | Click nav or press Esc | Returns to main chat page |
 
 ---
 
 ### Experience 2: Task Engaged
 
-Focused work on a specific task. The sidebar transforms to show task-relevant context.
+Focused work on a specific task. The right context panel shows task-relevant patient data.
 
 ```
-┌──────────────────────────────────────────────────────────────────────────────┐
-│  CruxMD    ← Hub [Esc]                              [Dr. Neumann ▼]         │
-├──────────────────────────────────────────────────────┬───────────────────────┤
-│                                                      │                       │
-│  🚨 Critical Lab: K+ 6.2 mEq/L                       │  👤 ROBERT CHEN       │
-│  Robert Chen                                         │  67M │ MRN 123456     │
-│  ─────────────────────────────────────────────────   │                       │
-│                                                      │  ─────────────────    │
-│  [AI Summary]                                        │                       │
-│  Robert's potassium is critically elevated at        │  RELEVANT MEDS        │
-│  6.2 mEq/L. Key factors:                            │  • Lisinopril 20mg    │
-│                                                      │  • Spironolactone 25mg│
-│  • Dual K+-sparing therapy (ACE-I + MRA)            │    ↑ K+ risk          │
-│  • CKD Stage 3b (eGFR 45)                           │                       │
-│  • Trending up: 4.8 → 5.1 → 6.2 over 6 weeks        │  ─────────────────    │
-│                                                      │                       │
-│  ┌─────────────────────────────────────────────┐    │  LABS                 │
-│  │ [Chart: K+ trend with reference range]      │    │  K+   6.2 H ⚠️       │
-│  └─────────────────────────────────────────────┘    │  Cr   1.8            │
-│                                                      │  eGFR 45             │
-│  ─────────────────────────────────────────────────   │                       │
-│                                                      │  ─────────────────    │
-│  You: What's his kidney trajectory?                  │                       │
-│                                                      │  ALLERGIES            │
-│  AI: Creatinine rising steadily over 6 months:       │  • Penicillin         │
-│  1.4 → 1.6 → 1.8 mg/dL. Combined with the           │                       │
-│  hyperkalemia, this suggests progressive CKD...     │  ─────────────────    │
-│                                                      │                       │
-│  ┌──────────────────────────────────────────────┐   │  QUICK ACTIONS        │
-│  │  Ask about this patient...               [→] │   │  [Order]              │
-│  └──────────────────────────────────────────────┘   │  [Message]            │
-│                                                      │  [Refer]              │
-│  [Hold spironolactone] [Repeat K+ stat] [Call pt]   │                       │
-│                                                      │  ─────────────────    │
-│  ─────────────────────────────────────────────────   │  [✓ Complete task]    │
-│  [✓ Mark resolved] [⏸ Pause] [📝 Document]          │  [Expand full chart →]│
-│                                                      │                       │
-└──────────────────────────────────────────────────────┴───────────────────────┘
+┌───┬──────────────────────────────────────────────────┬───────────────────────┐
+│   │                                                  │                       │
+│ N │  🚨 Critical Lab: K+ 6.2 mEq/L                   │  👤 ROBERT CHEN       │
+│ A │  Robert Chen                     ← Hub [Esc]    │  67M │ MRN 123456     │
+│ V │  ─────────────────────────────────────────────   │                       │
+│   │                                                  │  ─────────────────    │
+│ R │  [AI Summary]                                    │                       │
+│ A │  Robert's potassium is critically elevated at    │  RELEVANT MEDS        │
+│ I │  6.2 mEq/L. Key factors:                        │  • Lisinopril 20mg    │
+│ L │                                                  │  • Spironolactone 25mg│
+│   │  • Dual K+-sparing therapy (ACE-I + MRA)        │    ↑ K+ risk          │
+│   │  • CKD Stage 3b (eGFR 45)                       │                       │
+│   │  • Trending up: 4.8 → 5.1 → 6.2 over 6 weeks    │  ─────────────────    │
+│   │                                                  │                       │
+│   │  ┌─────────────────────────────────────────┐    │  LABS                 │
+│   │  │ [Chart: K+ trend with reference range]  │    │  K+   6.2 H ⚠️       │
+│   │  └─────────────────────────────────────────┘    │  Cr   1.8            │
+│   │                                                  │  eGFR 45             │
+│   │  You: What's his kidney trajectory?              │                       │
+│   │                                                  │  ─────────────────    │
+│   │  AI: Creatinine rising steadily over 6 months... │                       │
+│   │                                                  │  ALLERGIES            │
+│   │  ┌──────────────────────────────────────────┐   │  • Penicillin         │
+│   │  │  Ask about this patient...           [→] │   │                       │
+│   │  └──────────────────────────────────────────┘   │  ─────────────────    │
+│   │                                                  │  QUICK ACTIONS        │
+│   │  [Hold spironolactone] [Repeat K+] [Call pt]    │  [Order] [Message]    │
+│   │                                                  │                       │
+│   │  ─────────────────────────────────────────────   │  ─────────────────    │
+│   │  [✓ Mark resolved] [⏸ Pause] [📝 Document]      │  [✓ Complete task]    │
+│   │                                                  │  [Expand chart →]     │
+└───┴──────────────────────────────────────────────────┴───────────────────────┘
+     ↑                                                  ↑
+  Left nav rail                                    Right context panel
+  (collapsed)                                      (task-specific data)
 ```
 
 #### Task Engaged Components
 
 | Component | Location | Purpose |
 |-----------|----------|---------|
+| **Left Nav Rail** | Left edge | Persistent navigation (collapsed) |
 | **Task Header** | Top of canvas | Task type, patient name, key metric |
 | **AI Summary** | Canvas | Initial synthesis of the situation |
 | **Inline Visualizations** | Canvas | Charts, tables rendered within conversation |
 | **Conversation Thread** | Canvas | Ongoing dialogue about this task |
 | **Input + Quick Actions** | Bottom of canvas | Continue conversation or take action |
-| **Patient Header** | Top of sidebar | Photo, name, demographics |
-| **Relevant Data Panels** | Sidebar | Meds, labs, allergies — filtered to relevance |
-| **Sidebar Quick Actions** | Sidebar | Order, Message, Refer buttons |
+| **Patient Header** | Top of context panel | Photo, name, demographics |
+| **Relevant Data Panels** | Context panel | Meds, labs, allergies — filtered to relevance |
+| **Context Quick Actions** | Context panel | Order, Message, Refer buttons |
 | **Task Controls** | Bottom of both | Complete, Pause, Document, Full Chart |
+
+#### Context Panel Behavior
+
+| Aspect | Behavior |
+|--------|----------|
+| **Visibility** | Appears when task is engaged, hidden in hub state |
+| **Width** | 300-400px, resizable via drag handle |
+| **Content** | Dynamically configured per task type (see Task Context Configuration) |
+| **Persistence** | Width preference saved to localStorage |
+| **Collapse** | Can be toggled with `Cmd+Shift+B` or collapse button |
 
 #### Quick Action Pills
 
@@ -996,12 +1106,20 @@ function surfaceQuickActions(context: {
 | `QuickActionPills` | Contextual action buttons | `actions`, `onAction` |
 | `ThinkingIndicator` | X logo animation during AI processing | `isThinking` |
 
-### Sidebar Components
+### Left Navigation Components
 
 | Component | Purpose | Props |
 |-----------|---------|-------|
-| `TaskQueueSidebar` | Task list by category (hub state) | `tasks`, `onSelectTask` |
-| `TaskContextSidebar` | Patient context (engaged state) | `context: TaskContext` |
+| `Sidebar` | Collapsible navigation rail | `isExpanded`, `onToggle` |
+| `NavItem` | Navigation link with icon | `icon`, `label`, `href`, `isActive` |
+| `RecentSessions` | List of recent patient sessions | `sessions`, `onSelectSession` |
+| `UserProfile` | Current user info and menu | `user`, `onMenuAction` |
+
+### Right Context Panel Components
+
+| Component | Purpose | Props |
+|-----------|---------|-------|
+| `ContextPanel` | Container for task-specific context | `context: TaskContext`, `onResize` |
 | `PatientHeader` | Photo, name, demographics | `patient: Patient` |
 | `MedList` | Medication list with relevance highlighting | `meds`, `filter?` |
 | `LabPanel` | Lab values with reference ranges | `labs`, `filter?` |
@@ -1010,6 +1128,16 @@ function surfaceQuickActions(context: {
 | `RecentNotes` | Recent clinical notes | `notes`, `limit?` |
 | `MessageThread` | Patient message history | `messages` |
 | `CareGaps` | Outstanding care gaps | `gaps` |
+| `ResizeHandle` | Drag handle for panel width | `onResize`, `minWidth`, `maxWidth` |
+
+### Tasks Page Components
+
+| Component | Purpose | Props |
+|-----------|---------|-------|
+| `TasksPage` | Full-page task queue view | `tasks`, `filters` |
+| `TaskCategorySection` | Collapsible category with tasks | `category`, `tasks`, `isExpanded` |
+| `TaskCard` | Task card in queue | `task`, `onEngage` |
+| `TaskFilters` | Filter controls for task list | `filters`, `onFilterChange` |
 
 ### Clinical Visualization Components
 
@@ -1244,17 +1372,46 @@ Build the conversational canvas with:
 
 **This Specification:**
 Requires additional:
-- TaskQueueSidebar (hub state)
-- TaskContextSidebar (engaged state)
+- Left navigation sidebar (✅ DONE - `Sidebar.tsx`)
+- Right context panel (task-engaged state only)
+- Tasks page (`/tasks`) for task queue
 - QuickActionPills
 - Session management
 - Task model and fixtures
 
 **Resolution:** CruxMD-cwf should be expanded or split into multiple tasks:
 1. Core canvas components (original scope)
-2. Sidebar system (task queue + context)
-3. Task model and fixtures
-4. Session management
+2. Left navigation sidebar (✅ COMPLETED in ad-hoc work)
+3. Tasks page (`/tasks`) with task queue
+4. Right context panel for task-engaged state
+5. Task model and fixtures
+6. Session management
+
+### 7. Dual Sidebar Architecture (Updated January 2026)
+
+**Original Design:**
+Single right sidebar that "transforms" between:
+- Hub state: Task queue
+- Engaged state: Patient context
+
+**Updated Design:**
+Dual sidebar architecture following established UX patterns:
+
+| Sidebar | Purpose | Location |
+|---------|---------|----------|
+| **Left Nav** | Navigation, wayfinding, session history | Left edge, collapsed by default |
+| **Right Context** | Task-specific structured content ONLY | Right edge, visible when task engaged |
+
+**Rationale:**
+- F-pattern reading: Left sidebars are preferred for primary navigation (users scan top-left first)
+- Clear mental models: Navigation goes left, contextual properties go right (Figma pattern)
+- Tasks moved to dedicated page: `/tasks` accessible from left nav and quick actions
+- Reduces cognitive load: Each sidebar has a single, clear purpose
+
+**Implementation Impact:**
+- Story 4.5 (Sidebar System) updated to reflect right context panel only
+- New Tasks page needed at `/tasks` route
+- Left nav already implemented (`Sidebar.tsx`)
 
 ---
 
@@ -1330,70 +1487,92 @@ Requires additional:
 
 ## Appendix: ASCII Diagram Reference
 
-### Main Hub (Desktop)
+### Main Hub (Desktop) - Clean Canvas
 
 ```
-┌──────────────────────────────────────────────────────────────────────────────┐
-│  CruxMD                                                    [Dr. Neumann ▼]  │
-├──────────────────────────────────────────────────────┬───────────────────────┤
-│                                                      │                       │
-│                                                      │  📋 ACTION QUEUE      │
-│     [X Logo]                                         │                       │
-│                                                      │  🚨 Critical (3)      │
-│     Good morning, Dr. Neumann                        │  ├─ K+ 6.2 - R. Chen  │
-│                                                      │  ├─ Discharge - M. Jo │
-│                                                      │  └─ CT finding - J. S │
-│     ┌──────────────────────────────────────────┐    │                       │
-│     │  How can I help you today?           [→] │    │  📬 Routine (12)      │
-│     └──────────────────────────────────────────┘    │  ├─ 5 messages        │
-│                                                      │  └─ 7 results         │
-│     [Prepare for the day] [My next patient]         │                       │
-│     [Panel overview]                                 │  📅 Schedule          │
-│                                                      │  ├─ ▶ 9:00 S. Williams│
-│                                                      │  ├─ 9:30 T. Brown     │
-│                                                      │  └─ 10:00 A. Garcia   │
-│                                                      │                       │
-│                                                      │  📚 Learning (1)      │
-│                                                      │  └─ GLP-1 update      │
-│                                                      │                       │
-└──────────────────────────────────────────────────────┴───────────────────────┘
+┌───┬──────────────────────────────────────────────────────────────────────────┐
+│   │                                                                          │
+│ + │                                                                          │
+│ 🔍 │       [X Logo]                                                           │
+│ 👥 │                                                                          │
+│ ☑️ │       Good morning, Dr. Neumann                                          │
+│   │                                                                          │
+│   │                                                                          │
+│   │       ┌────────────────────────────────────────────────────────────┐    │
+│   │       │  How can I help you today?                             [→] │    │
+│   │       └────────────────────────────────────────────────────────────┘    │
+│   │                                                                          │
+│   │       [Patients to call] [My next patient] [Tasks] [Panel overview]     │
+│   │                                                                          │
+│   │                                                                          │
+│ ▼ │       ─────────────────────────────────────────────────────────────     │
+│[JN]│       For demo purposes only. Not for clinical use.                     │
+│   │                                                                          │
+└───┴──────────────────────────────────────────────────────────────────────────┘
+  ↑
+Left nav rail (collapsed)
+No right panel in hub state
 ```
 
-### Task Engaged (Desktop)
+### Tasks Page (Desktop)
 
 ```
-┌──────────────────────────────────────────────────────────────────────────────┐
-│  CruxMD    ← Hub [Esc]                              [Dr. Neumann ▼]         │
-├──────────────────────────────────────────────────────┬───────────────────────┤
-│                                                      │                       │
-│  🚨 Critical Lab: K+ 6.2 mEq/L                       │  👤 ROBERT CHEN       │
-│  Robert Chen                                         │  67M │ MRN 123456     │
-│  ─────────────────────────────────────────────────   │                       │
-│                                                      │  ─────────────────    │
-│  [AI Summary]                                        │                       │
-│  Robert's potassium is critically elevated...        │  RELEVANT MEDS        │
-│                                                      │  • Lisinopril 20mg    │
-│  ┌─────────────────────────────────────────────┐    │  • Spironolactone 25mg│
-│  │ [Chart: K+ trend with reference range]      │    │                       │
-│  └─────────────────────────────────────────────┘    │  ─────────────────    │
-│                                                      │                       │
-│  You: What's his kidney trajectory?                  │  LABS                 │
-│                                                      │  K+   6.2 H ⚠️       │
-│  AI: Creatinine rising steadily...                   │  Cr   1.8            │
-│                                                      │                       │
-│  ┌──────────────────────────────────────────────┐   │  ─────────────────    │
-│  │  Ask about this patient...               [→] │   │  [✓ Complete task]    │
-│  └──────────────────────────────────────────────┘   │  [Expand full chart →]│
-│  [Hold spironolactone] [Repeat K+ stat] [Call pt]   │                       │
-│                                                      │                       │
-└──────────────────────────────────────────────────────┴───────────────────────┘
+┌───┬──────────────────────────────────────────────────────────────────────────┐
+│   │                                                                          │
+│ + │   TASKS                                                    [Filter ▼]   │
+│ 🔍 │   ═══════════════════════════════════════════════════════════════════   │
+│ 👥 │                                                                          │
+│ ☑️ │   🚨 CRITICAL (3)                                                        │
+│   │   ┌──────────────────────────────────────────────────────────────────┐  │
+│   │   │ K+ 6.2 mEq/L                              Robert Chen │ 10m ago │  │
+│   │   └──────────────────────────────────────────────────────────────────┘  │
+│   │   ┌──────────────────────────────────────────────────────────────────┐  │
+│   │   │ Hospital Discharge                        Maria Johnson │ 1h ago │  │
+│   │   └──────────────────────────────────────────────────────────────────┘  │
+│   │                                                                          │
+│   │   📬 ROUTINE (12)                                              [expand] │
+│   │   📅 SCHEDULE (8)                                              [expand] │
+│ ▼ │   📚 LEARNING (1)                                              [expand] │
+│[JN]│                                                                          │
+│   │   [Tab] navigate • [Enter] engage • [Esc] hub                           │
+└───┴──────────────────────────────────────────────────────────────────────────┘
+```
+
+### Task Engaged (Desktop) - With Context Panel
+
+```
+┌───┬──────────────────────────────────────────────────┬───────────────────────┐
+│   │                                                  │                       │
+│ + │  🚨 Critical Lab: K+ 6.2 mEq/L     ← Hub [Esc]  │  👤 ROBERT CHEN       │
+│ 🔍 │  Robert Chen                                     │  67M │ MRN 123456     │
+│ 👥 │  ─────────────────────────────────────────────   │                       │
+│ ☑️ │                                                  │  ─────────────────    │
+│   │  [AI Summary]                                    │                       │
+│   │  Robert's potassium is critically elevated...    │  RELEVANT MEDS        │
+│   │                                                  │  • Lisinopril 20mg    │
+│   │  ┌─────────────────────────────────────────┐    │  • Spironolactone 25mg│
+│   │  │ [Chart: K+ trend with reference range]  │    │                       │
+│   │  └─────────────────────────────────────────┘    │  ─────────────────    │
+│   │                                                  │                       │
+│   │  You: What's his kidney trajectory?              │  LABS                 │
+│   │                                                  │  K+   6.2 H ⚠️       │
+│   │  AI: Creatinine rising steadily...               │  Cr   1.8            │
+│   │                                                  │                       │
+│   │  ┌──────────────────────────────────────────┐   │  ─────────────────    │
+│ ▼ │  │  Ask about this patient...           [→] │   │  [✓ Complete task]    │
+│[JN]│  └──────────────────────────────────────────┘   │  [Expand chart →]     │
+│   │  [Hold spironolactone] [Repeat K+] [Call pt]    │          ↔ resize     │
+└───┴──────────────────────────────────────────────────┴───────────────────────┘
+  ↑                                                      ↑
+Left nav rail                                       Right context panel
+(collapsed)                                         (300-400px, resizable)
 ```
 
 ### Mobile with Bottom Sheet
 
 ```
 ┌─────────────────────────────────────┐
-│  CruxMD                       [≡]  │
+│  [≡] CruxMD                   [···] │
 ├─────────────────────────────────────┤
 │                                     │
 │  🚨 Critical Lab: K+ 6.2           │
@@ -1414,6 +1593,10 @@ Requires additional:
 │  👤 Robert Chen, 67M    K+ 6.2 ⚠️  │
 │  [Pull up for full context]         │
 └─────────────────────────────────────┘
+
+[≡] = hamburger opens left nav as overlay
+[···] = more actions menu
+Bottom sheet = context panel equivalent
 ```
 
 ---

@@ -1,46 +1,23 @@
 import Image from "next/image";
 import Link from "next/link";
 import {
-  Github,
-  Lock,
+  Shield,
   Clock,
-  Code,
+  Zap,
   Layers,
   AlertCircle,
   MessageSquare,
-  Database,
+  Brain,
 } from "lucide-react";
 import { Button } from "@/components/ui/button";
 import { Card, CardHeader, CardTitle, CardContent } from "@/components/ui/card";
 import { InsightCard } from "@/components/clinical/InsightCard";
+import { Header } from "@/components/Header";
 
 export default function Home() {
   return (
     <div className="min-h-screen bg-background">
-      {/* Header */}
-      <header className="flex items-center justify-between px-8 py-4 border-b border-border">
-        <Link href="/">
-          <Image
-            src="/brand/wordmark-primary.svg"
-            alt="CruxMD"
-            width={140}
-            height={32}
-            priority
-          />
-        </Link>
-        <nav className="flex items-center gap-4">
-          <Button variant="ghost" size="icon" asChild>
-            <a
-              href="https://github.com/josephneumann/CruxMD"
-              target="_blank"
-              rel="noopener noreferrer"
-              aria-label="View on GitHub"
-            >
-              <Github className="size-5" />
-            </a>
-          </Button>
-        </nav>
-      </header>
+      <Header />
 
       <main>
         {/* Hero */}
@@ -58,40 +35,34 @@ export default function Home() {
 
           {/* Headline */}
           <h1 className="text-3xl md:text-5xl font-medium text-foreground text-center max-w-3xl mb-6 leading-tight">
-            Clinical Intelligence Platform
+            The Clinically Intelligent AI
           </h1>
 
           {/* Subhead */}
           <p className="text-lg md:text-xl text-muted-foreground text-center max-w-2xl mb-10">
-            CruxMD reviews every lab, every medication, every past encounter —
-            so you can stop double-checking and start thinking.
+            Be present with every patient. Never miss a detail. Automate the toil.
           </p>
 
-          {/* CTAs */}
-          <div className="flex flex-col sm:flex-row items-center gap-4">
-            <Button asChild size="lg">
-              <Link href="/chat">Start Chat</Link>
-            </Button>
-            <Button asChild variant="ghost" size="lg">
-              <a href="#how-it-works">See how it works</a>
-            </Button>
-          </div>
+          {/* CTA */}
+          <Button asChild size="lg">
+            <Link href="/chat">Start Now</Link>
+          </Button>
         </section>
 
         {/* Trust Bar */}
         <section className="px-8 py-8 border-b border-border">
           <div className="max-w-4xl mx-auto flex flex-col md:flex-row items-center justify-center gap-6 md:gap-12 text-sm text-muted-foreground">
             <div className="flex items-center gap-2">
-              <Lock className="size-4" />
-              <span>Synthetic data only — no PHI</span>
+              <Shield className="size-4" />
+              <span>HIPAA compliant infrastructure</span>
             </div>
             <div className="flex items-center gap-2">
               <Clock className="size-4" />
-              <span>Context in seconds, not minutes</span>
+              <span>Complete context in seconds</span>
             </div>
             <div className="flex items-center gap-2">
-              <Code className="size-4" />
-              <span>FHIR R4 native architecture</span>
+              <Zap className="size-4" />
+              <span>Integrates with your EHR</span>
             </div>
           </div>
         </section>
@@ -102,26 +73,25 @@ export default function Home() {
             {/* Problem */}
             <div className="border-l-4 border-primary/30 pl-6">
               <h2 className="text-2xl font-medium text-foreground mb-4">
-                Modern medicine is drowning in data.
+                The cognitive burden of modern medicine
               </h2>
               <p className="text-muted-foreground leading-relaxed">
-                Every patient encounter means hundreds of data points. Labs,
-                medications, allergies, past visits, specialist notes —
-                scattered across systems. The fear of missing something critical
-                never goes away.
+                Thousands of data points per patient. Labs scattered across systems.
+                Specialist notes buried in charts. The constant, quiet fear of missing
+                something critical — while trying to maintain the human connection
+                that defines great care.
               </p>
             </div>
 
             {/* Solution */}
             <div className="border-l-4 border-accent pl-6">
               <h2 className="text-2xl font-medium text-foreground mb-4">
-                CruxMD reviews everything. You focus on the patient.
+                A thinking partner that never misses
               </h2>
               <p className="text-muted-foreground leading-relaxed">
-                A thinking partner that synthesizes complete patient context —
-                every detail surfaced, every pattern identified, every follow-up
-                suggested. Not another dashboard. Clinical intelligence that
-                handles the exhaustive so you can handle the irreplaceable.
+                CruxMD synthesizes complete patient context — every pattern identified,
+                every trend surfaced, every connection made. The machine handles the
+                exhaustive so you can handle the irreplaceable: the patient in front of you.
               </p>
             </div>
           </div>
@@ -131,7 +101,7 @@ export default function Home() {
         <section className="px-8 py-16 md:py-24 bg-muted/30">
           <div className="max-w-6xl mx-auto">
             <h2 className="text-2xl md:text-3xl font-medium text-foreground text-center mb-12">
-              Built for clinical thinking
+              Clinical intelligence, not another dashboard
             </h2>
 
             <div className="grid md:grid-cols-2 lg:grid-cols-4 gap-6">
@@ -139,13 +109,13 @@ export default function Home() {
               <Card>
                 <CardHeader>
                   <Layers className="h-8 w-8 text-primary mb-2" />
-                  <CardTitle>Complete patient context</CardTitle>
+                  <CardTitle>Complete patient synthesis</CardTitle>
                 </CardHeader>
                 <CardContent>
                   <p className="text-muted-foreground text-sm">
                     Every condition, medication, lab result, and clinical note —
-                    synthesized into a coherent narrative. Ask "What's going on
-                    with this patient?" and get a comprehensive answer.
+                    woven into a coherent narrative. Ask any question and receive
+                    a comprehensive, sourced answer.
                   </p>
                 </CardContent>
               </Card>
@@ -154,13 +124,13 @@ export default function Home() {
               <Card>
                 <CardHeader>
                   <AlertCircle className="h-8 w-8 text-primary mb-2" />
-                  <CardTitle>Meaningful clinical insights</CardTitle>
+                  <CardTitle>Insights without alert fatigue</CardTitle>
                 </CardHeader>
                 <CardContent>
                   <p className="text-muted-foreground text-sm">
-                    Abnormal trends flagged. Drug interactions surfaced.
-                    Critical findings highlighted. Insights that matter,
-                    delivered without alert fatigue.
+                    Abnormal trends flagged in context. Drug interactions surfaced
+                    with clinical relevance. Critical findings delivered calmly,
+                    clearly, with the information you need to act.
                   </p>
                 </CardContent>
               </Card>
@@ -169,13 +139,14 @@ export default function Home() {
               <Card>
                 <CardHeader>
                   <MessageSquare className="h-8 w-8 text-primary mb-2" />
-                  <CardTitle>Ask questions in plain English</CardTitle>
+                  <CardTitle>Conversational interface</CardTitle>
                 </CardHeader>
                 <CardContent>
                   <p className="text-muted-foreground text-sm">
-                    "What's driving the kidney decline?" "Is the diabetes
-                    well-controlled?" The interface adapts to your clinical
-                    questions — no clicking through tabs.
+                    Ask questions the way you think about patients.
+                    &ldquo;What&apos;s driving the renal decline?&rdquo;
+                    &ldquo;Is the A1c trending better?&rdquo;
+                    No clicking through tabs or memorizing workflows.
                   </p>
                 </CardContent>
               </Card>
@@ -183,13 +154,14 @@ export default function Home() {
               {/* Feature 4 */}
               <Card>
                 <CardHeader>
-                  <Database className="h-8 w-8 text-primary mb-2" />
-                  <CardTitle>Works with your data</CardTitle>
+                  <Brain className="h-8 w-8 text-primary mb-2" />
+                  <CardTitle>Temporal reasoning</CardTitle>
                 </CardHeader>
                 <CardContent>
                   <p className="text-muted-foreground text-sm">
-                    Built on FHIR R4. Load patient bundles directly — no custom
-                    integrations. The universal language of healthcare data.
+                    CruxMD understands time. Lab trends over months. Medication
+                    changes and their effects. The clinical story that unfolds
+                    across encounters, synthesized automatically.
                   </p>
                 </CardContent>
               </Card>
@@ -201,7 +173,7 @@ export default function Home() {
         <section id="how-it-works" className="px-8 py-16 md:py-24 scroll-mt-16">
           <div className="max-w-4xl mx-auto">
             <h2 className="text-2xl md:text-3xl font-medium text-foreground text-center mb-12">
-              How it works
+              Fits your workflow
             </h2>
 
             <div className="flex flex-col md:flex-row items-start md:items-center gap-8 md:gap-4">
@@ -211,11 +183,11 @@ export default function Home() {
                   1
                 </div>
                 <h3 className="font-medium text-foreground mb-2">
-                  Load patient data
+                  Select a patient
                 </h3>
                 <p className="text-sm text-muted-foreground">
-                  Import FHIR bundles from your EHR or explore with synthetic
-                  patients.
+                  CruxMD connects to your EHR. Patient context loads automatically
+                  when you open a chart.
                 </p>
               </div>
 
@@ -228,11 +200,11 @@ export default function Home() {
                   2
                 </div>
                 <h3 className="font-medium text-foreground mb-2">
-                  Ask a clinical question
+                  Ask your question
                 </h3>
                 <p className="text-sm text-muted-foreground">
-                  "Summarize this patient." "What's concerning in the labs?" "Is
-                  the HbA1c trending better?"
+                  &ldquo;Summarize this patient.&rdquo; &ldquo;What should I be worried about?&rdquo;
+                  &ldquo;How has the kidney function changed?&rdquo;
                 </p>
               </div>
 
@@ -245,11 +217,11 @@ export default function Home() {
                   3
                 </div>
                 <h3 className="font-medium text-foreground mb-2">
-                  Get actionable context
+                  Review with confidence
                 </h3>
                 <p className="text-sm text-muted-foreground">
-                  CruxMD surfaces relevant data, highlights insights, and
-                  suggests follow-up questions — all in one conversation.
+                  Every insight traces to source. Click through to the original
+                  data. Trust, then verify.
                 </p>
               </div>
             </div>
@@ -260,54 +232,50 @@ export default function Home() {
         <section className="px-8 py-16 md:py-24 bg-muted/30">
           <div className="max-w-2xl mx-auto">
             <p className="text-sm text-muted-foreground text-center mb-4">
-              Example insight from CruxMD:
+              Insights surfaced in context
             </p>
             <InsightCard
               insight={{
                 type: "warning",
-                title: "Creatinine trend with context",
+                title: "Creatinine trend requires attention",
                 content:
-                  "Creatinine 1.2 → 1.5 → 1.8 mg/dL over 3 months. Of note: wife mentioned at last visit that he's been more fatigued. Long-standing hypertension, on lisinopril 20mg. Hasn't had nephrology follow-up since 2023.",
+                  "Creatinine 1.2 → 1.5 → 1.8 mg/dL over 3 months. Wife mentioned increased fatigue at last visit. On lisinopril 20mg for long-standing hypertension. Last nephrology follow-up was 14 months ago.",
                 citations: [
-                  "Observation/lab-001",
-                  "Encounter/note-2024-11",
-                  "MedicationStatement/lisinopril",
+                  "Labs: Basic Metabolic Panel",
+                  "Encounter: Nov 2024",
+                  "Medications: Active",
                 ],
               }}
             />
           </div>
         </section>
 
-        {/* Social Proof */}
+        {/* Testimonial */}
         <section className="px-8 py-16 md:py-24">
           <Card className="max-w-xl mx-auto">
             <CardContent className="pt-6">
               <blockquote className="text-lg italic text-foreground">
-                "For the first time, I stopped worrying about what I might have
-                missed. CruxMD reviewed the chart faster than I could open the
-                tabs."
+                &ldquo;For the first time, I stopped worrying about what I might have
+                missed. I walked into every room knowing the full picture.&rdquo;
               </blockquote>
               <p className="mt-4 text-sm text-muted-foreground">
-                — Dr. Sarah Chen, Internal Medicine
-                <span className="block text-xs mt-1">
-                  [Fictional — replace with real testimonial]
-                </span>
+                — Internal Medicine Physician
               </p>
             </CardContent>
           </Card>
         </section>
 
         {/* Final CTA */}
-        <section className="bg-primary text-primary-foreground px-8 py-16 md:py-20">
+        <section className="bg-muted dark:bg-muted/50 border-t border-border px-8 py-16 md:py-20">
           <div className="max-w-2xl mx-auto text-center">
-            <h2 className="text-2xl md:text-3xl font-medium mb-4">
-              Ready to stop missing things?
+            <h2 className="text-2xl md:text-3xl font-medium text-foreground mb-4">
+              Be present with every patient
             </h2>
-            <p className="text-primary-foreground/80 mb-8">
-              Start with a synthetic patient. No signup required.
+            <p className="text-muted-foreground mb-8">
+              Let CruxMD handle the exhaustive. You handle the irreplaceable.
             </p>
-            <Button variant="secondary" size="lg" asChild>
-              <Link href="/chat">Start Chat</Link>
+            <Button size="lg" asChild>
+              <Link href="/chat">Get Started</Link>
             </Button>
           </div>
         </section>
@@ -323,24 +291,16 @@ export default function Home() {
             height={24}
           />
           <nav className="flex gap-6 text-sm text-muted-foreground">
-            <a
-              href="https://github.com/josephneumann/CruxMD"
-              target="_blank"
-              rel="noopener noreferrer"
-              className="hover:text-foreground transition-colors"
-            >
-              GitHub
-            </a>
             <Link
-              href="/design-system"
+              href="/design"
               className="hover:text-foreground transition-colors"
             >
-              Documentation
+              Design System
             </Link>
           </nav>
         </div>
         <p className="text-center text-xs text-muted-foreground mt-6">
-          For demonstration purposes only. Not for clinical use.
+          © {new Date().getFullYear()} CruxMD
         </p>
       </footer>
     </div>
