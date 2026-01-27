@@ -7,7 +7,7 @@
 import { useState } from "react";
 import { useRouter } from "next/navigation";
 import Image from "next/image";
-import { ArrowUp } from "lucide-react";
+import { ArrowUp, Users, AlertCircle, BookOpen } from "lucide-react";
 import { Button } from "@/components/ui/button";
 import { Sidebar } from "@/components/Sidebar";
 import { AutoResizeTextarea } from "@/components/chat/AutoResizeTextarea";
@@ -76,19 +76,17 @@ export default function ChatPage() {
           {/* Quick actions */}
           <div className="flex flex-wrap justify-center gap-2 mt-6">
             {[
-              "Review patient panel",
-              "Summarize recent labs",
-              "Check drug interactions",
-              "Prepare for rounds",
-            ].map((suggestion) => (
+              { label: "Start huddle", icon: Users },
+              { label: "Patients needing attention", icon: AlertCircle },
+              { label: "Review research", icon: BookOpen },
+            ].map(({ label, icon: Icon }) => (
               <button
-                key={suggestion}
-                onClick={() => {
-                  setInputValue(suggestion);
-                }}
-                className="px-4 py-2 rounded-full border border-border bg-card text-sm text-muted-foreground hover:text-foreground hover:border-foreground/20 transition-colors"
+                key={label}
+                onClick={() => setInputValue(label)}
+                className="flex items-center gap-2 px-4 py-2 rounded-full border border-border bg-card text-sm text-muted-foreground hover:text-foreground hover:border-foreground/20 transition-colors"
               >
-                {suggestion}
+                <Icon className="h-4 w-4" />
+                {label}
               </button>
             ))}
           </div>
