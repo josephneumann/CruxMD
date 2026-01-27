@@ -54,8 +54,8 @@ export default function DesignOverviewPage() {
         <h1 className="text-4xl font-medium tracking-tight">CruxMD Design System</h1>
         <p className="text-lg text-muted-foreground max-w-2xl">
           A comprehensive guide to the colors, typography, and components that make up the
-          CruxMD clinical intelligence platform. Built on Anthropic&apos;s brand palette with
-          warm, professional aesthetics.
+          CruxMD clinical intelligence platform. Built on a natural forest and jade palette
+          with organic, professional aesthetics.
         </p>
       </div>
 
