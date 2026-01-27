@@ -2,11 +2,10 @@
 
 /**
  * Chat Session Page - Conversational canvas for a specific chat session
- * Styled like Claude.ai with thinking indicator and message thread
  */
 
-import { useState, useEffect, useRef } from "react";
-import { useParams } from "next/navigation";
+import { useState, useEffect, useRef, useCallback } from "react";
+import { useParams, useSearchParams } from "next/navigation";
 import dynamic from "next/dynamic";
 import {
   ChevronDown,
@@ -16,34 +15,15 @@ import {
   ThumbsDown,
   RotateCcw,
   ArrowUp,
-  Plus,
-  Clock,
 } from "lucide-react";
 import { Button } from "@/components/ui/button";
 import { Sidebar } from "@/components/Sidebar";
-import { cn } from "@/lib/utils";
+import { AutoResizeTextarea } from "@/components/chat/AutoResizeTextarea";
+import { StreamingText } from "@/components/chat/StreamingText";
+import { useThinkingAnimation } from "@/lib/hooks/use-thinking-animation";
+import { THINKING_VERBS } from "@/lib/constants/chat";
 
-// Dynamically import Lottie to avoid SSR issues
 const Lottie = dynamic(() => import("lottie-react"), { ssr: false });
-
-// Clinical reasoning verbs for the thinking animation
-const THINKING_VERBS = [
-  "Researching",
-  "Reviewing history",
-  "Considering differential",
-  "Analyzing labs",
-  "Cross-referencing",
-  "Refining thinking",
-  "Ruling out",
-  "Synthesizing",
-  "Correlating findings",
-  "Checking interactions",
-  "Cogitating",
-  "Introspecting",
-  "Discombobulating",
-  "Reflecting",
-  "Meditating",
-];
 
 interface Message {
   id: string;
@@ -53,83 +33,41 @@ interface Message {
   isStreaming?: boolean;
 }
 
-// Streaming text component - reveals text character by character
-function StreamingText({ text, isStreaming }: { text: string; isStreaming: boolean }) {
-  const [displayedChars, setDisplayedChars] = useState(0);
-
-  useEffect(() => {
-    if (!isStreaming) {
-      setDisplayedChars(text.length);
-      return;
-    }
-
-    setDisplayedChars(0);
-    const interval = setInterval(() => {
-      setDisplayedChars((prev) => {
-        if (prev >= text.length) {
-          clearInterval(interval);
-          return prev;
-        }
-        // Stream 2-4 characters at a time for faster feel
-        return Math.min(prev + Math.floor(Math.random() * 3) + 2, text.length);
-      });
-    }, 15);
-
-    return () => clearInterval(interval);
-  }, [text, isStreaming]);
-
-  return <span>{text.slice(0, displayedChars)}</span>;
-}
-
 export default function ChatSessionPage() {
   const params = useParams();
+  const searchParams = useSearchParams();
   const sessionId = params.id as string;
 
   const [messages, setMessages] = useState<Message[]>([]);
   const [inputValue, setInputValue] = useState("");
   const [isThinking, setIsThinking] = useState(false);
-  const [thinkingText, setThinkingText] = useState("");
-  const [thinkingVerbIndex, setThinkingVerbIndex] = useState(0);
   const [lottieData, setLottieData] = useState<object | null>(null);
   const [expandedThinking, setExpandedThinking] = useState<Record<string, boolean>>({});
 
   const messagesEndRef = useRef<HTMLDivElement>(null);
-  const textareaRef = useRef<HTMLTextAreaElement>(null);
+  const thinkingVerb = useThinkingAnimation(isThinking);
 
-  // Load Lottie animation data
+  // Load Lottie animation
   useEffect(() => {
     fetch("/brand/crux-spin.json")
       .then((res) => res.json())
-      .then((data) => setLottieData(data));
+      .then(setLottieData);
   }, []);
 
-  // Cycle through thinking verbs while thinking
-  useEffect(() => {
-    if (!isThinking) return;
-    // Start from a random position
-    setThinkingVerbIndex(Math.floor(Math.random() * THINKING_VERBS.length));
-    const interval = setInterval(() => {
-      setThinkingVerbIndex((prev) => (prev + 1) % THINKING_VERBS.length);
-    }, 2000);
-    return () => clearInterval(interval);
-  }, [isThinking]);
-
-  // Scroll to bottom when messages change
+  // Scroll to bottom on new messages
   useEffect(() => {
     messagesEndRef.current?.scrollIntoView({ behavior: "smooth" });
   }, [messages, isThinking]);
 
-  // Simulate initial message from URL param or localStorage
+  // Handle initial message from URL params
   useEffect(() => {
-    // Check if there's an initial message stored for this session
-    const storedMessage = sessionStorage.getItem(`chat-init-${sessionId}`);
-    if (storedMessage) {
-      sessionStorage.removeItem(`chat-init-${sessionId}`);
-      handleNewMessage(storedMessage);
+    const initialMessage = searchParams.get("message");
+    if (initialMessage && messages.length === 0) {
+      handleNewMessage(decodeURIComponent(initialMessage));
     }
-  }, [sessionId]);
+  }, [searchParams, messages.length]);
 
-  const handleNewMessage = async (content: string) => {
+  const handleNewMessage = useCallback((content: string) => {
     const userMessage: Message = {
       id: `user-${Date.now()}`,
       role: "user",
@@ -138,7 +76,6 @@ export default function ChatSessionPage() {
 
     setMessages((prev) => [...prev, userMessage]);
     setIsThinking(true);
-    setThinkingText("Thinking about the clinical context...");
 
     // Simulate AI response (replace with actual API call)
     setTimeout(() => {
@@ -153,58 +90,48 @@ export default function ChatSessionPage() {
       setMessages((prev) => [...prev, assistantMessage]);
       setIsThinking(false);
       setExpandedThinking((prev) => ({ ...prev, [messageId]: false }));
-
-      // Mark streaming complete after animation finishes
-      const streamDuration = assistantMessage.content.length * 15 + 100;
-      setTimeout(() => {
-        setMessages((prev) =>
-          prev.map((m) => (m.id === messageId ? { ...m, isStreaming: false } : m))
-        );
-      }, streamDuration);
     }, 2000);
-  };
+  }, []);
 
-  const handleSubmit = () => {
+  const handleStreamingComplete = useCallback((messageId: string) => {
+    setMessages((prev) =>
+      prev.map((m) => (m.id === messageId ? { ...m, isStreaming: false } : m))
+    );
+  }, []);
+
+  const handleSubmit = useCallback(() => {
     if (!inputValue.trim() || isThinking) return;
-    handleNewMessage(inputValue);
+    handleNewMessage(inputValue.trim());
     setInputValue("");
-    if (textareaRef.current) {
-      textareaRef.current.style.height = "auto";
-    }
-  };
+  }, [inputValue, isThinking, handleNewMessage]);
 
-  const toggleThinking = (messageId: string) => {
+  const toggleThinking = useCallback((messageId: string) => {
     setExpandedThinking((prev) => ({ ...prev, [messageId]: !prev[messageId] }));
-  };
+  }, []);
 
   return (
     <div className="flex min-h-screen bg-background">
-      {/* Sidebar */}
       <Sidebar />
 
-      {/* Main content */}
       <main className="flex-1 flex flex-col">
-        {/* Messages area */}
+        {/* Messages */}
         <div className="flex-1 overflow-y-auto">
           <div className="max-w-3xl mx-auto px-4 py-8">
             {messages.map((message, index) => {
-              const isLastAssistantMessage =
-                message.role === "assistant" &&
-                index === messages.length - 1;
+              const isLastAssistant =
+                message.role === "assistant" && index === messages.length - 1;
 
               return (
                 <div key={message.id} className="mb-8">
                   {message.role === "user" ? (
-                    // User message - right aligned
                     <div className="flex justify-end">
                       <div className="bg-muted rounded-2xl px-4 py-3 max-w-[80%]">
                         <p className="text-foreground">{message.content}</p>
                       </div>
                     </div>
                   ) : (
-                    // Assistant message - left aligned with thinking and actions
                     <div className="space-y-3">
-                      {/* Thinking section (collapsible) */}
+                      {/* Thinking section */}
                       {message.thinking && (
                         <button
                           onClick={() => toggleThinking(message.id)}
@@ -226,10 +153,11 @@ export default function ChatSessionPage() {
                         <StreamingText
                           text={message.content}
                           isStreaming={message.isStreaming ?? false}
+                          onComplete={() => handleStreamingComplete(message.id)}
                         />
                       </p>
 
-                      {/* Action buttons - show after streaming completes */}
+                      {/* Action buttons */}
                       {!message.isStreaming && (
                         <div className="flex items-center gap-1">
                           <ActionButton icon={Copy} label="Copy" />
@@ -239,8 +167,8 @@ export default function ChatSessionPage() {
                         </div>
                       )}
 
-                      {/* Spinner - always visible below last assistant message when not in thinking state */}
-                      {isLastAssistantMessage && !isThinking && lottieData && (
+                      {/* Spinner - always visible for last assistant message */}
+                      {isLastAssistant && !isThinking && lottieData && (
                         <div className="w-8 h-8 mt-2">
                           <Lottie
                             animationData={lottieData}
@@ -258,14 +186,11 @@ export default function ChatSessionPage() {
             {/* Thinking indicator */}
             {isThinking && (
               <div className="mb-8 space-y-3">
-                {/* Thinking pill */}
-                <div className="flex items-center gap-2 bg-muted/50 rounded-xl px-4 py-3 w-fit">
+                <div className="bg-muted/50 rounded-xl px-4 py-3 w-fit">
                   <span className="text-sm text-muted-foreground animate-pulse">
-                    {THINKING_VERBS[thinkingVerbIndex]}...
+                    {thinkingVerb}...
                   </span>
                 </div>
-
-                {/* Spinner */}
                 {lottieData && (
                   <div className="w-10 h-10">
                     <Lottie
@@ -282,55 +207,20 @@ export default function ChatSessionPage() {
           </div>
         </div>
 
-        {/* Input area - fixed at bottom */}
+        {/* Input area */}
         <div className="border-t border-border bg-background p-4">
           <div className="max-w-3xl mx-auto">
             <div className="bg-card rounded-2xl border border-border shadow-sm">
-              {/* Text input */}
               <div className="px-4 py-4">
-                <textarea
-                  ref={textareaRef}
+                <AutoResizeTextarea
                   value={inputValue}
-                  onChange={(e) => setInputValue(e.target.value)}
+                  onChange={setInputValue}
+                  onSubmit={handleSubmit}
                   placeholder="Reply..."
-                  className="w-full bg-transparent text-foreground placeholder:text-muted-foreground resize-none outline-none text-base min-h-[24px] max-h-[200px]"
-                  rows={1}
                   disabled={isThinking}
-                  onKeyDown={(e) => {
-                    if (e.key === "Enter" && !e.shiftKey) {
-                      e.preventDefault();
-                      handleSubmit();
-                    }
-                  }}
-                  onInput={(e) => {
-                    const target = e.target as HTMLTextAreaElement;
-                    target.style.height = "auto";
-                    target.style.height = `${target.scrollHeight}px`;
-                  }}
                 />
               </div>
-
-              {/* Bottom toolbar */}
-              <div className="flex items-center justify-between px-4 pb-4">
-                {/* Left actions */}
-                <div className="flex items-center gap-1">
-                  <Button
-                    variant="ghost"
-                    size="icon"
-                    className="h-8 w-8 text-muted-foreground hover:text-foreground"
-                  >
-                    <Plus className="h-5 w-5" />
-                  </Button>
-                  <Button
-                    variant="ghost"
-                    size="icon"
-                    className="h-8 w-8 text-muted-foreground hover:text-foreground"
-                  >
-                    <Clock className="h-5 w-5" />
-                  </Button>
-                </div>
-
-                {/* Send button */}
+              <div className="flex items-center justify-end px-4 pb-4">
                 <Button
                   size="icon"
                   className="h-8 w-8 rounded-lg"
@@ -348,7 +238,6 @@ export default function ChatSessionPage() {
   );
 }
 
-// Action button component
 function ActionButton({
   icon: Icon,
   label,
