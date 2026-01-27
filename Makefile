@@ -1,4 +1,4 @@
-.PHONY: help install dev dev-detached test test-verbose lint format format-check build build-no-cache deploy generate-fixtures seed migrate migrate-generate generate-api clean clean-fixtures
+.PHONY: help install dev dev-detached test test-verbose lint format format-check build build-no-cache deploy generate-fixtures seed seed-admin migrate migrate-generate generate-api clean clean-fixtures
 
 # Default target
 .DEFAULT_GOAL := help
@@ -22,6 +22,7 @@ help:
 	@echo "Data & Database:"
 	@echo "  make generate-fixtures  Generate Synthea patient fixtures"
 	@echo "  make seed             Load fixtures into database"
+	@echo "  make seed-admin       Create admin user from .env credentials"
 	@echo "  make migrate          Run database migrations"
 	@echo ""
 	@echo "Code Generation:"
@@ -101,7 +102,11 @@ generate-fixtures:
 
 seed:
 	@echo "Loading fixtures into database..."
-	cd backend && uv run python -m app.scripts.load_synthea
+	cd backend && uv run python -m app.scripts.seed_database
+
+seed-admin:
+	@echo "Creating admin user from .env credentials..."
+	cd backend && uv run python -m app.scripts.seed_admin
 
 migrate:
 	@echo "Running database migrations..."

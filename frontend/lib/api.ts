@@ -5,6 +5,9 @@
  * The generated SDK in lib/generated/ should be used for type-safe API calls.
  */
 
+import { auth } from "@/lib/auth";
+import { headers } from "next/headers";
+
 /**
  * Base URL for API requests.
  * Uses NEXT_PUBLIC_ for client components that need to know the API origin.
@@ -13,24 +16,20 @@ export const API_BASE_URL =
   process.env.NEXT_PUBLIC_API_URL || "http://localhost:8000";
 
 /**
- * API key for server-side requests only.
- * This is NOT exposed to the client (no NEXT_PUBLIC_ prefix).
- */
-export function getApiKey(): string {
-  const key = process.env.API_KEY;
-  if (!key) {
-    throw new Error("API_KEY environment variable is required");
-  }
-  return key;
-}
-
-/**
  * Get default headers for authenticated API requests.
- * Server-side only - do not use in client components.
+ * Server-side only - extracts bearer token from the current session.
  */
-export function getAuthHeaders(): HeadersInit {
+export async function getAuthHeaders(): Promise<HeadersInit> {
+  const session = await auth.api.getSession({
+    headers: await headers(),
+  });
+
+  if (!session) {
+    throw new Error("No active session");
+  }
+
   return {
     "Content-Type": "application/json",
-    "X-API-Key": getApiKey(),
+    Authorization: `Bearer ${session.session.token}`,
   };
 }

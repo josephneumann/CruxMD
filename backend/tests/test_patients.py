@@ -7,8 +7,10 @@ from fastapi import FastAPI
 from httpx import ASGITransport, AsyncClient
 from unittest.mock import AsyncMock
 
-from app.config import settings
+from app.auth import verify_bearer_token
+from app.database import get_db
 from app.routes.patients import router
+from tests.conftest import stub_verify_bearer_token
 
 
 @pytest.fixture
@@ -22,12 +24,12 @@ def patients_app(mock_db):
     """Create a test app with patients router."""
     app = FastAPI()
 
-    # Override the db dependency
     async def override_get_db():
         yield mock_db
 
+    app.dependency_overrides[get_db] = override_get_db
+    app.dependency_overrides[verify_bearer_token] = stub_verify_bearer_token
     app.include_router(router)
-    app.dependency_overrides = {}
 
     return app, mock_db
 
@@ -43,39 +45,8 @@ async def patients_client(patients_app):
         yield ac, mock_db
 
 
-class TestListPatients:
-    """Tests for GET /patients endpoint."""
-
-    @pytest.mark.asyncio
-    async def test_list_patients_requires_auth(self, patients_client):
-        """List patients should require API key."""
-        client, _ = patients_client
-        response = await client.get("/patients")
-        assert response.status_code == 401
-        assert response.json()["detail"] == "Missing API key"
-
-    @pytest.mark.asyncio
-    async def test_list_patients_rejects_invalid_key(self, patients_client):
-        """List patients should reject invalid API key."""
-        client, _ = patients_client
-        response = await client.get(
-            "/patients",
-            headers={"X-API-Key": "wrong-key"},
-        )
-        assert response.status_code == 401
-        assert response.json()["detail"] == "Invalid API key"
-
-
 class TestGetPatient:
     """Tests for GET /patients/{patient_id} endpoint."""
-
-    @pytest.mark.asyncio
-    async def test_get_patient_requires_auth(self, patients_client):
-        """Get patient should require API key."""
-        client, _ = patients_client
-        patient_id = uuid.uuid4()
-        response = await client.get(f"/patients/{patient_id}")
-        assert response.status_code == 401
 
     @pytest.mark.asyncio
     async def test_get_patient_invalid_uuid(self, patients_client):
@@ -83,7 +54,7 @@ class TestGetPatient:
         client, _ = patients_client
         response = await client.get(
             "/patients/not-a-uuid",
-            headers={"X-API-Key": settings.api_key},
+            headers={"Authorization": "Bearer test-token"},
         )
         assert response.status_code == 422
 

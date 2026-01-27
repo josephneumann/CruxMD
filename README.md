@@ -47,6 +47,7 @@ An LLM-native platform for clinical intelligence demos. Unlike traditional CRUD 
 - **Backend**: Python 3.12, FastAPI, SQLAlchemy (async)
 - **Database**: PostgreSQL 16 + pgvector
 - **Knowledge Graph**: Neo4j 5.x
+- **Auth**: Better-Auth (email/password), bearer token validation
 - **Frontend**: Next.js 15, TypeScript, shadcn/ui, Tailwind CSS
 - **LLM**: OpenAI GPT-4o
 - **Deployment**: Docker Compose, single VPS
@@ -60,46 +61,49 @@ An LLM-native platform for clinical intelligence demos. Unlike traditional CRUD 
 - Python 3.12+ and uv
 - OpenAI API key
 
-### Development
+### Setup
 
 ```bash
-# Start all services (PostgreSQL, Neo4j)
-docker compose up -d
+cp .env.example .env                 # Configure environment variables
+# Edit .env with your credentials (DB_PASSWORD, BETTER_AUTH_SECRET, ADMIN_EMAIL, etc.)
+```
+
+### Development (local processes)
+
+```bash
+# Start infrastructure (PostgreSQL, Neo4j)
+docker compose up db neo4j -d
 
 # Backend
 cd backend
 uv sync                              # Install dependencies
 uv run alembic upgrade head          # Run migrations
+uv run python -m app.scripts.seed_admin     # Create admin user
 uv run python -m app.scripts.seed_database  # Seed with Synthea fixtures
 uv run uvicorn app.main:app --reload # Start dev server
 
 # Frontend (in another terminal, with backend running)
 cd frontend
 pnpm install                         # Install dependencies
-pnpm generate-api                    # Generate TypeScript client from OpenAPI
 pnpm dev                             # Start dev server (http://localhost:3000)
 ```
-
-### API Client Generation
-
-The frontend uses `@hey-api/openapi-ts` to generate a type-safe API client from the FastAPI OpenAPI schema. After making backend API changes:
-
-```bash
-# Ensure backend is running
-cd backend && uv run uvicorn app.main:app --reload
-
-# In another terminal, regenerate the client
-cd frontend && pnpm generate-api
-```
-
-This creates TypeScript types and functions in `frontend/lib/generated/`.
 
 ### Full Stack (Docker)
 
 ```bash
-docker compose up                    # Start all services
-docker compose up -d                 # Start in background
+make dev                             # or: docker compose up
+# Migrations and admin seed run automatically on backend startup
 ```
+
+### Authentication
+
+CruxMD uses [Better-Auth](https://www.better-auth.com/) for authentication:
+
+- **Email/password** login with email verification
+- **Bearer token** validation in FastAPI (reads Better-Auth session table)
+- **Admin user** seeded automatically from `ADMIN_EMAIL`/`ADMIN_PASSWORD` in `.env`
+- All routes except `/` and `/design/*` require login
+- Transactional email via Resend (falls back to console logging if `RESEND_API_KEY` unset)
 
 ## Project Structure
 
@@ -108,10 +112,12 @@ cruxmd/
 ├── backend/
 │   ├── app/
 │   │   ├── main.py              # FastAPI entry point
+│   │   ├── auth.py              # Bearer token validation
 │   │   ├── config.py            # Settings (env vars)
 │   │   ├── database.py          # SQLAlchemy setup
-│   │   ├── models.py            # FhirResource model
+│   │   ├── models/              # SQLAlchemy models (FHIR, auth, profiles)
 │   │   ├── routes/              # API endpoints
+│   │   ├── scripts/             # seed_admin, seed_database
 │   │   ├── services/            # Business logic
 │   │   │   ├── fhir_loader.py   # Bundle loading
 │   │   │   ├── embeddings.py    # Embedding generation
@@ -122,7 +128,14 @@ cruxmd/
 │   └── tests/
 │
 ├── frontend/
-│   ├── app/                     # Next.js App Router
+│   ├── app/
+│   │   ├── (auth)/              # Login, register, password reset pages
+│   │   ├── api/auth/            # Better-Auth API routes
+│   │   └── chat/                # Chat page
+│   ├── lib/
+│   │   ├── auth.ts              # Better-Auth server config
+│   │   └── auth-client.ts       # Better-Auth client (useSession, signIn, etc.)
+│   ├── middleware.ts             # Route protection (redirects to /login)
 │   └── components/
 │       ├── canvas/              # Chat UI components
 │       ├── clinical/            # InsightCard, LabResultsChart, etc.
@@ -143,16 +156,18 @@ cruxmd/
 
 ## Environment Variables
 
-Copy `.env.example` to `.env` and configure:
+Copy `.env.example` to `.env` and configure. Key variables:
 
-```bash
-DATABASE_URL=postgresql+asyncpg://user:pass@localhost:5432/cruxmd
-NEO4J_URI=bolt://localhost:7687
-NEO4J_USER=neo4j
-NEO4J_PASSWORD=password
-OPENAI_API_KEY=sk-...
-API_KEY=your-api-key
-```
+| Variable | Required | Description |
+|----------|----------|-------------|
+| `DB_PASSWORD` | Yes | PostgreSQL password |
+| `NEO4J_PASSWORD` | Yes | Neo4j password |
+| `OPENAI_API_KEY` | Yes | OpenAI API key |
+| `BETTER_AUTH_SECRET` | Yes | Secret for session signing |
+| `ADMIN_EMAIL` | Yes | Admin user email (seeded on startup) |
+| `ADMIN_PASSWORD` | Yes | Admin user password (seeded on startup) |
+| `RESEND_API_KEY` | No | Resend email API key (console fallback) |
+| `DOMAIN` | Prod | Production domain |
 
 ## Documentation
 

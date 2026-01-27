@@ -17,6 +17,7 @@ RUN uv sync --frozen --no-dev
 COPY app ./app
 COPY alembic ./alembic
 COPY alembic.ini ./
+COPY entrypoint.sh ./
 
 # Set environment variables
 ENV PYTHONUNBUFFERED=1
@@ -25,5 +26,5 @@ ENV PATH="/app/.venv/bin:$PATH"
 # Expose port
 EXPOSE 8000
 
-# Run the application
-CMD ["uvicorn", "app.main:app", "--host", "0.0.0.0", "--port", "8000"]
+# Run migrations, seed admin, then start server
+CMD ["./entrypoint.sh"]

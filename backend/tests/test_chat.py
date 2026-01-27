@@ -102,44 +102,6 @@ async def patient_in_db(test_engine, sample_patient_data: dict) -> uuid.UUID:
 
 
 # =============================================================================
-# Authentication Tests
-# =============================================================================
-
-
-class TestChatAuthentication:
-    """Tests for chat endpoint authentication."""
-
-    @pytest.mark.asyncio
-    async def test_chat_missing_api_key_returns_401(self, client: AsyncClient):
-        """Test that missing API key returns 401."""
-        response = await client.post(
-            "/api/chat",
-            json={
-                "patient_id": str(uuid.uuid4()),
-                "message": "What medications is this patient taking?",
-            },
-        )
-
-        assert response.status_code == 401
-        assert response.json()["detail"] == "Missing API key"
-
-    @pytest.mark.asyncio
-    async def test_chat_invalid_api_key_returns_401(self, client: AsyncClient):
-        """Test that invalid API key returns 401."""
-        response = await client.post(
-            "/api/chat",
-            json={
-                "patient_id": str(uuid.uuid4()),
-                "message": "What medications is this patient taking?",
-            },
-            headers={"X-API-Key": "invalid-key"},
-        )
-
-        assert response.status_code == 401
-        assert response.json()["detail"] == "Invalid API key"
-
-
-# =============================================================================
 # Request Validation Tests
 # =============================================================================
 

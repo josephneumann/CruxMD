@@ -1,6 +1,6 @@
 "use client";
 
-import { useState, useEffect } from "react";
+import { useState, useEffect, useRef } from "react";
 import Image from "next/image";
 import Link from "next/link";
 import { useTheme } from "next-themes";
@@ -16,9 +16,11 @@ import {
   Sun,
   Moon,
   Monitor,
+  LogOut,
 } from "lucide-react";
 import { cn } from "@/lib/utils";
 import { Button } from "@/components/ui/button";
+import { useSession, signOut } from "@/lib/auth-client";
 
 interface SidebarProps {
   className?: string;
@@ -44,13 +46,36 @@ const NAV_ITEMS = [
 export function Sidebar({ className }: SidebarProps) {
   const [isExpanded, setIsExpanded] = useState(false);
   const [isRecentsExpanded, setIsRecentsExpanded] = useState(true);
+  const [showUserMenu, setShowUserMenu] = useState(false);
+  const userMenuRef = useRef<HTMLDivElement>(null);
   const { theme, setTheme, resolvedTheme } = useTheme();
   const [mounted, setMounted] = useState(false);
+  const { data: session } = useSession();
+
+  const userName = session?.user?.name || "User";
+  const userInitials = userName
+    .split(" ")
+    .map((n) => n[0])
+    .join("")
+    .slice(0, 2)
+    .toUpperCase();
 
   // Avoid hydration mismatch by only rendering theme-dependent content after mount
   useEffect(() => {
     setMounted(true);
   }, []);
+
+  // Close user menu on outside click
+  useEffect(() => {
+    if (!showUserMenu) return;
+    function handleClick(e: MouseEvent) {
+      if (userMenuRef.current && !userMenuRef.current.contains(e.target as Node)) {
+        setShowUserMenu(false);
+      }
+    }
+    document.addEventListener("mousedown", handleClick);
+    return () => document.removeEventListener("mousedown", handleClick);
+  }, [showUserMenu]);
 
   const wordmarkSrc = mounted && resolvedTheme === "dark"
     ? "/brand/wordmark-reversed.svg"
@@ -185,31 +210,56 @@ export function Sidebar({ className }: SidebarProps) {
       </div>
 
       {/* Footer - User Profile */}
-      <div className="border-t border-border">
-        <button
+      <div ref={userMenuRef} className="relative border-t border-border">
+        {showUserMenu && (
+          <div className="fixed inset-0 z-50 flex items-end justify-start p-4">
+            <div
+              className="absolute inset-0 bg-black/20"
+              onClick={() => setShowUserMenu(false)}
+            />
+            <div className="relative ml-1 mb-14 w-56 rounded-xl border border-border bg-popover p-1.5 shadow-xl animate-in fade-in slide-in-from-bottom-2 duration-150">
+              <div className="px-3 py-2 border-b border-border mb-1">
+                <p className="text-sm font-medium text-foreground truncate">{userName}</p>
+                <p className="text-xs text-muted-foreground truncate">{session?.user?.email}</p>
+              </div>
+              <button
+                className="flex w-full items-center gap-2.5 rounded-lg px-3 py-2 text-sm text-muted-foreground hover:bg-destructive/10 hover:text-destructive transition-colors"
+                onClick={() => {
+                  setShowUserMenu(false);
+                  signOut({ fetchOptions: { onSuccess: () => { window.location.href = "/login"; } } });
+                }}
+              >
+                <LogOut className="h-4 w-4" />
+                Sign out
+              </button>
+            </div>
+          </div>
+        )}
+        <div
           className={cn(
-            "flex items-center gap-3 w-full px-3 py-3 hover:bg-muted transition-colors",
+            "flex items-center gap-3 w-full px-3 py-3",
             !isExpanded && "justify-center"
           )}
         >
-          {/* Avatar */}
-          <div className="h-8 w-8 rounded-full bg-foreground text-background flex items-center justify-center text-sm font-medium shrink-0">
-            JN
-          </div>
+          <button
+            className="h-8 w-8 rounded-full bg-foreground text-background flex items-center justify-center text-sm font-medium shrink-0 hover:opacity-80 transition-opacity cursor-pointer"
+            onClick={() => setShowUserMenu(!showUserMenu)}
+            aria-label="User menu"
+          >
+            {userInitials}
+          </button>
           {isExpanded && (
-            <div className="flex-1 flex items-center justify-between min-w-0">
-              <div className="flex flex-col items-start min-w-0">
-                <span className="text-sm font-medium text-foreground truncate">
-                  Dr. Neumann
-                </span>
-                <span className="text-xs text-muted-foreground">
-                  Internal Medicine
-                </span>
-              </div>
-              <ChevronDown className="h-4 w-4 text-muted-foreground shrink-0" />
-            </div>
+            <button
+              className="flex-1 flex items-center justify-between min-w-0 cursor-pointer hover:opacity-80 transition-opacity"
+              onClick={() => setShowUserMenu(!showUserMenu)}
+            >
+              <span className="text-sm font-medium text-foreground truncate">
+                {userName}
+              </span>
+              <ChevronUp className="h-4 w-4 text-muted-foreground shrink-0" />
+            </button>
           )}
-        </button>
+        </div>
       </div>
     </aside>
   );

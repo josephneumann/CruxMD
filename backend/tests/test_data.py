@@ -8,7 +8,7 @@ import pytest
 from fastapi import FastAPI
 from httpx import ASGITransport, AsyncClient
 
-from app.config import settings
+from app.auth import verify_bearer_token
 from app.database import get_db
 from app.models import FhirResource
 from app.routes.data import (
@@ -18,6 +18,7 @@ from app.routes.data import (
     _get_loinc_codes_from_resource,
     router,
 )
+from tests.conftest import stub_verify_bearer_token
 
 
 # =============================================================================
@@ -39,8 +40,9 @@ def data_app(mock_db):
     async def override_get_db():
         yield mock_db
 
-    app.include_router(router)
     app.dependency_overrides[get_db] = override_get_db
+    app.dependency_overrides[verify_bearer_token] = stub_verify_bearer_token
+    app.include_router(router)
 
     return app, mock_db
 
@@ -348,27 +350,6 @@ class TestGetPatientLabs:
     """Tests for GET /patients/{id}/labs endpoint."""
 
     @pytest.mark.asyncio
-    async def test_labs_requires_auth(self, data_client):
-        """Labs endpoint should require API key."""
-        client, _ = data_client
-        patient_id = uuid.uuid4()
-        response = await client.get(f"/patients/{patient_id}/labs")
-        assert response.status_code == 401
-        assert response.json()["detail"] == "Missing API key"
-
-    @pytest.mark.asyncio
-    async def test_labs_rejects_invalid_key(self, data_client):
-        """Labs endpoint should reject invalid API key."""
-        client, _ = data_client
-        patient_id = uuid.uuid4()
-        response = await client.get(
-            f"/patients/{patient_id}/labs",
-            headers={"X-API-Key": "wrong-key"},
-        )
-        assert response.status_code == 401
-        assert response.json()["detail"] == "Invalid API key"
-
-    @pytest.mark.asyncio
     async def test_labs_returns_404_for_missing_patient(self, data_client):
         """Labs endpoint should return 404 for non-existent patient."""
         client, mock_db = data_client
@@ -381,7 +362,7 @@ class TestGetPatientLabs:
 
         response = await client.get(
             f"/patients/{patient_id}/labs",
-            headers={"X-API-Key": settings.api_key},
+            headers={"Authorization": "Bearer test-token"},
         )
         assert response.status_code == 404
         assert "Patient not found" in response.json()["detail"]
@@ -418,7 +399,7 @@ class TestGetPatientLabs:
 
         response = await client.get(
             f"/patients/{patient_id}/labs",
-            headers={"X-API-Key": settings.api_key},
+            headers={"Authorization": "Bearer test-token"},
         )
         assert response.status_code == 200
         data = response.json()
@@ -434,14 +415,6 @@ class TestGetPatientLabs:
 
 class TestGetPatientMedications:
     """Tests for GET /patients/{id}/medications endpoint."""
-
-    @pytest.mark.asyncio
-    async def test_medications_requires_auth(self, data_client):
-        """Medications endpoint should require API key."""
-        client, _ = data_client
-        patient_id = uuid.uuid4()
-        response = await client.get(f"/patients/{patient_id}/medications")
-        assert response.status_code == 401
 
     @pytest.mark.asyncio
     async def test_medications_returns_medication_requests(
@@ -474,7 +447,7 @@ class TestGetPatientMedications:
 
         response = await client.get(
             f"/patients/{patient_id}/medications",
-            headers={"X-API-Key": settings.api_key},
+            headers={"Authorization": "Bearer test-token"},
         )
         assert response.status_code == 200
         data = response.json()
@@ -516,7 +489,7 @@ class TestGetPatientMedications:
         response = await client.get(
             f"/patients/{patient_id}/medications",
             params={"status": "active"},
-            headers={"X-API-Key": settings.api_key},
+            headers={"Authorization": "Bearer test-token"},
         )
         assert response.status_code == 200
         data = response.json()
@@ -531,14 +504,6 @@ class TestGetPatientMedications:
 
 class TestGetPatientConditions:
     """Tests for GET /patients/{id}/conditions endpoint."""
-
-    @pytest.mark.asyncio
-    async def test_conditions_requires_auth(self, data_client):
-        """Conditions endpoint should require API key."""
-        client, _ = data_client
-        patient_id = uuid.uuid4()
-        response = await client.get(f"/patients/{patient_id}/conditions")
-        assert response.status_code == 401
 
     @pytest.mark.asyncio
     async def test_conditions_returns_conditions(
@@ -571,7 +536,7 @@ class TestGetPatientConditions:
 
         response = await client.get(
             f"/patients/{patient_id}/conditions",
-            headers={"X-API-Key": settings.api_key},
+            headers={"Authorization": "Bearer test-token"},
         )
         assert response.status_code == 200
         data = response.json()
@@ -613,7 +578,7 @@ class TestGetPatientConditions:
         response = await client.get(
             f"/patients/{patient_id}/conditions",
             params={"status": "active"},
-            headers={"X-API-Key": settings.api_key},
+            headers={"Authorization": "Bearer test-token"},
         )
         assert response.status_code == 200
         data = response.json()
@@ -627,14 +592,6 @@ class TestGetPatientConditions:
 
 class TestGetPatientTimeline:
     """Tests for GET /patients/{id}/timeline endpoint."""
-
-    @pytest.mark.asyncio
-    async def test_timeline_requires_auth(self, data_client):
-        """Timeline endpoint should require API key."""
-        client, _ = data_client
-        patient_id = uuid.uuid4()
-        response = await client.get(f"/patients/{patient_id}/timeline")
-        assert response.status_code == 401
 
     @pytest.mark.asyncio
     async def test_timeline_aggregates_multiple_types(
@@ -682,7 +639,7 @@ class TestGetPatientTimeline:
 
         response = await client.get(
             f"/patients/{patient_id}/timeline",
-            headers={"X-API-Key": settings.api_key},
+            headers={"Authorization": "Bearer test-token"},
         )
         assert response.status_code == 200
         data = response.json()
@@ -719,7 +676,7 @@ class TestGetPatientTimeline:
         response = await client.get(
             f"/patients/{patient_id}/timeline",
             params={"types": "InvalidType"},
-            headers={"X-API-Key": settings.api_key},
+            headers={"Authorization": "Bearer test-token"},
         )
         assert response.status_code == 400
         assert "Invalid resource types" in response.json()["detail"]
@@ -755,7 +712,7 @@ class TestGetPatientTimeline:
 
         response = await client.get(
             f"/patients/{patient_id}/timeline",
-            headers={"X-API-Key": settings.api_key},
+            headers={"Authorization": "Bearer test-token"},
         )
         assert response.status_code == 200
         data = response.json()
@@ -796,7 +753,7 @@ class TestGetPatientTimeline:
         response = await client.get(
             f"/patients/{patient_id}/timeline",
             params={"limit": 1, "skip": 0},
-            headers={"X-API-Key": settings.api_key},
+            headers={"Authorization": "Bearer test-token"},
         )
         assert response.status_code == 200
         data = response.json()

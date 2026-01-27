@@ -7,7 +7,7 @@ from fastapi import APIRouter, Depends, HTTPException, status
 from pydantic import BaseModel
 from sqlalchemy.ext.asyncio import AsyncSession
 
-from app.auth import verify_api_key
+from app.auth import verify_bearer_token
 from app.database import get_db
 from app.services.fhir_loader import load_bundle as load_bundle_service
 from app.services.graph import KnowledgeGraph
@@ -27,7 +27,7 @@ class BundleLoadResponse(BaseModel):
 async def load_bundle(
     bundle: dict[str, Any],
     db: AsyncSession = Depends(get_db),
-    _api_key: str = Depends(verify_api_key),
+    _user_id: str = Depends(verify_bearer_token),
 ) -> BundleLoadResponse:
     """Load a FHIR Bundle into PostgreSQL and Neo4j.
 

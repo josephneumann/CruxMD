@@ -11,10 +11,13 @@ import { ArrowUp, Users, AlertCircle, BookOpen, Plus, Clock, ChevronDown } from 
 import { Button } from "@/components/ui/button";
 import { Sidebar } from "@/components/Sidebar";
 import { AutoResizeTextarea } from "@/components/chat/AutoResizeTextarea";
+import { useSession } from "@/lib/auth-client";
 
 export default function ChatPage() {
   const router = useRouter();
   const [inputValue, setInputValue] = useState("");
+  const { data: session } = useSession();
+  const firstName = session?.user?.name?.split(" ")[0] || "there";
 
   const handleSubmit = () => {
     if (!inputValue.trim()) return;
@@ -47,7 +50,7 @@ export default function ChatPage() {
               height={40}
             />
             <h1 className="text-3xl md:text-4xl font-light text-foreground">
-              {getGreeting()}, <span className="font-normal">Joe</span>
+              {getGreeting()}, <span className="font-normal">{firstName}</span>
             </h1>
           </div>
 

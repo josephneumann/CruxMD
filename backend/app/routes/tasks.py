@@ -9,7 +9,7 @@ import uuid
 from fastapi import APIRouter, Depends, HTTPException, Query, status
 from sqlalchemy.ext.asyncio import AsyncSession
 
-from app.auth import verify_api_key
+from app.auth import verify_bearer_token
 from app.database import get_db
 from app.repositories.task import TaskNotFoundError, TaskRepository, projection_to_response
 from app.schemas.task import (
@@ -25,15 +25,13 @@ from app.schemas.task import (
 
 router = APIRouter(prefix="/tasks", tags=["tasks"])
 
-# Pagination defaults
-DEFAULT_PAGE_SIZE = 50
-MAX_PAGE_SIZE = 100
+from app.constants import DEFAULT_PAGE_SIZE, MAX_PAGE_SIZE
 
 
 @router.get("", response_model=TaskListResponse)
 async def list_tasks(
     db: AsyncSession = Depends(get_db),
-    _api_key: str = Depends(verify_api_key),
+    _user_id: str = Depends(verify_bearer_token),
     skip: int = Query(0, ge=0),
     limit: int = Query(DEFAULT_PAGE_SIZE, ge=1, le=MAX_PAGE_SIZE),
     patient_id: uuid.UUID | None = None,
@@ -75,7 +73,7 @@ async def list_tasks(
 @router.get("/queue", response_model=TaskQueueResponse)
 async def get_task_queue(
     db: AsyncSession = Depends(get_db),
-    _api_key: str = Depends(verify_api_key),
+    _user_id: str = Depends(verify_bearer_token),
     patient_id: uuid.UUID | None = None,
     include_completed: bool = False,
 ) -> TaskQueueResponse:
@@ -113,7 +111,7 @@ async def get_task_queue(
 async def get_task(
     task_id: uuid.UUID,
     db: AsyncSession = Depends(get_db),
-    _api_key: str = Depends(verify_api_key),
+    _user_id: str = Depends(verify_bearer_token),
 ) -> TaskResponse:
     """Get a single task by ID.
 
@@ -143,7 +141,7 @@ async def get_task(
 async def get_task_fhir(
     task_id: uuid.UUID,
     db: AsyncSession = Depends(get_db),
-    _api_key: str = Depends(verify_api_key),
+    _user_id: str = Depends(verify_bearer_token),
 ) -> dict:
     """Get the raw FHIR Task JSON for a task.
 
@@ -173,7 +171,7 @@ async def get_task_fhir(
 async def create_task(
     task_data: TaskCreate,
     db: AsyncSession = Depends(get_db),
-    _api_key: str = Depends(verify_api_key),
+    _user_id: str = Depends(verify_bearer_token),
 ) -> TaskResponse:
     """Create a new task.
 
@@ -193,7 +191,7 @@ async def update_task(
     task_id: uuid.UUID,
     task_data: TaskUpdate,
     db: AsyncSession = Depends(get_db),
-    _api_key: str = Depends(verify_api_key),
+    _user_id: str = Depends(verify_bearer_token),
 ) -> TaskResponse:
     """Update an existing task.
 
@@ -224,7 +222,7 @@ async def update_task(
 async def delete_task(
     task_id: uuid.UUID,
     db: AsyncSession = Depends(get_db),
-    _api_key: str = Depends(verify_api_key),
+    _user_id: str = Depends(verify_bearer_token),
 ) -> None:
     """Delete a task.
 

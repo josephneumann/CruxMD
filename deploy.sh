@@ -46,7 +46,9 @@ REQUIRED_VARS=(
     "DB_PASSWORD"
     "NEO4J_PASSWORD"
     "OPENAI_API_KEY"
-    "API_KEY"
+    "BETTER_AUTH_SECRET"
+    "ADMIN_EMAIL"
+    "ADMIN_PASSWORD"
     "DOMAIN"
 )
 
@@ -92,9 +94,10 @@ done
 echo ""
 log_info "Database is ready"
 
-# Run database migrations
-log_info "Running database migrations..."
-docker compose -f docker-compose.prod.yml exec -T backend alembic upgrade head
+# Migrations and admin seed run automatically via entrypoint.sh
+# Wait briefly for backend to finish startup
+log_info "Waiting for backend startup (migrations + admin seed)..."
+sleep 5
 
 # Show status
 log_info "Deployment complete! Service status:"

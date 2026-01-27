@@ -9,7 +9,10 @@ services:
       - NEO4J_USER=neo4j
       - NEO4J_PASSWORD=${NEO4J_PASSWORD:-password}
       - OPENAI_API_KEY=${OPENAI_API_KEY:-}
-      - API_KEY=${API_KEY:-dev-api-key}
+      - ADMIN_FIRST_NAME=${ADMIN_FIRST_NAME:-}
+      - ADMIN_LAST_NAME=${ADMIN_LAST_NAME:-}
+      - ADMIN_EMAIL=${ADMIN_EMAIL:-}
+      - ADMIN_PASSWORD=${ADMIN_PASSWORD:-}
       - DEBUG=${DEBUG:-false}
     depends_on:
       db:
@@ -23,8 +26,11 @@ services:
     ports:
       - "3000:3000"
     environment:
-      - API_URL=http://backend:8000
-      - API_KEY=${API_KEY:-dev-api-key}
+      - NEXT_PUBLIC_API_URL=http://backend:8000
+      - BETTER_AUTH_SECRET=${BETTER_AUTH_SECRET:?Set BETTER_AUTH_SECRET in .env}
+      - DATABASE_URL_SYNC=postgresql://postgres:${DB_PASSWORD:-password}@db:5432/cruxmd
+      - RESEND_API_KEY=${RESEND_API_KEY:-}
+      - NEXT_PUBLIC_APP_URL=${NEXT_PUBLIC_APP_URL:-http://localhost:3000}
     depends_on:
       - backend
     restart: unless-stopped
