@@ -140,7 +140,7 @@ export default function ChatSessionPage() {
         id: messageId,
         role: "assistant",
         content: "CruxMD is not available to the public yet. Try back later.",
-        thinking: "Placeholder clinical reasoning details.",
+        thinking: THINKING_VERBS[Math.floor(Math.random() * THINKING_VERBS.length)] + "...",
         isStreaming: true,
       };
       setMessages((prev) => [...prev, assistantMessage]);
