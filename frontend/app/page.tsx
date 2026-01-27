@@ -21,32 +21,46 @@ export default function Home() {
 
       <main>
         {/* Hero */}
-        <section className="flex flex-col items-center justify-center px-8 py-20 md:py-28 bg-muted/30">
-          {/* X Mark */}
-          <div className="mb-8">
-            <Image
-              src="/brand/mark-primary.svg"
-              alt=""
-              width={80}
-              height={80}
-              priority
-            />
+        <section className="relative flex flex-col items-center justify-center px-8 py-20 md:py-28 overflow-hidden">
+          {/* Background image */}
+          <Image
+            src="/brand/forest-background.png"
+            alt=""
+            fill
+            className="object-cover object-center"
+            priority
+          />
+          {/* Overlay for text readability */}
+          <div className="absolute inset-0 bg-background/75 dark:bg-background/85" />
+
+          {/* Content */}
+          <div className="relative z-10 flex flex-col items-center">
+            {/* X Mark */}
+            <div className="mb-8">
+              <Image
+                src="/brand/mark-primary.svg"
+                alt=""
+                width={80}
+                height={80}
+                priority
+              />
+            </div>
+
+            {/* Headline */}
+            <h1 className="text-3xl md:text-5xl font-medium text-foreground text-center max-w-3xl mb-6 leading-tight">
+              Human Presence<br />Machine Precision
+            </h1>
+
+            {/* Subhead */}
+            <p className="text-lg md:text-xl text-muted-foreground text-center max-w-2xl mb-10">
+              The Clinically Intelligent AI
+            </p>
+
+            {/* CTA */}
+            <Button asChild size="lg">
+              <Link href="/chat">Start Now</Link>
+            </Button>
           </div>
-
-          {/* Headline */}
-          <h1 className="text-3xl md:text-5xl font-medium text-foreground text-center max-w-3xl mb-6 leading-tight">
-            Human Presence<br />Machine Precision
-          </h1>
-
-          {/* Subhead */}
-          <p className="text-lg md:text-xl text-muted-foreground text-center max-w-2xl mb-10">
-            The Clinically Intelligent AI
-          </p>
-
-          {/* CTA */}
-          <Button asChild size="lg">
-            <Link href="/chat">Start Now</Link>
-          </Button>
         </section>
 
         {/* Trust Bar */}
