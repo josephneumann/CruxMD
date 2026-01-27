@@ -73,13 +73,13 @@ export default function Home() {
             {/* Problem */}
             <div className="border-l-4 border-primary/30 pl-6">
               <h2 className="text-2xl font-medium text-foreground mb-4">
-                The cognitive burden of modern medicine
+                A swarm of agents for routine work
               </h2>
               <p className="text-muted-foreground leading-relaxed">
-                Thousands of data points per patient. Labs scattered across systems.
-                Specialist notes buried in charts. The constant, quiet fear of missing
-                something critical — while trying to maintain the human connection
-                that defines great care.
+                Dozens of specialized AI agents work in parallel — reviewing charts,
+                flagging abnormals, drafting notes, checking interactions. Each agent
+                is an expert at one thing, and together they handle the cognitive
+                overhead that buries clinicians in busywork.
               </p>
             </div>
 
