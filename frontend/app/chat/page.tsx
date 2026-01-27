@@ -67,7 +67,7 @@ export default function ChatPage() {
                 <Button variant="ghost" size="icon" className="h-8 w-8 rounded-lg">
                   <Plus className="h-4 w-4" />
                 </Button>
-                <Button variant="ghost" size="icon" className="h-8 w-8 rounded-lg text-primary">
+                <Button variant="ghost" size="icon" className="h-8 w-8 rounded-lg">
                   <Clock className="h-4 w-4" />
                 </Button>
               </div>
