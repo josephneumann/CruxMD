@@ -2,6 +2,11 @@
 # Automatic HTTPS via Let's Encrypt
 
 {$DOMAIN:app.cruxmd.ai} {
+    # Auth API routes -> frontend (Next.js Better-Auth)
+    handle /api/auth/* {
+        reverse_proxy frontend:3000
+    }
+
     # API routes -> backend
     handle /api/* {
         reverse_proxy backend:8000
