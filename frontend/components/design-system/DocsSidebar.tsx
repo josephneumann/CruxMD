@@ -65,7 +65,6 @@ export function DocsSidebar() {
             priority
           />
         </Link>
-        <p className="text-sm text-muted-foreground mt-1 hidden md:block md:ml-0">Design System</p>
       </div>
       <nav className="space-y-1">
         {designSystemNav.map((item) => {
