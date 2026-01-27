@@ -1,7 +1,7 @@
 import Image from "next/image";
 import Link from "next/link";
 import {
-  Shield,
+  Sparkles,
   Clock,
   Zap,
   Layers,
@@ -35,7 +35,7 @@ export default function Home() {
 
           {/* Headline */}
           <h1 className="text-3xl md:text-5xl font-medium text-foreground text-center max-w-3xl mb-6 leading-tight">
-            Human Presence.<br />Machine Precision.
+            Human Presence<br />Machine Precision
           </h1>
 
           {/* Subhead */}
@@ -53,8 +53,8 @@ export default function Home() {
         <section className="px-8 py-8 border-b border-border">
           <div className="max-w-4xl mx-auto flex flex-col md:flex-row items-center justify-center gap-6 md:gap-12 text-sm text-muted-foreground">
             <div className="flex items-center gap-2">
-              <Shield className="size-4" />
-              <span>HIPAA compliant infrastructure</span>
+              <Sparkles className="size-4" />
+              <span>SOTA clinical models</span>
             </div>
             <div className="flex items-center gap-2">
               <Clock className="size-4" />
