@@ -88,18 +88,18 @@ const PALETTE = {
     { name: "Ivory Light", value: "#FAFAF7", description: "Page background" },
   ],
   warm: [
-    { name: "Book Cloth", value: "#CC785C", description: "Primary brand" },
-    { name: "Kraft", value: "#D4A27F", description: "Warning accents" },
-    { name: "Manilla", value: "#EBDBBC", description: "Warm highlights" },
+    { name: "Vibrant Forest", value: "#2F5E52", description: "Primary brand" },
+    { name: "Golden Resin", value: "#D9A036", description: "Warning accents" },
+    { name: "Alabaster", value: "#F0EAD6", description: "Warm highlights" },
   ],
   accent: [
-    { name: "Sage", value: "#7D8B6F", description: "Positive, success states" },
-    { name: "Periwinkle", value: "#8B8FC7", description: "Links, selections" },
-    { name: "Dusty Plum", value: "#5D4B63", description: "Depth, premium accents" },
+    { name: "Jade Green", value: "#388E3C", description: "Positive, success states" },
+    { name: "Glacier Teal", value: "#5A7D7C", description: "Links, selections" },
+    { name: "Midnight Pine", value: "#1B3A34", description: "Depth, premium accents" },
   ],
   utility: [
-    { name: "Focus Blue", value: "#61AAF2", description: "Info/focus states" },
-    { name: "Error Red", value: "#BF4D43", description: "Destructive/critical" },
+    { name: "Steel Blue", value: "#4A7A8C", description: "Info/focus states" },
+    { name: "Berry Red", value: "#C24E42", description: "Destructive/critical" },
     { name: "White", value: "#FFFFFF", description: "Cards/surfaces" },
     { name: "Black", value: "#000000", description: "Pure black" },
   ],
@@ -110,59 +110,59 @@ const SEMANTIC_TOKENS = {
     { name: "--background", value: "#FAFAF7", description: "Page background" },
     { name: "--foreground", value: "#191919", description: "Primary text" },
     { name: "--card", value: "#FFFFFF", description: "Card background" },
-    { name: "--primary", value: "#CC785C", description: "Primary actions" },
+    { name: "--primary", value: "#2F5E52", description: "Primary actions" },
     { name: "--secondary", value: "#E5E4DF", description: "Secondary bg" },
     { name: "--muted", value: "#F0F0EB", description: "Muted background" },
     { name: "--muted-foreground", value: "#666663", description: "Muted text" },
-    { name: "--accent", value: "#EBDBBC", description: "Accent background" },
+    { name: "--accent", value: "#F0EAD6", description: "Accent background" },
     { name: "--border", value: "#E5E4DF", description: "Border color" },
-    { name: "--destructive", value: "#BF4D43", description: "Error states" },
-    { name: "--ring", value: "#CC785C", description: "Focus ring" },
+    { name: "--destructive", value: "#C24E42", description: "Error states" },
+    { name: "--ring", value: "#2F5E52", description: "Focus ring" },
   ],
   dark: [
     { name: "--background", value: "#191919", description: "Page background" },
     { name: "--foreground", value: "#FAFAF7", description: "Primary text" },
     { name: "--card", value: "#40403E", description: "Card background" },
-    { name: "--primary", value: "#CC785C", description: "Primary actions" },
+    { name: "--primary", value: "#3A7A6A", description: "Primary actions" },
     { name: "--secondary", value: "#40403E", description: "Secondary bg" },
     { name: "--muted", value: "#262625", description: "Muted background" },
     { name: "--muted-foreground", value: "#BFBFBA", description: "Muted text" },
     { name: "--accent", value: "#40403E", description: "Accent background" },
     { name: "--border", value: "#40403E", description: "Border color" },
-    { name: "--destructive", value: "#D4645A", description: "Error states" },
-    { name: "--ring", value: "#CC785C", description: "Focus ring" },
+    { name: "--destructive", value: "#D46F65", description: "Error states" },
+    { name: "--ring", value: "#3A7A6A", description: "Focus ring" },
   ],
 };
 
 const INSIGHT_COLORS = {
   light: [
-    { name: "Info", value: "#61AAF2", foreground: "#FFFFFF", description: "General information" },
-    { name: "Warning", value: "#D4A27F", foreground: "#191919", description: "Caution indicators" },
-    { name: "Critical", value: "#BF4D43", foreground: "#FFFFFF", description: "Urgent alerts" },
-    { name: "Positive", value: "#7D8B6F", foreground: "#FFFFFF", description: "Favorable findings" },
+    { name: "Info", value: "#4A7A8C", foreground: "#FFFFFF", description: "General information" },
+    { name: "Warning", value: "#D9A036", foreground: "#191919", description: "Caution indicators" },
+    { name: "Critical", value: "#C24E42", foreground: "#FFFFFF", description: "Urgent alerts" },
+    { name: "Positive", value: "#388E3C", foreground: "#FFFFFF", description: "Favorable findings" },
   ],
   dark: [
-    { name: "Info", value: "#7BBAF5", foreground: "#191919", description: "General information" },
-    { name: "Warning", value: "#EBDBBC", foreground: "#191919", description: "Caution indicators" },
-    { name: "Critical", value: "#D4645A", foreground: "#FFFFFF", description: "Urgent alerts" },
-    { name: "Positive", value: "#9AAB8F", foreground: "#191919", description: "Favorable findings" },
+    { name: "Info", value: "#749BB0", foreground: "#191919", description: "General information" },
+    { name: "Warning", value: "#EBC47C", foreground: "#191919", description: "Caution indicators" },
+    { name: "Critical", value: "#D46F65", foreground: "#FFFFFF", description: "Urgent alerts" },
+    { name: "Positive", value: "#66BB6A", foreground: "#191919", description: "Favorable findings" },
   ],
 };
 
 const CHART_COLORS = {
   light: [
-    { name: "Chart 1", value: "#CC785C", description: "Primary data" },
-    { name: "Chart 2", value: "#7D8B6F", description: "Secondary data" },
-    { name: "Chart 3", value: "#8B8FC7", description: "Tertiary data" },
-    { name: "Chart 4", value: "#D4A27F", description: "Quaternary data" },
-    { name: "Chart 5", value: "#61AAF2", description: "Quinary data" },
+    { name: "Chart 1", value: "#2F5E52", description: "Primary data" },
+    { name: "Chart 2", value: "#D9A036", description: "Secondary data" },
+    { name: "Chart 3", value: "#C24E42", description: "Tertiary data" },
+    { name: "Chart 4", value: "#4A7A8C", description: "Quaternary data" },
+    { name: "Chart 5", value: "#388E3C", description: "Quinary data" },
   ],
   dark: [
-    { name: "Chart 1", value: "#D4907A", description: "Primary data" },
-    { name: "Chart 2", value: "#9AAB8F", description: "Secondary data" },
-    { name: "Chart 3", value: "#A5A9D6", description: "Tertiary data" },
-    { name: "Chart 4", value: "#EBDBBC", description: "Quaternary data" },
-    { name: "Chart 5", value: "#7BBAF5", description: "Quinary data" },
+    { name: "Chart 1", value: "#4A9A88", description: "Primary data" },
+    { name: "Chart 2", value: "#EBC47C", description: "Secondary data" },
+    { name: "Chart 3", value: "#D46F65", description: "Tertiary data" },
+    { name: "Chart 4", value: "#749BB0", description: "Quaternary data" },
+    { name: "Chart 5", value: "#66BB6A", description: "Quinary data" },
   ],
 };
 
@@ -172,9 +172,8 @@ export default function ColorsPage() {
       <div className="space-y-4">
         <h1 className="text-4xl font-medium tracking-tight">Colors</h1>
         <p className="text-lg text-muted-foreground max-w-2xl">
-          The CruxMD color palette is based on Anthropic&apos;s brand colors, featuring
-          warm terracotta tones balanced with neutral slates and ivories. Click any
-          swatch to copy the hex value.
+          The CruxMD color palette features organic greens, teals, and golds
+          balanced with neutral slates and ivories. Click any swatch to copy the hex value.
         </p>
       </div>
 
@@ -191,9 +190,9 @@ export default function ColorsPage() {
           <div>
             <h3 className="text-lg font-medium">Accent Colors</h3>
             <p className="text-sm text-muted-foreground mt-1">
-              Secondary accents that complement the warm brand palette. Sage extends
-              the warm tones; Periwinkle and Dusty Plum provide cool counterpoints for
-              interactive states and visual depth.
+              Secondary accents that complement the forest brand palette. Jade Green signals
+              success; Glacier Teal and Midnight Pine provide depth for interactive states
+              and visual hierarchy.
             </p>
           </div>
           <div className="grid grid-cols-2 md:grid-cols-3 lg:grid-cols-4 gap-3">

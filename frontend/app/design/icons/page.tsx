@@ -498,7 +498,7 @@ export default function IconsPage() {
         code={`import { Stethoscope, Pill, HeartPulse, TestTube } from "lucide-react"
 
 // Clinical icons in components
-<Badge variant="periwinkle" className="gap-1">
+<Badge variant="teal" className="gap-1">
   <FlaskConical className="size-3" />
   Lab
 </Badge>

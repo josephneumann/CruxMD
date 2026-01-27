@@ -98,8 +98,8 @@ export default function ChartPage() {
                 <AreaChart data={hba1cData} margin={{ top: 10, right: 10, left: 0, bottom: 0 }}>
                   <defs>
                     <linearGradient id="hba1cGradient" x1="0" y1="0" x2="0" y2="1">
-                      <stop offset="5%" stopColor="#7D8B6F" stopOpacity={0.3} />
-                      <stop offset="95%" stopColor="#7D8B6F" stopOpacity={0} />
+                      <stop offset="5%" stopColor="#388E3C" stopOpacity={0.3} />
+                      <stop offset="95%" stopColor="#388E3C" stopOpacity={0} />
                     </linearGradient>
                   </defs>
                   <CartesianGrid strokeDasharray="3 3" stroke="#E5E4DF" vertical={false} />
@@ -119,19 +119,19 @@ export default function ChartPage() {
                   <Tooltip content={<CustomTooltip />} />
                   <ReferenceLine
                     y={7}
-                    stroke="#7D8B6F"
+                    stroke="#388E3C"
                     strokeDasharray="5 5"
-                    label={{ value: "Target <7%", position: "right", fill: "#7D8B6F", fontSize: 11 }}
+                    label={{ value: "Target <7%", position: "right", fill: "#388E3C", fontSize: 11 }}
                   />
                   <Area
                     type="monotone"
                     dataKey="value"
                     name="HbA1c"
-                    stroke="#7D8B6F"
+                    stroke="#388E3C"
                     strokeWidth={2}
                     fill="url(#hba1cGradient)"
-                    dot={{ fill: "#7D8B6F", strokeWidth: 0, r: 4 }}
-                    activeDot={{ fill: "#7D8B6F", strokeWidth: 2, stroke: "#fff", r: 6 }}
+                    dot={{ fill: "#388E3C", strokeWidth: 0, r: 4 }}
+                    activeDot={{ fill: "#388E3C", strokeWidth: 2, stroke: "#fff", r: 6 }}
                   />
                 </AreaChart>
               </ResponsiveContainer>
@@ -174,33 +174,33 @@ export default function ChartPage() {
                   <Tooltip content={<CustomTooltip />} />
                   <ReferenceLine
                     y={130}
-                    stroke="#D4A27F"
+                    stroke="#D9A036"
                     strokeDasharray="5 5"
-                    label={{ value: "SBP Goal", position: "right", fill: "#D4A27F", fontSize: 11 }}
+                    label={{ value: "SBP Goal", position: "right", fill: "#D9A036", fontSize: 11 }}
                   />
                   <ReferenceLine
                     y={80}
-                    stroke="#8B8FC7"
+                    stroke="#5A7D7C"
                     strokeDasharray="5 5"
-                    label={{ value: "DBP Goal", position: "right", fill: "#8B8FC7", fontSize: 11 }}
+                    label={{ value: "DBP Goal", position: "right", fill: "#5A7D7C", fontSize: 11 }}
                   />
                   <Line
                     type="monotone"
                     dataKey="systolic"
                     name="Systolic"
-                    stroke="#CC785C"
+                    stroke="#2F5E52"
                     strokeWidth={2}
-                    dot={{ fill: "#CC785C", strokeWidth: 0, r: 4 }}
-                    activeDot={{ fill: "#CC785C", strokeWidth: 2, stroke: "#fff", r: 6 }}
+                    dot={{ fill: "#2F5E52", strokeWidth: 0, r: 4 }}
+                    activeDot={{ fill: "#2F5E52", strokeWidth: 2, stroke: "#fff", r: 6 }}
                   />
                   <Line
                     type="monotone"
                     dataKey="diastolic"
                     name="Diastolic"
-                    stroke="#8B8FC7"
+                    stroke="#5A7D7C"
                     strokeWidth={2}
-                    dot={{ fill: "#8B8FC7", strokeWidth: 0, r: 4 }}
-                    activeDot={{ fill: "#8B8FC7", strokeWidth: 2, stroke: "#fff", r: 6 }}
+                    dot={{ fill: "#5A7D7C", strokeWidth: 0, r: 4 }}
+                    activeDot={{ fill: "#5A7D7C", strokeWidth: 2, stroke: "#fff", r: 6 }}
                   />
                 </LineChart>
               </ResponsiveContainer>
@@ -208,11 +208,11 @@ export default function ChartPage() {
             {/* Legend */}
             <div className="flex items-center justify-center gap-6 mt-4 text-sm">
               <span className="flex items-center gap-2">
-                <span className="size-3 rounded-full bg-[#CC785C]" />
+                <span className="size-3 rounded-full bg-[#2F5E52]" />
                 Systolic
               </span>
               <span className="flex items-center gap-2">
-                <span className="size-3 rounded-full bg-[#8B8FC7]" />
+                <span className="size-3 rounded-full bg-[#5A7D7C]" />
                 Diastolic
               </span>
             </div>
@@ -292,11 +292,11 @@ export default function ChartPage() {
         </p>
         <div className="grid grid-cols-5 gap-4">
           {[
-            { name: "Chart 1", color: "#CC785C", use: "Primary data" },
-            { name: "Chart 2", color: "#7D8B6F", use: "Positive/target" },
-            { name: "Chart 3", color: "#8B8FC7", use: "Secondary data" },
-            { name: "Chart 4", color: "#D4A27F", use: "Warning/threshold" },
-            { name: "Chart 5", color: "#61AAF2", use: "Info/reference" },
+            { name: "Chart 1", color: "#2F5E52", use: "Primary data" },
+            { name: "Chart 2", color: "#D9A036", use: "Warning/threshold" },
+            { name: "Chart 3", color: "#C24E42", use: "Critical/alert" },
+            { name: "Chart 4", color: "#4A7A8C", use: "Info/reference" },
+            { name: "Chart 5", color: "#388E3C", use: "Positive/target" },
           ].map((item) => (
             <div
               key={item.name}
@@ -338,7 +338,7 @@ const data = [
     <Line
       type="monotone"
       dataKey="value"
-      stroke="#7D8B6F"
+      stroke="#388E3C"
       strokeWidth={2}
     />
   </LineChart>

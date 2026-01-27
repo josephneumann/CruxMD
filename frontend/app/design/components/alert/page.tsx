@@ -105,10 +105,10 @@ export default function AlertPage() {
         </p>
         <div className="grid grid-cols-4 gap-4">
           {[
-            { type: "Info", color: "#61AAF2", icon: Info },
-            { type: "Warning", color: "#D4A27F", icon: AlertTriangle },
-            { type: "Critical", color: "#BF4D43", icon: AlertCircle },
-            { type: "Positive", color: "#7D8B6F", icon: CheckCircle },
+            { type: "Info", color: "#4A7A8C", icon: Info },
+            { type: "Warning", color: "#D9A036", icon: AlertTriangle },
+            { type: "Critical", color: "#C24E42", icon: AlertCircle },
+            { type: "Positive", color: "#388E3C", icon: CheckCircle },
           ].map((item) => (
             <div
               key={item.type}

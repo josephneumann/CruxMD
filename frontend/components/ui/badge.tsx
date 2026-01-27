@@ -9,16 +9,16 @@ const badgeVariants = cva(
       variant: {
         primary: "bg-primary text-primary-foreground",
         secondary: "bg-secondary-foreground text-secondary",
-        sage: "bg-[#7D8B6F] text-white",
-        periwinkle: "bg-[#8B8FC7] text-white",
-        plum: "bg-[#5D4B63] text-white",
+        jade: "bg-[#388E3C] text-white",
+        teal: "bg-[#5A7D7C] text-white",
+        pine: "bg-[#1B3A34] text-white",
         outline: "border border-primary text-primary bg-transparent",
         neutral: "bg-muted text-muted-foreground",
         // Clinical insight-aligned variants
-        info: "bg-[#61AAF2] text-white",
-        warning: "bg-[#D4A27F] text-white",
-        critical: "bg-[#BF4D43] text-white",
-        positive: "bg-[#7D8B6F] text-white",
+        info: "bg-[#4A7A8C] text-white",
+        warning: "bg-[#D9A036] text-white",
+        critical: "bg-[#C24E42] text-white",
+        positive: "bg-insight-positive text-insight-positive-foreground",
       },
       size: {
         sm: "px-2 py-0.5 text-xs",

@@ -51,7 +51,7 @@ const components = [
     preview: (
       <div className="flex items-center gap-2 text-xs">
         <span className="font-medium">K+</span>
-        <span className="text-[#BF4D43]">6.2</span>
+        <span className="text-[#C24E42]">6.2</span>
         <Badge variant="critical" size="sm" className="text-[10px]">Critical</Badge>
       </div>
     ),
@@ -64,11 +64,11 @@ const components = [
       <svg viewBox="0 0 80 32" className="w-20 h-8">
         <polyline
           fill="none"
-          stroke="#7D8B6F"
+          stroke="#388E3C"
           strokeWidth="2"
           points="0,28 20,22 40,20 60,14 80,8"
         />
-        <circle cx="80" cy="8" r="3" fill="#7D8B6F" />
+        <circle cx="80" cy="8" r="3" fill="#388E3C" />
       </svg>
     ),
   },

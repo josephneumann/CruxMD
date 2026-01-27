@@ -12,9 +12,9 @@
  * Slate:  Dark #191919 | Medium #262625 | Light #40403E
  * Cloud:  Dark #666663 | Medium #91918D | Light #BFBFBA
  * Ivory:  Dark #E5E4DF | Medium #F0F0EB | Light #FAFAF7
- * Warm:   Book Cloth #CC785C | Kraft #D4A27F | Manilla #EBDBBC
- * Accent: Sage #7D8B6F | Periwinkle #8B8FC7
- * Utility: Black #000000 | White #FFFFFF | Focus #61AAF2 | Error #BF4D43
+ * Warm:   Vibrant Forest #2F5E52 | Golden Resin #D9A036 | Alabaster #F0EAD6
+ * Accent: Jade Green #388E3C | Glacier Teal #5A7D7C | Midnight Pine #1B3A34
+ * Utility: Black #000000 | White #FFFFFF | Steel Blue #4A7A8C | Berry Red #C24E42
  */
 
 @theme inline {
@@ -97,8 +97,8 @@
   --popover: #FFFFFF;
   --popover-foreground: #191919;
 
-  /* Primary: Book Cloth (warm terracotta) */
-  --primary: #CC785C;
+  /* Primary: Vibrant Forest (deep green) */
+  --primary: #2F5E52;
   --primary-foreground: #FFFFFF;
 
   /* Secondary: Ivory Dark */
@@ -109,49 +109,49 @@
   --muted: #F0F0EB;
   --muted-foreground: #666663;
 
-  /* Accent: Kraft (warm tan) */
-  --accent: #EBDBBC;
+  /* Accent: Alabaster (warm highlight) */
+  --accent: #F0EAD6;
   --accent-foreground: #191919;
 
-  /* Destructive: Error red */
-  --destructive: #BF4D43;
+  /* Destructive: Berry Red */
+  --destructive: #C24E42;
   --destructive-foreground: #FFFFFF;
 
   /* Borders and inputs */
   --border: #E5E4DF;
   --input: #E5E4DF;
-  --ring: #CC785C;
+  --ring: #2F5E52;
 
   /*
    * Clinical Insight Colors (Light Mode)
    */
-  --insight-info: #61AAF2;
+  --insight-info: #4A7A8C;
   --insight-info-foreground: #FFFFFF;
-  --insight-warning: #D4A27F;
+  --insight-warning: #D9A036;
   --insight-warning-foreground: #191919;
-  --insight-critical: #BF4D43;
+  --insight-critical: #C24E42;
   --insight-critical-foreground: #FFFFFF;
-  --insight-positive: #7D8B6F;
+  --insight-positive: #388E3C;
   --insight-positive-foreground: #FFFFFF;
 
   /*
-   * Chart Colors - Warm Anthropic palette
+   * Chart Colors - Forest & Jade palette
    */
-  --chart-1: #CC785C;  /* Book Cloth - primary data */
-  --chart-2: #7D8B6F;  /* Sage - secondary data */
-  --chart-3: #8B8FC7;  /* Periwinkle - tertiary */
-  --chart-4: #D4A27F;  /* Kraft - quaternary */
-  --chart-5: #61AAF2;  /* Focus blue - quinary */
+  --chart-1: #2F5E52;  /* Vibrant Forest - primary data */
+  --chart-2: #D9A036;  /* Golden Resin - secondary data */
+  --chart-3: #C24E42;  /* Berry Red - tertiary */
+  --chart-4: #4A7A8C;  /* Steel Blue - quaternary */
+  --chart-5: #388E3C;  /* Jade Green - quinary */
 
   /* Sidebar */
   --sidebar: #F0F0EB;
   --sidebar-foreground: #191919;
-  --sidebar-primary: #CC785C;
+  --sidebar-primary: #2F5E52;
   --sidebar-primary-foreground: #FFFFFF;
   --sidebar-accent: #E5E4DF;
   --sidebar-accent-foreground: #191919;
   --sidebar-border: #E5E4DF;
-  --sidebar-ring: #CC785C;
+  --sidebar-ring: #2F5E52;
 }
 
 .dark {
@@ -168,8 +168,8 @@
   --popover: #40403E;
   --popover-foreground: #FAFAF7;
 
-  /* Primary: Book Cloth (stays warm) */
-  --primary: #CC785C;
+  /* Primary: Vibrant Forest (lighter in dark) */
+  --primary: #3A7A6A;
   --primary-foreground: #FFFFFF;
 
   /* Secondary: Slate Light */
@@ -180,49 +180,49 @@
   --muted: #262625;
   --muted-foreground: #BFBFBA;
 
-  /* Accent: Kraft (slightly muted in dark) */
+  /* Accent: Neutral in dark mode */
   --accent: #40403E;
   --accent-foreground: #FAFAF7;
 
-  /* Destructive: Error red (brighter in dark) */
-  --destructive: #D4645A;
+  /* Destructive: Berry Red (brighter in dark) */
+  --destructive: #D46F65;
   --destructive-foreground: #FFFFFF;
 
   /* Borders and inputs */
   --border: #40403E;
   --input: #40403E;
-  --ring: #CC785C;
+  --ring: #3A7A6A;
 
   /*
    * Clinical Insight Colors (Dark Mode - slightly adjusted for contrast)
    */
-  --insight-info: #7BBAF5;
+  --insight-info: #749BB0;
   --insight-info-foreground: #191919;
-  --insight-warning: #EBDBBC;
+  --insight-warning: #EBC47C;
   --insight-warning-foreground: #191919;
-  --insight-critical: #D4645A;
+  --insight-critical: #D46F65;
   --insight-critical-foreground: #FFFFFF;
-  --insight-positive: #9AAB8F;
+  --insight-positive: #66BB6A;
   --insight-positive-foreground: #191919;
 
   /*
    * Chart Colors - Adjusted for dark mode visibility
    */
-  --chart-1: #D4907A;  /* Lighter Book Cloth */
-  --chart-2: #9AAB8F;  /* Lighter Sage */
-  --chart-3: #A5A9D6;  /* Lighter Periwinkle */
-  --chart-4: #EBDBBC;  /* Manilla */
-  --chart-5: #7BBAF5;  /* Lighter Focus blue */
+  --chart-1: #4A9A88;  /* Lighter Vibrant Forest */
+  --chart-2: #EBC47C;  /* Lighter Golden Resin */
+  --chart-3: #D46F65;  /* Lighter Berry Red */
+  --chart-4: #749BB0;  /* Lighter Steel Blue */
+  --chart-5: #66BB6A;  /* Lighter Jade Green */
 
   /* Sidebar */
   --sidebar: #262625;
   --sidebar-foreground: #FAFAF7;
-  --sidebar-primary: #CC785C;
+  --sidebar-primary: #3A7A6A;
   --sidebar-primary-foreground: #FFFFFF;
   --sidebar-accent: #40403E;
   --sidebar-accent-foreground: #FAFAF7;
   --sidebar-border: #40403E;
-  --sidebar-ring: #CC785C;
+  --sidebar-ring: #3A7A6A;
 }
 
 @layer base {

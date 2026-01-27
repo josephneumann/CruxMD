@@ -24,9 +24,9 @@ export default function BadgePage() {
             <div className="flex flex-wrap items-center gap-3">
               <Badge variant="primary">Primary</Badge>
               <Badge variant="secondary">Secondary</Badge>
-              <Badge variant="sage">Sage</Badge>
-              <Badge variant="periwinkle">Periwinkle</Badge>
-              <Badge variant="plum">Plum</Badge>
+              <Badge variant="jade">Jade</Badge>
+              <Badge variant="teal">Teal</Badge>
+              <Badge variant="pine">Pine</Badge>
               <Badge variant="outline">Outline</Badge>
               <Badge variant="neutral">Neutral</Badge>
             </div>
@@ -68,7 +68,7 @@ export default function BadgePage() {
           <div className="rounded-lg border bg-card p-4 space-y-3">
             <p className="text-sm font-medium">Categories</p>
             <div className="flex flex-wrap gap-2">
-              <Badge variant="periwinkle" className="gap-1">
+              <Badge variant="teal" className="gap-1">
                 <FlaskConical className="size-3" />
                 Lab
               </Badge>
@@ -76,7 +76,7 @@ export default function BadgePage() {
                 <Pill className="size-3" />
                 Meds
               </Badge>
-              <Badge variant="plum" className="gap-1">
+              <Badge variant="pine" className="gap-1">
                 <Calendar className="size-3" />
                 Encounters
               </Badge>
@@ -120,7 +120,7 @@ export default function BadgePage() {
             <tbody className="divide-y">
               <tr>
                 <td className="p-3"><Badge variant="primary" size="sm">primary</Badge></td>
-                <td className="p-3 font-mono text-xs">Book Cloth (#CC785C)</td>
+                <td className="p-3 font-mono text-xs">Vibrant Forest (#2F5E52)</td>
                 <td className="p-3 font-mono text-xs">#FFFFFF</td>
                 <td className="p-3 text-muted-foreground">Primary actions, emphasis</td>
               </tr>
@@ -131,44 +131,44 @@ export default function BadgePage() {
                 <td className="p-3 text-muted-foreground">Subtle labels, counts</td>
               </tr>
               <tr>
-                <td className="p-3"><Badge variant="sage" size="sm">sage</Badge></td>
-                <td className="p-3 font-mono text-xs">Sage (#7D8B6F)</td>
+                <td className="p-3"><Badge variant="jade" size="sm">jade</Badge></td>
+                <td className="p-3 font-mono text-xs">Jade Green (#388E3C)</td>
                 <td className="p-3 font-mono text-xs">#FFFFFF</td>
                 <td className="p-3 text-muted-foreground">Success, active status</td>
               </tr>
               <tr>
-                <td className="p-3"><Badge variant="periwinkle" size="sm">periwinkle</Badge></td>
-                <td className="p-3 font-mono text-xs">Periwinkle (#8B8FC7)</td>
+                <td className="p-3"><Badge variant="teal" size="sm">teal</Badge></td>
+                <td className="p-3 font-mono text-xs">Glacier Teal (#5A7D7C)</td>
                 <td className="p-3 font-mono text-xs">#FFFFFF</td>
                 <td className="p-3 text-muted-foreground">Links, selections, labs</td>
               </tr>
               <tr>
-                <td className="p-3"><Badge variant="plum" size="sm">plum</Badge></td>
-                <td className="p-3 font-mono text-xs">Dusty Plum (#5D4B63)</td>
+                <td className="p-3"><Badge variant="pine" size="sm">pine</Badge></td>
+                <td className="p-3 font-mono text-xs">Midnight Pine (#1B3A34)</td>
                 <td className="p-3 font-mono text-xs">#FFFFFF</td>
                 <td className="p-3 text-muted-foreground">Premium, encounters</td>
               </tr>
               <tr>
                 <td className="p-3"><Badge variant="info" size="sm">info</Badge></td>
-                <td className="p-3 font-mono text-xs">Focus Blue (#61AAF2)</td>
+                <td className="p-3 font-mono text-xs">Steel Blue (#4A7A8C)</td>
                 <td className="p-3 font-mono text-xs">#FFFFFF</td>
                 <td className="p-3 text-muted-foreground">Informational alerts</td>
               </tr>
               <tr>
                 <td className="p-3"><Badge variant="warning" size="sm">warning</Badge></td>
-                <td className="p-3 font-mono text-xs">Kraft (#D4A27F)</td>
+                <td className="p-3 font-mono text-xs">Golden Resin (#D9A036)</td>
                 <td className="p-3 font-mono text-xs">Slate Dark (#191919)</td>
                 <td className="p-3 text-muted-foreground">Caution, attention needed</td>
               </tr>
               <tr>
                 <td className="p-3"><Badge variant="critical" size="sm">critical</Badge></td>
-                <td className="p-3 font-mono text-xs">Error Red (#BF4D43)</td>
+                <td className="p-3 font-mono text-xs">Berry Red (#C24E42)</td>
                 <td className="p-3 font-mono text-xs">#FFFFFF</td>
                 <td className="p-3 text-muted-foreground">Urgent, critical alerts</td>
               </tr>
               <tr>
                 <td className="p-3"><Badge variant="positive" size="sm">positive</Badge></td>
-                <td className="p-3 font-mono text-xs">Sage (#7D8B6F)</td>
+                <td className="p-3 font-mono text-xs">Jade Green (#388E3C)</td>
                 <td className="p-3 font-mono text-xs">#FFFFFF</td>
                 <td className="p-3 text-muted-foreground">Favorable findings</td>
               </tr>
@@ -186,7 +186,7 @@ import { FlaskConical } from "lucide-react"
 
 // Base variants
 <Badge variant="primary">Primary</Badge>
-<Badge variant="sage">Sage</Badge>
+<Badge variant="jade">Jade</Badge>
 <Badge variant="outline">Outline</Badge>
 
 // Clinical insight variants
@@ -196,7 +196,7 @@ import { FlaskConical } from "lucide-react"
 <Badge variant="positive">Positive</Badge>
 
 // With icon
-<Badge variant="periwinkle" className="gap-1">
+<Badge variant="teal" className="gap-1">
   <FlaskConical className="size-3" />
   Lab
 </Badge>`}
@@ -218,7 +218,7 @@ import { FlaskConical } from "lucide-react"
               <tr>
                 <td className="p-3 font-mono text-xs">variant</td>
                 <td className="p-3 font-mono text-xs text-muted-foreground">
-                  primary | secondary | sage | periwinkle | plum | outline | neutral | info | warning | critical | positive
+                  primary | secondary | jade | teal | pine | outline | neutral | info | warning | critical | positive
                 </td>
                 <td className="p-3 font-mono text-xs">primary</td>
               </tr>

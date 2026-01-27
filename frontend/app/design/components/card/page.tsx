@@ -94,7 +94,7 @@ export default function CardPage() {
         <div className="flex flex-wrap gap-4">
           {/* Basic Card */}
           <Card className="w-80 relative">
-            <Badge variant="sage" size="sm" className="absolute top-3 right-3">Active</Badge>
+            <Badge variant="jade" size="sm" className="absolute top-3 right-3">Active</Badge>
             <CardHeader>
               <CardTitle className="flex items-center gap-2">
                 <FileText className="size-4" />
@@ -111,7 +111,7 @@ export default function CardPage() {
 
           {/* Card with Footer */}
           <Card className="w-80 relative">
-            <Badge variant="periwinkle" size="sm" className="absolute top-3 right-3">New</Badge>
+            <Badge variant="teal" size="sm" className="absolute top-3 right-3">New</Badge>
             <CardHeader>
               <CardTitle className="flex items-center gap-2">
                 <TestTube className="size-4" />
@@ -192,7 +192,7 @@ export default function CardPage() {
                     <h3 className="font-semibold">Johnson, Emily</h3>
                     <p className="text-sm text-muted-foreground">Dr. Williams</p>
                   </div>
-                  <Badge variant="sage" size="sm">Low Risk</Badge>
+                  <Badge variant="jade" size="sm">Low Risk</Badge>
                 </div>
                 <div className="mt-2 text-sm text-muted-foreground">
                   <p>MRN: 789012</p>
@@ -249,7 +249,7 @@ function VitalSignCard({
   const trendIcon = trend === "up" ? (
     <TrendingUp className={cn("size-3", isAbnormal ? "text-destructive" : "text-muted-foreground/40")} />
   ) : trend === "down" ? (
-    <TrendingDown className={cn("size-3", status === "normal" ? "text-[#7D8B6F]" : "text-[#7D8B6F]")} />
+    <TrendingDown className={cn("size-3", status === "normal" ? "text-[#388E3C]" : "text-[#388E3C]")} />
   ) : (
     <Minus className="size-3 text-muted-foreground/40" />
   );
@@ -344,7 +344,7 @@ function ClinicalObservationCardsDemo() {
         />
 
         <VitalSignCard
-          icon={<Thermometer className="size-4 text-[#8B8FC7]" strokeWidth={1.5} />}
+          icon={<Thermometer className="size-4 text-[#5A7D7C]" strokeWidth={1.5} />}
           label="Temperature"
           value="98.6"
           unit="°F"
@@ -355,7 +355,7 @@ function ClinicalObservationCardsDemo() {
         />
 
         <VitalSignCard
-          icon={<Droplets className="size-4 text-[#8B8FC7]" strokeWidth={1.5} />}
+          icon={<Droplets className="size-4 text-[#5A7D7C]" strokeWidth={1.5} />}
           label="O₂ Saturation"
           value="98"
           unit="%"

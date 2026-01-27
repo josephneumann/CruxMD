@@ -40,15 +40,15 @@ function StatusBadge({ status }: { status: string }) {
 }
 
 function TrendIcon({ trend }: { trend?: string }) {
-  if (trend === "up") return <TrendingUp className="size-4 text-[#D4A27F]" />;
-  if (trend === "down") return <TrendingDown className="size-4 text-[#61AAF2]" />;
+  if (trend === "up") return <TrendingUp className="size-4 text-[#D9A036]" />;
+  if (trend === "down") return <TrendingDown className="size-4 text-[#4A7A8C]" />;
   return null;
 }
 
 function ValueCell({ value, unit, status }: { value: string; unit: string; status: string }) {
   const isAbnormal = status === "high" || status === "low" || status === "critical";
   return (
-    <span className={isAbnormal ? "text-[#BF4D43] font-medium" : ""}>
+    <span className={isAbnormal ? "text-[#C24E42] font-medium" : ""}>
       {value} <span className="text-muted-foreground">{unit}</span>
       {status === "high" && <TrendingUp className="inline size-3 ml-1" />}
       {status === "critical" && <span className="ml-1">!!!</span>}
@@ -94,7 +94,7 @@ export default function TablePage() {
               </thead>
               <tbody className="divide-y">
                 {labResults.map((row) => (
-                  <tr key={row.test} className={row.status === "critical" ? "bg-[#BF4D43]/5" : ""}>
+                  <tr key={row.test} className={row.status === "critical" ? "bg-[#C24E42]/5" : ""}>
                     <td className="p-4 font-medium">
                       {row.test}
                       <FlagBadge status={row.status} />
@@ -113,7 +113,7 @@ export default function TablePage() {
             {/* Legend */}
             <div className="flex items-center gap-6 px-4 py-3 border-t text-xs text-muted-foreground">
               <span className="flex items-center gap-1.5">
-                <span className="size-2 rounded-full bg-[#7D8B6F]" />
+                <span className="size-2 rounded-full bg-[#388E3C]" />
                 Normal
               </span>
               <span className="flex items-center gap-1.5">
@@ -125,7 +125,7 @@ export default function TablePage() {
                 Below Range
               </span>
               <span className="flex items-center gap-1.5">
-                <span className="size-2 rounded-full bg-[#BF4D43]" />
+                <span className="size-2 rounded-full bg-[#C24E42]" />
                 Critical
               </span>
             </div>

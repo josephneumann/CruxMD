@@ -64,10 +64,10 @@ export default function DesignOverviewPage() {
         <h2 className="text-2xl font-medium">Design Philosophy</h2>
         <div className="grid gap-4 md:grid-cols-2">
           <div className="rounded-lg border bg-card p-6">
-            <h3 className="font-semibold mb-2">Warm & Professional</h3>
+            <h3 className="font-semibold mb-2">Natural & Professional</h3>
             <p className="text-sm text-muted-foreground">
-              The palette uses warm terracotta and ivory tones inspired by Anthropic&apos;s
-              brand, creating an approachable yet trustworthy aesthetic for clinical contexts.
+              The palette uses organic greens, teals, and golds balanced with neutral
+              ivories, creating an approachable yet trustworthy aesthetic for clinical contexts.
             </p>
           </div>
           <div className="rounded-lg border bg-card p-6">

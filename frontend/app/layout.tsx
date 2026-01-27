@@ -18,7 +18,7 @@ export const metadata: Metadata = {
   description: "Clinical intelligence for physicians",
   manifest: "/manifest.webmanifest",
   themeColor: [
-    { media: "(prefers-color-scheme: light)", color: "#CC785C" },
+    { media: "(prefers-color-scheme: light)", color: "#2F5E52" },
     { media: "(prefers-color-scheme: dark)", color: "#191919" },
   ],
   icons: {
@@ -34,7 +34,7 @@ export const metadata: Metadata = {
       {
         rel: "mask-icon",
         url: "/safari-pinned-tab.svg",
-        color: "#CC785C",
+        color: "#2F5E52",
       },
     ],
   },
@@ -64,7 +64,7 @@ export const metadata: Metadata = {
     images: ["/og-image-twitter.png"],
   },
   other: {
-    "msapplication-TileColor": "#CC785C",
+    "msapplication-TileColor": "#2F5E52",
   },
 };
 

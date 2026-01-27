@@ -441,7 +441,7 @@ function Logo() {
 <link rel="manifest" href="/manifest.webmanifest">
 
 <!-- Theme Color -->
-<meta name="theme-color" content="#CC785C">`}
+<meta name="theme-color" content="#2F5E52">`}
           />
 
           <CodeBlock
@@ -471,7 +471,7 @@ function Logo() {
   "start_url": "/",
   "display": "standalone",
   "background_color": "#FAFAF7",
-  "theme_color": "#CC785C",
+  "theme_color": "#2F5E52",
   "icons": [
     {
       "src": "/pwa-192x192.png",

@@ -19,13 +19,13 @@ Generated from code analysis for Figma synchronization.
 | **Ivory Dark** | `#E5E4DF` | Borders, secondary background |
 | **Ivory Medium** | `#F0F0EB` | Muted background, sidebar |
 | **Ivory Light** | `#FAFAF7` | Page background (light mode) |
-| **Book Cloth** | `#CC785C` | Primary brand, CTAs, focus ring |
-| **Kraft** | `#D4A27F` | Warning insights, warm highlights |
-| **Manilla** | `#EBDBBC` | Accent, subtle warm backgrounds |
-| **Sage** | `#7D8B6F` | Positive insights, chart color |
-| **Periwinkle** | `#8B8FC7` | Chart tertiary |
-| **Focus Blue** | `#61AAF2` | Info insights, focus states |
-| **Error Red** | `#BF4D43` | Destructive, critical insights |
+| **Vibrant Forest** | `#2F5E52` | Primary brand, CTAs, focus ring |
+| **Golden Resin** | `#D9A036` | Warning insights, warm highlights |
+| **Alabaster** | `#F0EAD6` | Accent, subtle warm backgrounds |
+| **Jade Green** | `#388E3C` | Positive insights, chart color |
+| **Glacier Teal** | `#5A7D7C` | Chart tertiary |
+| **Steel Blue** | `#4A7A8C` | Info insights, focus states |
+| **Berry Red** | `#C24E42` | Destructive, critical insights |
 | **White** | `#FFFFFF` | Cards, surfaces |
 | **Black** | `#000000` | Pure black (rare use) |
 
@@ -37,24 +37,24 @@ Generated from code analysis for Figma synchronization.
 | `--foreground` | `#191919` | Primary text |
 | `--card` | `#FFFFFF` | Card background |
 | `--card-foreground` | `#191919` | Card text |
-| `--primary` | `#CC785C` | Primary actions (Book Cloth) |
+| `--primary` | `#2F5E52` | Primary actions (Vibrant Forest) |
 | `--primary-foreground` | `#FFFFFF` | Text on primary |
 | `--secondary` | `#E5E4DF` | Secondary background |
 | `--muted` | `#F0F0EB` | Muted background |
 | `--muted-foreground` | `#666663` | Muted text |
-| `--accent` | `#EBDBBC` | Accent background (Manilla) |
+| `--accent` | `#F0EAD6` | Accent background (Alabaster) |
 | `--border` | `#E5E4DF` | Border color |
-| `--destructive` | `#BF4D43` | Error states |
-| `--ring` | `#CC785C` | Focus ring |
+| `--destructive` | `#C24E42` | Error states |
+| `--ring` | `#2F5E52` | Focus ring |
 
 ### Clinical Insight Colors
 
 | Type | Background | Border | Icon |
 |------|------------|--------|------|
-| **Info** | `#61AAF2/10` | `#61AAF2` | `#61AAF2` |
-| **Warning** | `#D4A27F/10` | `#D4A27F` | `#D4A27F` |
-| **Critical** | `#BF4D43/10` | `#BF4D43` | `#BF4D43` |
-| **Positive** | `#7D8B6F/10` | `#7D8B6F` | `#7D8B6F` |
+| **Info** | `#4A7A8C/10` | `#4A7A8C` | `#4A7A8C` |
+| **Warning** | `#D9A036/10` | `#D9A036` | `#D9A036` |
+| **Critical** | `#C24E42/10` | `#C24E42` | `#C24E42` |
+| **Positive** | `#388E3C/10` | `#388E3C` | `#388E3C` |
 
 ### Border Radius
 

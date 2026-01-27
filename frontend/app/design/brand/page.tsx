@@ -19,7 +19,7 @@ function Principle({ number, title, description }: { number: number; title: stri
 function DoItem({ children }: { children: React.ReactNode }) {
   return (
     <div className="flex items-start gap-2">
-      <Check className="mt-0.5 size-4 shrink-0 text-[#7D8B6F]" />
+      <Check className="mt-0.5 size-4 shrink-0 text-[#388E3C]" />
       <span className="text-sm">{children}</span>
     </div>
   );
@@ -28,7 +28,7 @@ function DoItem({ children }: { children: React.ReactNode }) {
 function DontItem({ children }: { children: React.ReactNode }) {
   return (
     <div className="flex items-start gap-2">
-      <X className="mt-0.5 size-4 shrink-0 text-[#BF4D43]" />
+      <X className="mt-0.5 size-4 shrink-0 text-[#C24E42]" />
       <span className="text-sm">{children}</span>
     </div>
   );
@@ -236,7 +236,7 @@ export default function BrandPage() {
         <h2 className="text-2xl font-medium">Writing Guidelines</h2>
         <div className="grid grid-cols-1 md:grid-cols-2 gap-6">
           <div className="space-y-4">
-            <h3 className="font-medium text-[#7D8B6F]">Do</h3>
+            <h3 className="font-medium text-[#388E3C]">Do</h3>
             <div className="space-y-3">
               <DoItem>&ldquo;Medications for John Smith&rdquo;</DoItem>
               <DoItem>&ldquo;Last updated 2 hours ago&rdquo;</DoItem>
@@ -246,7 +246,7 @@ export default function BrandPage() {
             </div>
           </div>
           <div className="space-y-4">
-            <h3 className="font-medium text-[#BF4D43]">Don&apos;t</h3>
+            <h3 className="font-medium text-[#C24E42]">Don&apos;t</h3>
             <div className="space-y-3">
               <DontItem>&ldquo;Patient Medications&rdquo; (generic)</DontItem>
               <DontItem>&ldquo;Synced!&rdquo; (exclamatory)</DontItem>
@@ -288,9 +288,9 @@ export default function BrandPage() {
         <h2 className="text-2xl font-medium">Visual Guidelines</h2>
         <div className="grid grid-cols-1 md:grid-cols-2 gap-6">
           <div className="rounded-lg border bg-card p-5">
-            <h3 className="font-medium mb-4 text-[#7D8B6F]">Do</h3>
+            <h3 className="font-medium mb-4 text-[#388E3C]">Do</h3>
             <div className="space-y-3">
-              <DoItem>Use Book Cloth sparingly for emphasis</DoItem>
+              <DoItem>Use Vibrant Forest sparingly for emphasis</DoItem>
               <DoItem>Let Ivory and White dominate</DoItem>
               <DoItem>Use subtle, purposeful transitions</DoItem>
               <DoItem>Give content room to breathe</DoItem>
@@ -299,9 +299,9 @@ export default function BrandPage() {
             </div>
           </div>
           <div className="rounded-lg border bg-card p-5">
-            <h3 className="font-medium mb-4 text-[#BF4D43]">Don&apos;t</h3>
+            <h3 className="font-medium mb-4 text-[#C24E42]">Don&apos;t</h3>
             <div className="space-y-3">
-              <DontItem>Saturate interface with terracotta</DontItem>
+              <DontItem>Saturate interface with green</DontItem>
               <DontItem>Use pure gray (#808080)</DontItem>
               <DontItem>Animate everything</DontItem>
               <DontItem>Pack information densely everywhere</DontItem>
