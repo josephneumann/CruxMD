@@ -232,8 +232,8 @@ export default function ChatSessionPage() {
                         </div>
                       )}
 
-                      {/* Static spinner - show below last assistant message when not thinking/streaming */}
-                      {isLastAssistantMessage && !isThinking && !message.isStreaming && lottieData && (
+                      {/* Spinner - always visible below last assistant message when not in thinking state */}
+                      {isLastAssistantMessage && !isThinking && lottieData && (
                         <div className="w-8 h-8 mt-2">
                           <Lottie
                             animationData={lottieData}
