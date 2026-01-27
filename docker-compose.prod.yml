@@ -39,9 +39,16 @@ services:
     # No exposed ports - accessed via Caddy
 
   frontend:
-    build: ./frontend
+    build:
+      context: ./frontend
+      args:
+        - NEXT_PUBLIC_APP_URL=https://${DOMAIN}
     environment:
       - NEXT_PUBLIC_API_URL=https://${DOMAIN}
+      - NEXT_PUBLIC_APP_URL=https://${DOMAIN}
+      - BETTER_AUTH_SECRET=${BETTER_AUTH_SECRET}
+      - DATABASE_URL_SYNC=postgresql://postgres:${DB_PASSWORD}@db:5432/cruxmd
+      - RESEND_API_KEY=${RESEND_API_KEY:-}
       - API_KEY=${API_KEY}
     depends_on:
       - backend

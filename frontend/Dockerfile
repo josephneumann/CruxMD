@@ -20,6 +20,10 @@ FROM base AS builder
 COPY --from=deps /app/node_modules ./node_modules
 COPY . .
 
+# Build args for NEXT_PUBLIC_ env vars (must be available at build time)
+ARG NEXT_PUBLIC_APP_URL
+ENV NEXT_PUBLIC_APP_URL=${NEXT_PUBLIC_APP_URL}
+
 # Build the application
 RUN pnpm build
 
