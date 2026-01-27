@@ -160,7 +160,7 @@ export default function BrandPage() {
         <h2 className="text-2xl font-medium">The Central Metaphor</h2>
         <div className="rounded-lg border bg-muted/50 p-6">
           <p className="italic text-center text-lg">
-            &ldquo;A well-organized study with medical textbooks—but with a view of a forested hillside in early morning mist.&rdquo;
+            &ldquo;A well-organized study with natural wood elements and medical textbooks — with a view of a forested hillside in the early morning mist. Evoking the metaphor of seeing the forest through the trees.&rdquo;
           </p>
         </div>
         <div className="grid grid-cols-1 md:grid-cols-2 gap-4 mt-4">
@@ -170,22 +170,26 @@ export default function BrandPage() {
               <span className="text-sm text-muted-foreground">Clean organization, logical hierarchy</span>
             </div>
             <div className="flex gap-3">
-              <span className="font-medium text-sm w-28 shrink-0">Textbooks</span>
-              <span className="text-sm text-muted-foreground">Typography like well-set literature</span>
+              <span className="font-medium text-sm w-28 shrink-0">Natural wood</span>
+              <span className="text-sm text-muted-foreground">Organic warmth, grounded and tactile</span>
             </div>
             <div className="flex gap-3">
-              <span className="font-medium text-sm w-28 shrink-0">The view</span>
-              <span className="text-sm text-muted-foreground">Generous whitespace, room for thought</span>
+              <span className="font-medium text-sm w-28 shrink-0">Textbooks</span>
+              <span className="text-sm text-muted-foreground">Typography like well-set literature</span>
             </div>
           </div>
           <div className="space-y-3">
             <div className="flex gap-3">
-              <span className="font-medium text-sm w-28 shrink-0">Hillside</span>
-              <span className="text-sm text-muted-foreground">Warm palette, not clinical sterile</span>
+              <span className="font-medium text-sm w-28 shrink-0">The forest</span>
+              <span className="text-sm text-muted-foreground">Depth of data, layered context to navigate</span>
+            </div>
+            <div className="flex gap-3">
+              <span className="font-medium text-sm w-28 shrink-0">The trees</span>
+              <span className="text-sm text-muted-foreground">Individual data points made clear and distinct</span>
             </div>
             <div className="flex gap-3">
               <span className="font-medium text-sm w-28 shrink-0">Morning mist</span>
-              <span className="text-sm text-muted-foreground">Information reveals itself gradually</span>
+              <span className="text-sm text-muted-foreground">Information reveals itself gradually, with clarity</span>
             </div>
           </div>
         </div>
