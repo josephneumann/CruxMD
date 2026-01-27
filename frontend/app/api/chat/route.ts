@@ -23,10 +23,21 @@ export async function POST(request: NextRequest) {
       );
     }
 
+    // Get auth headers (now async - extracts bearer token from session)
+    let authHeaders: HeadersInit;
+    try {
+      authHeaders = await getAuthHeaders();
+    } catch {
+      return NextResponse.json(
+        { error: "Authentication required" },
+        { status: 401 }
+      );
+    }
+
     // Forward to backend with authentication
     const response = await fetch(`${API_BASE_URL}/api/chat`, {
       method: "POST",
-      headers: getAuthHeaders(),
+      headers: authHeaders,
       body: JSON.stringify(body),
     });
 

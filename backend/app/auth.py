@@ -1,38 +1,49 @@
-"""API key authentication."""
+"""Bearer token authentication via Better-Auth session table."""
 
-import secrets
+from datetime import datetime, timezone
 
 from fastapi import Depends, HTTPException, status
-from fastapi.security import APIKeyHeader
+from fastapi.security import HTTPAuthorizationCredentials, HTTPBearer
+from sqlalchemy import select
+from sqlalchemy.ext.asyncio import AsyncSession
 
-from app.config import settings
+from app.database import get_db
+from app.models.auth import BetterAuthSession
 
-api_key_header = APIKeyHeader(name="X-API-Key", auto_error=False)
+bearer_scheme = HTTPBearer(auto_error=False)
 
 
-async def verify_api_key(api_key: str | None = Depends(api_key_header)) -> str:
-    """Verify the API key from request header.
-
-    Uses constant-time comparison to prevent timing attacks.
-
-    Args:
-        api_key: The API key from X-API-Key header.
+async def verify_bearer_token(
+    credentials: HTTPAuthorizationCredentials | None = Depends(bearer_scheme),
+    db: AsyncSession = Depends(get_db),
+) -> str:
+    """Validate a bearer token against the Better-Auth session table.
 
     Returns:
-        The validated API key.
+        The authenticated user_id.
 
     Raises:
-        HTTPException: 401 if API key is missing or invalid.
+        HTTPException: 401 if token is missing, invalid, or expired.
     """
-    if api_key is None:
+    if credentials is None:
         raise HTTPException(
             status_code=status.HTTP_401_UNAUTHORIZED,
-            detail="Missing API key",
+            detail="Missing authentication token",
         )
-    # Use constant-time comparison to prevent timing attacks
-    if not secrets.compare_digest(api_key.encode(), settings.api_key.encode()):
+
+    token = credentials.credentials
+    result = await db.execute(
+        select(BetterAuthSession).where(
+            BetterAuthSession.token == token,
+            BetterAuthSession.expiresAt > datetime.now(timezone.utc),
+        )
+    )
+    session = result.scalar_one_or_none()
+
+    if session is None:
         raise HTTPException(
             status_code=status.HTTP_401_UNAUTHORIZED,
-            detail="Invalid API key",
+            detail="Invalid or expired token",
         )
-    return api_key
+
+    return session.userId

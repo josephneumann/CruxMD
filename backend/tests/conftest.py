@@ -16,10 +16,18 @@ from httpx import ASGITransport, AsyncClient
 from neo4j import AsyncGraphDatabase
 from sqlalchemy.ext.asyncio import AsyncSession, async_sessionmaker, create_async_engine
 
+from app.auth import verify_bearer_token
 from app.config import settings
 from app.database import Base, get_db
 from app.main import app
 from app.services.graph import KnowledgeGraph
+
+TEST_USER_ID = "test-user"
+
+
+async def stub_verify_bearer_token() -> str:
+    """Stub auth dependency that returns a fixed test user ID."""
+    return TEST_USER_ID
 
 
 # =============================================================================
@@ -50,8 +58,10 @@ async def client(test_engine):
                 await session.rollback()
                 raise
 
-    # Override the dependency
+    # Override dependencies
     app.dependency_overrides[get_db] = override_get_db
+
+    app.dependency_overrides[verify_bearer_token] = stub_verify_bearer_token
 
     async with AsyncClient(
         transport=ASGITransport(app=app),
@@ -59,14 +69,15 @@ async def client(test_engine):
     ) as ac:
         yield ac
 
-    # Clean up override
+    # Clean up overrides
     app.dependency_overrides.pop(get_db, None)
+    app.dependency_overrides.pop(verify_bearer_token, None)
 
 
 @pytest.fixture
 def auth_headers() -> dict[str, str]:
     """Authentication headers for API requests."""
-    return {"X-API-Key": settings.api_key}
+    return {"Authorization": "Bearer test-token"}
 
 
 # =============================================================================

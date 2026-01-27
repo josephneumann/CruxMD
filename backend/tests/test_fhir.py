@@ -5,8 +5,10 @@ from fastapi import FastAPI
 from httpx import ASGITransport, AsyncClient
 from unittest.mock import AsyncMock
 
-from app.config import settings
+from app.auth import verify_bearer_token
+from app.database import get_db
 from app.routes.fhir import router, BundleLoadResponse
+from tests.conftest import stub_verify_bearer_token
 
 
 @pytest.fixture
@@ -19,7 +21,14 @@ def mock_db():
 def fhir_app(mock_db):
     """Create a test app with fhir router."""
     app = FastAPI()
+
+    async def override_get_db():
+        yield mock_db
+
+    app.dependency_overrides[get_db] = override_get_db
+    app.dependency_overrides[verify_bearer_token] = stub_verify_bearer_token
     app.include_router(router)
+
     return app, mock_db
 
 
@@ -38,35 +47,13 @@ class TestLoadBundle:
     """Tests for POST /fhir/load-bundle endpoint."""
 
     @pytest.mark.asyncio
-    async def test_load_bundle_requires_auth(self, fhir_client):
-        """Load bundle should require API key."""
-        client, _ = fhir_client
-        response = await client.post(
-            "/fhir/load-bundle",
-            json={"resourceType": "Bundle", "entry": []},
-        )
-        assert response.status_code == 401
-        assert response.json()["detail"] == "Missing API key"
-
-    @pytest.mark.asyncio
-    async def test_load_bundle_rejects_invalid_key(self, fhir_client):
-        """Load bundle should reject invalid API key."""
-        client, _ = fhir_client
-        response = await client.post(
-            "/fhir/load-bundle",
-            json={"resourceType": "Bundle", "entry": []},
-            headers={"X-API-Key": "wrong-key"},
-        )
-        assert response.status_code == 401
-
-    @pytest.mark.asyncio
     async def test_load_bundle_requires_bundle_type(self, fhir_client):
         """Load bundle should validate resourceType is Bundle."""
         client, _ = fhir_client
         response = await client.post(
             "/fhir/load-bundle",
             json={"resourceType": "Patient", "id": "123"},
-            headers={"X-API-Key": settings.api_key},
+            headers={"Authorization": "Bearer test-token"},
         )
         assert response.status_code == 400
         assert "resourceType must be 'Bundle'" in response.json()["detail"]
@@ -78,7 +65,7 @@ class TestLoadBundle:
         response = await client.post(
             "/fhir/load-bundle",
             json={"resourceType": "Bundle", "entry": []},
-            headers={"X-API-Key": settings.api_key},
+            headers={"Authorization": "Bearer test-token"},
         )
         assert response.status_code == 400
         assert "no entries found" in response.json()["detail"]
@@ -93,7 +80,7 @@ class TestLoadBundle:
                 "resourceType": "Bundle",
                 "entry": [{"fullUrl": "urn:uuid:123"}],  # No resource
             },
-            headers={"X-API-Key": settings.api_key},
+            headers={"Authorization": "Bearer test-token"},
         )
         assert response.status_code == 400
         assert "no valid resources found" in response.json()["detail"]

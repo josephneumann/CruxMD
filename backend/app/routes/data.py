@@ -9,16 +9,14 @@ from pydantic import BaseModel
 from sqlalchemy import select
 from sqlalchemy.ext.asyncio import AsyncSession
 
-from app.auth import verify_api_key
+from app.auth import verify_bearer_token
 from app.database import get_db
 from app.models import FhirResource
 
 router = APIRouter(prefix="/patients", tags=["patient-data"])
 
 
-# Pagination defaults
-DEFAULT_PAGE_SIZE = 50
-MAX_PAGE_SIZE = 100
+from app.constants import DEFAULT_PAGE_SIZE, MAX_PAGE_SIZE
 
 # Clinical status constants
 ACTIVE_MEDICATION_STATUSES = {"active", "on-hold"}
@@ -84,7 +82,7 @@ class PaginatedTimelineResponse(BaseModel):
 async def get_verified_patient(
     patient_id: uuid.UUID,
     db: AsyncSession = Depends(get_db),
-    _api_key: str = Depends(verify_api_key),
+    _user_id: str = Depends(verify_bearer_token),
 ) -> uuid.UUID:
     """Verify patient exists and return the patient_id.
 
