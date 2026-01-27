@@ -28,11 +28,12 @@ def _hash_password(password: str) -> str:
     """
     import hashlib
     import os
+    import unicodedata
 
     salt_hex = os.urandom(16).hex()
-    # Better-Auth passes the hex string (not raw bytes) as salt to scrypt
+    # Better-Auth uses NFKC normalization and passes hex string as salt
     key = hashlib.scrypt(
-        password.encode("utf-8"),
+        unicodedata.normalize("NFKC", password).encode("utf-8"),
         salt=salt_hex.encode("utf-8"),
         n=16384,
         r=16,
