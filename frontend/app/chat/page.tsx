@@ -32,6 +32,11 @@ const THINKING_VERBS = [
   "Synthesizing",
   "Correlating findings",
   "Checking interactions",
+  "Cogitating",
+  "Introspecting",
+  "Discombobulating",
+  "Reflecting",
+  "Meditating",
 ];
 
 export default function ChatPage() {

@@ -38,6 +38,11 @@ const THINKING_VERBS = [
   "Synthesizing",
   "Correlating findings",
   "Checking interactions",
+  "Cogitating",
+  "Introspecting",
+  "Discombobulating",
+  "Reflecting",
+  "Meditating",
 ];
 
 interface Message {
