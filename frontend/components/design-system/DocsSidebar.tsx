@@ -44,18 +44,28 @@ export function DocsSidebar() {
     : "/brand/wordmark-primary.svg";
 
   return (
-    <aside className="w-64 border-r bg-muted/30 p-6 overflow-y-auto">
-      <div className="mb-8 px-3">
+    <aside className="w-14 md:w-64 border-r bg-muted/30 p-2 md:p-6 overflow-y-auto flex-shrink-0">
+      {/* Logo: mark on mobile, wordmark on desktop */}
+      <div className="mb-8 flex justify-center md:justify-start md:px-3">
         <Link href="/design" className="flex items-center">
+          <Image
+            src="/brand/mark-primary.svg"
+            alt="CruxMD"
+            width={24}
+            height={24}
+            className="md:hidden"
+            priority
+          />
           <Image
             src={wordmarkSrc}
             alt="CruxMD"
             width={100}
             height={24}
+            className="hidden md:block"
             priority
           />
         </Link>
-        <p className="text-sm text-muted-foreground mt-1">Design System</p>
+        <p className="text-sm text-muted-foreground mt-1 hidden md:block md:ml-0">Design System</p>
       </div>
       <nav className="space-y-1">
         {designSystemNav.map((item) => {
@@ -67,18 +77,19 @@ export function DocsSidebar() {
             <div key={item.href}>
               <Link
                 href={item.href}
+                title={item.title}
                 className={cn(
-                  "flex items-center gap-3 rounded-md px-3 py-2 text-sm transition-colors",
+                  "flex items-center justify-center md:justify-start gap-3 rounded-md p-2 md:px-3 md:py-2 text-sm transition-colors",
                   isActive || isParentActive
                     ? "bg-primary/10 text-primary font-medium"
                     : "text-muted-foreground hover:bg-muted hover:text-foreground"
                 )}
               >
-                {Icon && <Icon className="size-4" />}
-                {item.title}
+                {Icon && <Icon className="size-4 flex-shrink-0" />}
+                <span className="hidden md:inline">{item.title}</span>
               </Link>
               {item.children && (
-                <div className="ml-7 mt-1 space-y-1 border-l pl-3">
+                <div className="hidden md:block ml-7 mt-1 space-y-1 border-l pl-3">
                   {item.children.map((child) => {
                     const isChildActive = pathname === child.href;
                     return (
