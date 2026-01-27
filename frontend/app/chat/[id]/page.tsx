@@ -46,6 +46,35 @@ interface Message {
   role: "user" | "assistant";
   content: string;
   thinking?: string;
+  isStreaming?: boolean;
+}
+
+// Streaming text component - reveals text character by character
+function StreamingText({ text, isStreaming }: { text: string; isStreaming: boolean }) {
+  const [displayedChars, setDisplayedChars] = useState(0);
+
+  useEffect(() => {
+    if (!isStreaming) {
+      setDisplayedChars(text.length);
+      return;
+    }
+
+    setDisplayedChars(0);
+    const interval = setInterval(() => {
+      setDisplayedChars((prev) => {
+        if (prev >= text.length) {
+          clearInterval(interval);
+          return prev;
+        }
+        // Stream 2-4 characters at a time for faster feel
+        return Math.min(prev + Math.floor(Math.random() * 3) + 2, text.length);
+      });
+    }, 15);
+
+    return () => clearInterval(interval);
+  }, [text, isStreaming]);
+
+  return <span>{text.slice(0, displayedChars)}</span>;
 }
 
 export default function ChatSessionPage() {
@@ -107,16 +136,25 @@ export default function ChatSessionPage() {
 
     // Simulate AI response (replace with actual API call)
     setTimeout(() => {
+      const messageId = `assistant-${Date.now()}`;
       const assistantMessage: Message = {
-        id: `assistant-${Date.now()}`,
+        id: messageId,
         role: "assistant",
         content: "Hey Joe! Everything's working. What can I help you with today?",
         thinking: "Thinking about the purpose of a test prompt.",
+        isStreaming: true,
       };
       setMessages((prev) => [...prev, assistantMessage]);
       setIsThinking(false);
-      // Auto-expand thinking for the latest message
-      setExpandedThinking((prev) => ({ ...prev, [assistantMessage.id]: false }));
+      setExpandedThinking((prev) => ({ ...prev, [messageId]: false }));
+
+      // Mark streaming complete after animation finishes
+      const streamDuration = assistantMessage.content.length * 15 + 100;
+      setTimeout(() => {
+        setMessages((prev) =>
+          prev.map((m) => (m.id === messageId ? { ...m, isStreaming: false } : m))
+        );
+      }, streamDuration);
     }, 2000);
   };
 
@@ -178,18 +216,25 @@ export default function ChatSessionPage() {
                       )}
 
                       {/* Message content */}
-                      <p className="text-foreground">{message.content}</p>
+                      <p className="text-foreground">
+                        <StreamingText
+                          text={message.content}
+                          isStreaming={message.isStreaming ?? false}
+                        />
+                      </p>
 
-                      {/* Action buttons */}
-                      <div className="flex items-center gap-1">
-                        <ActionButton icon={Copy} label="Copy" />
-                        <ActionButton icon={ThumbsUp} label="Good response" />
-                        <ActionButton icon={ThumbsDown} label="Bad response" />
-                        <ActionButton icon={RotateCcw} label="Retry" />
-                      </div>
+                      {/* Action buttons - show after streaming completes */}
+                      {!message.isStreaming && (
+                        <div className="flex items-center gap-1">
+                          <ActionButton icon={Copy} label="Copy" />
+                          <ActionButton icon={ThumbsUp} label="Good response" />
+                          <ActionButton icon={ThumbsDown} label="Bad response" />
+                          <ActionButton icon={RotateCcw} label="Retry" />
+                        </div>
+                      )}
 
-                      {/* Static mark - show below last assistant message when not thinking */}
-                      {isLastAssistantMessage && !isThinking && (
+                      {/* Static mark - show below last assistant message when not thinking/streaming */}
+                      {isLastAssistantMessage && !isThinking && !message.isStreaming && (
                         <div className="mt-2">
                           <Image
                             src="/brand/mark-primary.svg"
