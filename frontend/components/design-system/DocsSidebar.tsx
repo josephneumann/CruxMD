@@ -1,10 +1,8 @@
 "use client";
 
-import { useState, useEffect } from "react";
 import Image from "next/image";
 import Link from "next/link";
 import { usePathname } from "next/navigation";
-import { useTheme } from "next-themes";
 import { cn } from "@/lib/utils";
 import { designSystemNav } from "@/lib/design-system-nav";
 import {
@@ -32,16 +30,6 @@ const iconMap: Record<string, LucideIcon> = {
 
 export function DocsSidebar() {
   const pathname = usePathname();
-  const { resolvedTheme } = useTheme();
-  const [mounted, setMounted] = useState(false);
-
-  useEffect(() => {
-    setMounted(true);
-  }, []);
-
-  const wordmarkSrc = mounted && resolvedTheme === "dark"
-    ? "/brand/wordmark-reversed.svg"
-    : "/brand/wordmark-primary.svg";
 
   return (
     <aside className="w-14 md:w-64 border-r bg-muted/30 p-2 md:px-6 md:py-3 overflow-y-auto flex-shrink-0">
@@ -57,11 +45,19 @@ export function DocsSidebar() {
             priority
           />
           <Image
-            src={wordmarkSrc}
+            src="/brand/wordmark-primary.svg"
             alt="CruxMD"
             width={120}
             height={28}
-            className="hidden md:block"
+            className="hidden md:block dark:md:hidden"
+            priority
+          />
+          <Image
+            src="/brand/wordmark-reversed.svg"
+            alt="CruxMD"
+            width={120}
+            height={28}
+            className="hidden dark:md:block"
             priority
           />
         </Link>
