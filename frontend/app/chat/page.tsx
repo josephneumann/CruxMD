@@ -48,6 +48,8 @@ export default function ChatPage() {
   // Cycle through thinking verbs
   useEffect(() => {
     if (!isThinking) return;
+    // Start from a random position
+    setThinkingVerbIndex(Math.floor(Math.random() * THINKING_VERBS.length));
     const interval = setInterval(() => {
       setThinkingVerbIndex((prev) => (prev + 1) % THINKING_VERBS.length);
     }, 2000);
