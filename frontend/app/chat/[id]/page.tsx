@@ -7,7 +7,6 @@
 
 import { useState, useEffect, useRef } from "react";
 import { useParams } from "next/navigation";
-import Image from "next/image";
 import dynamic from "next/dynamic";
 import {
   ChevronDown,
@@ -140,8 +139,8 @@ export default function ChatSessionPage() {
       const assistantMessage: Message = {
         id: messageId,
         role: "assistant",
-        content: "Hey Joe! Everything's working. What can I help you with today?",
-        thinking: "Thinking about the purpose of a test prompt.",
+        content: "CruxMD is not available to the public yet. Try back later.",
+        thinking: "Placeholder clinical reasoning details.",
         isStreaming: true,
       };
       setMessages((prev) => [...prev, assistantMessage]);
@@ -233,22 +232,13 @@ export default function ChatSessionPage() {
                         </div>
                       )}
 
-                      {/* Static mark - show below last assistant message when not thinking/streaming */}
-                      {isLastAssistantMessage && !isThinking && !message.isStreaming && (
-                        <div className="mt-2">
-                          <Image
-                            src="/brand/mark-primary.svg"
-                            alt=""
-                            width={32}
-                            height={32}
-                            className="dark:hidden"
-                          />
-                          <Image
-                            src="/brand/mark-reversed.svg"
-                            alt=""
-                            width={32}
-                            height={32}
-                            className="hidden dark:block"
+                      {/* Static spinner - show below last assistant message when not thinking/streaming */}
+                      {isLastAssistantMessage && !isThinking && !message.isStreaming && lottieData && (
+                        <div className="w-8 h-8 mt-2">
+                          <Lottie
+                            animationData={lottieData}
+                            loop={false}
+                            style={{ width: "100%", height: "100%" }}
                           />
                         </div>
                       )}
