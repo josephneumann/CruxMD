@@ -44,9 +44,9 @@ export function DocsSidebar() {
     : "/brand/wordmark-primary.svg";
 
   return (
-    <aside className="w-14 md:w-64 border-r bg-muted/30 p-2 md:p-6 overflow-y-auto flex-shrink-0">
+    <aside className="w-14 md:w-64 border-r bg-muted/30 p-2 md:px-6 md:py-3 overflow-y-auto flex-shrink-0">
       {/* Logo: mark on mobile, wordmark on desktop */}
-      <div className="mb-8 flex justify-center md:justify-start md:px-3">
+      <div className="mb-6 flex justify-center md:justify-start">
         <Link href="/design" className="flex items-center">
           <Image
             src="/brand/mark-primary.svg"
@@ -59,8 +59,8 @@ export function DocsSidebar() {
           <Image
             src={wordmarkSrc}
             alt="CruxMD"
-            width={100}
-            height={24}
+            width={120}
+            height={28}
             className="hidden md:block"
             priority
           />
