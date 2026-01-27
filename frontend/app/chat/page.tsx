@@ -73,6 +73,26 @@ export default function ChatPage() {
             </div>
           </div>
 
+          {/* Quick actions */}
+          <div className="flex flex-wrap justify-center gap-2 mt-6">
+            {[
+              "Review patient panel",
+              "Summarize recent labs",
+              "Check drug interactions",
+              "Prepare for rounds",
+            ].map((suggestion) => (
+              <button
+                key={suggestion}
+                onClick={() => {
+                  setInputValue(suggestion);
+                }}
+                className="px-4 py-2 rounded-full border border-border bg-card text-sm text-muted-foreground hover:text-foreground hover:border-foreground/20 transition-colors"
+              >
+                {suggestion}
+              </button>
+            ))}
+          </div>
+
           {/* Copyright */}
           <p className="text-xs text-muted-foreground text-center mt-8">
             &copy; {new Date().getFullYear()} CruxMD
