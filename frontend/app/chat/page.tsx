@@ -7,7 +7,7 @@
 import { useState } from "react";
 import { useRouter } from "next/navigation";
 import Image from "next/image";
-import { ArrowUp, Users, AlertCircle, BookOpen } from "lucide-react";
+import { ArrowUp, Users, AlertCircle, BookOpen, Plus, Clock, ChevronDown } from "lucide-react";
 import { Button } from "@/components/ui/button";
 import { Sidebar } from "@/components/Sidebar";
 import { AutoResizeTextarea } from "@/components/chat/AutoResizeTextarea";
@@ -58,18 +58,35 @@ export default function ChatPage() {
                 value={inputValue}
                 onChange={setInputValue}
                 onSubmit={handleSubmit}
-                placeholder="How can I help you today?"
+                placeholder="Type / for commands"
               />
             </div>
-            <div className="flex items-center justify-end px-4 pb-4">
-              <Button
-                size="icon"
-                className="h-8 w-8 rounded-lg"
-                disabled={!inputValue.trim()}
-                onClick={handleSubmit}
-              >
-                <ArrowUp className="h-4 w-4" />
-              </Button>
+            <div className="flex items-center justify-between px-4 pb-4">
+              {/* Left toolbar */}
+              <div className="flex items-center gap-1">
+                <Button variant="ghost" size="icon" className="h-8 w-8 rounded-lg">
+                  <Plus className="h-4 w-4" />
+                </Button>
+                <Button variant="ghost" size="icon" className="h-8 w-8 rounded-lg text-primary">
+                  <Clock className="h-4 w-4" />
+                </Button>
+              </div>
+
+              {/* Right toolbar */}
+              <div className="flex items-center gap-2">
+                <button className="flex items-center gap-1 text-sm text-muted-foreground hover:text-foreground transition-colors">
+                  Opus 4.5
+                  <ChevronDown className="h-3 w-3" />
+                </button>
+                <Button
+                  size="icon"
+                  className="h-8 w-8 rounded-lg"
+                  disabled={!inputValue.trim()}
+                  onClick={handleSubmit}
+                >
+                  <ArrowUp className="h-4 w-4" />
+                </Button>
+              </div>
             </div>
           </div>
 
