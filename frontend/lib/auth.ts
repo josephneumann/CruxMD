@@ -17,6 +17,8 @@ export const auth = betterAuth({
     max: 10,
     idleTimeoutMillis: 30000,
     connectionTimeoutMillis: 2000,
+    keepAlive: true,
+    keepAliveInitialDelayMillis: 10000,
   }),
   emailAndPassword: {
     enabled: true,
