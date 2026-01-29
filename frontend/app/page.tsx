@@ -51,11 +51,6 @@ export default function Home() {
               Human Presence<br />Machine Precision
             </h1>
 
-            {/* Subhead */}
-            <p className="text-lg md:text-xl text-muted-foreground text-center max-w-2xl mb-10">
-              The Clinically Intelligent AI
-            </p>
-
             {/* CTA */}
             <Button asChild size="lg">
               <Link href="/chat">Start Now</Link>
