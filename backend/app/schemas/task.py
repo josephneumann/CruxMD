@@ -167,7 +167,12 @@ class ContextPanel(BaseModel):
 
 
 class ContextAction(BaseModel):
-    """Action button in the sidebar."""
+    """Static action button configured per task type in the sidebar.
+
+    This is a template-level configuration stored with TaskContextConfig.
+    For dynamically surfaced actions based on patient context, see
+    schemas.quick_actions.QuickAction.
+    """
 
     label: str
     type: Literal["order", "message", "refer", "document", "navigate"]

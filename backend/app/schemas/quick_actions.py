@@ -29,10 +29,13 @@ class QuickActionSource(str, Enum):
 
 
 class QuickAction(BaseModel):
-    """A contextual action suggestion for the clinician.
+    """A dynamically surfaced action suggestion for the clinician.
 
     Quick actions appear as pills/buttons in the UI, giving clinicians
     one-click access to the most relevant next steps for the current task.
+    Unlike schemas.task.ContextAction (static sidebar config per task type),
+    QuickActions are assembled at runtime from clinical rules, AI insights,
+    and task-type defaults, with priority-based deduplication.
     """
 
     label: str = Field(..., description="Display text (e.g., 'Repeat K+ stat')")

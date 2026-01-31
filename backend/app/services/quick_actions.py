@@ -108,6 +108,9 @@ TASK_TYPE_DEFAULTS: dict[TaskType, list[QuickAction]] = {
 # Each rule: (condition_check_fn, action_to_surface)
 # condition_check_fn receives (medications, conditions, allergies) as FHIR dicts
 
+# K+-sparing diuretics that may need to be held when potassium is critically elevated
+K_SPARING_MEDICATION_KEYWORDS = frozenset(["spironolactone", "amiloride", "triamterene", "eplerenone"])
+
 
 def _check_critical_potassium_with_k_sparing(
     medications: list[dict[str, Any]],
@@ -124,10 +127,9 @@ def _check_critical_potassium_with_k_sparing(
     if "potassium" not in display.lower() and "k+" not in display.lower():
         return None
 
-    k_sparing_keywords = frozenset(["spironolactone", "amiloride", "triamterene", "eplerenone"])
     for med in medications:
         med_display = (extract_display_name(med) or "").lower()
-        if any(kw in med_display for kw in k_sparing_keywords):
+        if any(kw in med_display for kw in K_SPARING_MEDICATION_KEYWORDS):
             return QuickAction(
                 label=f"Hold {extract_display_name(med)}",
                 type=QuickActionType.ORDER,
