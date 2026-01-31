@@ -18,6 +18,8 @@ from app.schemas.context import (
     RetrievedResource,
     VerifiedLayer,
 )
+from app.schemas.quick_actions import QuickAction
+from app.schemas.task import TaskType
 from app.services.context_engine import (
     CLINICALLY_SIGNIFICANT_TERMS,
     ContextEngine,
@@ -688,3 +690,109 @@ class TestContextEngineIntegration:
         assert context.token_estimate() > 0
         assert context.meta.retrieval_stats.tokens_used > 0
         assert context.meta.retrieval_stats.tokens_used == context.token_estimate()
+
+
+class TestBuildTaskContext:
+    """Tests for ContextEngine.build_task_context method."""
+
+    @pytest.mark.asyncio
+    async def test_returns_context_and_quick_actions(
+        self,
+        context_engine,
+        patient_id,
+    ):
+        """Test returns a tuple of context and quick actions."""
+        context, actions = await context_engine.build_task_context(
+            patient_id=patient_id,
+            query="review critical lab",
+            task_type=TaskType.CRITICAL_LAB_REVIEW,
+        )
+
+        assert isinstance(context, PatientContext)
+        assert isinstance(actions, list)
+        assert all(isinstance(a, QuickAction) for a in actions)
+
+    @pytest.mark.asyncio
+    async def test_surfaces_task_defaults(
+        self,
+        context_engine,
+        patient_id,
+    ):
+        """Test surfaces default actions for the task type."""
+        _, actions = await context_engine.build_task_context(
+            patient_id=patient_id,
+            query="review critical lab",
+            task_type=TaskType.CRITICAL_LAB_REVIEW,
+        )
+
+        labels = {a.label for a in actions}
+        assert "Repeat stat" in labels
+
+    @pytest.mark.asyncio
+    async def test_surfaces_clinical_rule_actions(
+        self,
+        context_engine,
+        mock_graph,
+        patient_id,
+    ):
+        """Test surfaces clinical rule actions from verified data."""
+        mock_graph.get_verified_allergies.return_value = [
+            {
+                "code": {"coding": [{"display": "Penicillin"}]},
+                "criticality": "high",
+                "category": ["medication"],
+            }
+        ]
+
+        _, actions = await context_engine.build_task_context(
+            patient_id=patient_id,
+            query="review",
+            task_type=TaskType.CRITICAL_LAB_REVIEW,
+        )
+
+        sources = {a.source.value for a in actions}
+        assert "clinical_rule" in sources
+
+    @pytest.mark.asyncio
+    async def test_uses_patient_resource_when_provided(
+        self,
+        context_engine,
+        patient_id,
+    ):
+        """Test uses pre-fetched patient resource."""
+        patient_resource = {
+            "resourceType": "Patient",
+            "id": patient_id,
+            "name": [{"given": ["Test"], "family": "User"}],
+        }
+
+        context, _ = await context_engine.build_task_context(
+            patient_id=patient_id,
+            query="test",
+            task_type=TaskType.PATIENT_MESSAGE,
+            patient_resource=patient_resource,
+            profile_summary="Test summary",
+        )
+
+        assert context.patient["name"][0]["given"][0] == "Test"
+        assert context.profile_summary == "Test summary"
+
+    @pytest.mark.asyncio
+    async def test_max_4_actions(
+        self,
+        context_engine,
+        patient_id,
+    ):
+        """Test actions capped at 4."""
+        ai_suggestions = [
+            {"label": f"AI {i}", "type": "order"} for i in range(5)
+        ]
+
+        _, actions = await context_engine.build_task_context(
+            patient_id=patient_id,
+            query="test",
+            task_type=TaskType.CRITICAL_LAB_REVIEW,
+            ai_suggestions=ai_suggestions,
+        )
+
+        assert len(actions) <= 4
