@@ -19,8 +19,11 @@ from app.schemas.context import (
     RetrievedResource,
     VerifiedLayer,
 )
+from app.schemas.quick_actions import QuickAction
+from app.schemas.task import TaskType
 from app.services.embeddings import EmbeddingService
 from app.services.graph import KnowledgeGraph
+from app.services.quick_actions import surface_quick_actions
 from app.services.vector_search import VectorSearchService
 from app.utils.fhir_helpers import extract_display_name
 
@@ -434,3 +437,59 @@ class ContextEngine:
         context = await self._trim_to_budget(context, token_budget)
 
         return context
+
+    async def build_task_context(
+        self,
+        patient_id: str,
+        query: str,
+        task_type: TaskType,
+        focus_resource: dict[str, Any] | None = None,
+        ai_suggestions: list[dict[str, Any]] | None = None,
+        token_budget: int = DEFAULT_TOKEN_BUDGET,
+        patient_resource: dict[str, Any] | None = None,
+        profile_summary: str | None = None,
+    ) -> tuple[PatientContext, list[QuickAction]]:
+        """Build task-aware patient context with quick actions.
+
+        Extends build_context with task-type awareness: uses the task type
+        to surface contextual quick actions from defaults, clinical rules,
+        and AI suggestions.
+
+        Args:
+            patient_id: The canonical patient UUID
+            query: The clinical question being asked
+            task_type: The type of clinical task
+            focus_resource: Optional FHIR resource that is the focus of the task
+            ai_suggestions: Optional AI-driven action suggestions
+            token_budget: Maximum tokens allowed
+            patient_resource: Optional pre-fetched FHIR Patient resource
+            profile_summary: Optional patient profile summary
+
+        Returns:
+            Tuple of (PatientContext, list of QuickActions)
+        """
+        if patient_resource:
+            context = await self.build_context_with_patient(
+                patient_id=patient_id,
+                patient_resource=patient_resource,
+                query=query,
+                token_budget=token_budget,
+                profile_summary=profile_summary,
+            )
+        else:
+            context = await self.build_context(
+                patient_id=patient_id,
+                query=query,
+                token_budget=token_budget,
+            )
+
+        quick_actions = surface_quick_actions(
+            task_type=task_type,
+            medications=context.verified.medications,
+            conditions=context.verified.conditions,
+            allergies=context.verified.allergies,
+            focus_resource=focus_resource,
+            ai_suggestions=ai_suggestions,
+        )
+
+        return context, quick_actions
