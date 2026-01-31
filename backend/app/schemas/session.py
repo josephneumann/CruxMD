@@ -1,4 +1,8 @@
-"""Pydantic schemas for Session API."""
+"""Pydantic schemas for Session API.
+
+These schemas define request/response formats for the Session API,
+including session creation, updates, handoff, and list responses.
+"""
 
 from datetime import datetime
 from enum import Enum
@@ -36,15 +40,15 @@ class SessionCreate(BaseModel):
     patient_id: UUID | None = None
     task_id: UUID | None = None
     parent_session_id: UUID | None = None
-    summary: str | None = None
+    summary: str | None = Field(default=None, max_length=10000)
 
 
 class SessionUpdate(BaseModel):
     """Schema for updating a session."""
 
     status: SessionStatus | None = None
-    summary: str | None = None
-    messages: list[dict[str, Any]] | None = None
+    summary: str | None = Field(default=None, max_length=10000)
+    messages: list[dict[str, Any]] | None = Field(default=None, max_length=1000)
 
 
 class SessionHandoff(BaseModel):
@@ -56,6 +60,7 @@ class SessionHandoff(BaseModel):
 
     type: SessionType
     summary: str = Field(
+        max_length=10000,
         description="Context summary to carry into the new session",
     )
     patient_id: UUID | None = None
@@ -70,11 +75,11 @@ class SessionResponse(BaseModel):
     id: UUID
     type: SessionType
     status: SessionStatus
-    patient_id: UUID | None
-    task_id: UUID | None
-    parent_session_id: UUID | None
-    summary: str | None
-    messages: list[dict[str, Any]]
+    patient_id: UUID | None = Field(description="FHIR Patient resource ID")
+    task_id: UUID | None = Field(description="FHIR Task resource ID (for patient_task sessions)")
+    parent_session_id: UUID | None = Field(description="Parent session for handoff chain")
+    summary: str | None = Field(description="Session summary for handoff context")
+    messages: list[dict[str, Any]] = Field(description="Conversation messages array")
     started_at: datetime
     last_active_at: datetime
     completed_at: datetime | None

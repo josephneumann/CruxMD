@@ -5,14 +5,16 @@ Sessions represent conversation containers — either orchestrating sessions
 specific task). Sessions support parent-child relationships for handoff.
 """
 
+from __future__ import annotations
+
 import enum
 import uuid
 from datetime import datetime
 from typing import Any
 
-from sqlalchemy import DateTime, Enum, ForeignKey, Index, String, Text, text
+from sqlalchemy import DateTime, Enum, ForeignKey, Index, Text, func, text
 from sqlalchemy.dialects.postgresql import JSONB, UUID
-from sqlalchemy.orm import Mapped, mapped_column
+from sqlalchemy.orm import Mapped, mapped_column, relationship
 
 from app.database import Base
 
@@ -105,11 +107,21 @@ class Session(Base):
     last_active_at: Mapped[datetime] = mapped_column(
         DateTime(timezone=True),
         server_default=text("now()"),
-        onupdate=datetime.utcnow,
+        onupdate=func.now(),
     )
     completed_at: Mapped[datetime | None] = mapped_column(
         DateTime(timezone=True),
         nullable=True,
+    )
+
+    # === Relationships ===
+    parent_session: Mapped[Session | None] = relationship(
+        remote_side=[id],
+        foreign_keys=[parent_session_id],
+    )
+    child_sessions: Mapped[list[Session]] = relationship(
+        foreign_keys=[parent_session_id],
+        viewonly=True,
     )
 
     __table_args__ = (

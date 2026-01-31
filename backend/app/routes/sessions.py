@@ -37,7 +37,17 @@ async def list_sessions(
     patient_id: uuid.UUID | None = None,
     status_filter: SessionStatusSchema | None = Query(None, alias="status"),
 ) -> SessionListResponse:
-    """List sessions with optional filtering and pagination."""
+    """List sessions with optional filtering and pagination.
+
+    Args:
+        skip: Number of records to skip (pagination offset).
+        limit: Maximum number of records to return.
+        patient_id: Filter by patient UUID.
+        status_filter: Filter by session status (active, paused, completed).
+
+    Returns:
+        Paginated list of sessions ordered by last activity.
+    """
     query = select(Session)
     count_query = select(func.count()).select_from(Session)
 
@@ -70,7 +80,17 @@ async def get_session(
     db: AsyncSession = Depends(get_db),
     _user_id: str = Depends(verify_bearer_token),
 ) -> SessionResponse:
-    """Get a single session by ID."""
+    """Get a single session by ID.
+
+    Args:
+        session_id: The session UUID.
+
+    Returns:
+        The session details.
+
+    Raises:
+        HTTPException: 404 if session not found.
+    """
     result = await db.execute(select(Session).where(Session.id == session_id))
     session = result.scalar_one_or_none()
 
@@ -89,7 +109,14 @@ async def create_session(
     db: AsyncSession = Depends(get_db),
     _user_id: str = Depends(verify_bearer_token),
 ) -> SessionResponse:
-    """Create a new session."""
+    """Create a new session.
+
+    Args:
+        session_data: Session creation data.
+
+    Returns:
+        The created session.
+    """
     session = Session(
         type=session_data.type.value,
         patient_id=session_data.patient_id,
@@ -111,7 +138,21 @@ async def update_session(
     db: AsyncSession = Depends(get_db),
     _user_id: str = Depends(verify_bearer_token),
 ) -> SessionResponse:
-    """Update an existing session (pause, complete, update messages)."""
+    """Update an existing session.
+
+    Supports updating status (pause, complete), summary, and messages.
+    Automatically sets completed_at when status changes to completed.
+
+    Args:
+        session_id: The session UUID.
+        session_data: Fields to update.
+
+    Returns:
+        The updated session.
+
+    Raises:
+        HTTPException: 404 if session not found.
+    """
     result = await db.execute(select(Session).where(Session.id == session_id))
     session = result.scalar_one_or_none()
 
@@ -145,9 +186,19 @@ async def create_handoff(
     """Create a handoff from an existing session.
 
     Pauses the parent session and creates a new child session
-    with the provided summary as context.
+    with the provided summary as context. Child inherits patient_id
+    and task_id from parent unless overridden.
+
+    Args:
+        session_id: The parent session UUID.
+        handoff_data: Handoff creation data with summary context.
+
+    Returns:
+        The newly created child session.
+
+    Raises:
+        HTTPException: 404 if parent session not found.
     """
-    # Verify parent exists
     result = await db.execute(select(Session).where(Session.id == session_id))
     parent = result.scalar_one_or_none()
 
