@@ -19,6 +19,15 @@ from app.schemas.context import (
     VerifiedLayer,
 )
 from app.schemas.patient_profile import PatientProfile
+from app.schemas.session import (
+    SessionCreate,
+    SessionHandoff,
+    SessionListResponse,
+    SessionResponse,
+    SessionStatus,
+    SessionType,
+    SessionUpdate,
+)
 from app.schemas.task import (
     AITaskProvenance,
     TaskCategory,
@@ -61,4 +70,12 @@ __all__ = [
     "TaskStatus",
     "TaskType",
     "TaskUpdate",
+    # Session schemas
+    "SessionCreate",
+    "SessionHandoff",
+    "SessionListResponse",
+    "SessionResponse",
+    "SessionStatus",
+    "SessionType",
+    "SessionUpdate",
 ]
