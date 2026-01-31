@@ -1,6 +1,6 @@
 "use client";
 
-import { useState, useEffect, useCallback } from "react";
+import { useState, useEffect, useCallback, useRef } from "react";
 import { useChat } from "@/hooks";
 import { MessageHistory } from "./MessageHistory";
 import { ChatInput } from "./ChatInput";
@@ -14,22 +14,23 @@ export function ConversationalCanvas({ patientId, initialMessage }: Conversation
   const { messages, sendMessage, isLoading, error, clearError, retry } = useChat(patientId);
   const [inputValue, setInputValue] = useState("");
   const [lottieData, setLottieData] = useState<object | null>(null);
-  const [initialSent, setInitialSent] = useState(false);
+  const initialSentRef = useRef(false);
 
   // Load Lottie animation
   useEffect(() => {
     fetch("/brand/crux-spin.json")
       .then((res) => res.json())
-      .then(setLottieData);
+      .then(setLottieData)
+      .catch((err) => console.error("Failed to load animation:", err));
   }, []);
 
   // Send initial message from URL if provided
   useEffect(() => {
-    if (initialMessage && !initialSent && patientId) {
-      setInitialSent(true);
+    if (initialMessage && !initialSentRef.current && patientId) {
+      initialSentRef.current = true;
       sendMessage(initialMessage);
     }
-  }, [initialMessage, initialSent, patientId, sendMessage]);
+  }, [initialMessage, patientId, sendMessage]);
 
   const handleSubmit = useCallback(() => {
     if (!inputValue.trim() || isLoading) return;

@@ -35,8 +35,8 @@ export default function ChatSessionPage() {
         const parsed = parsePatientList(data);
         setPatients(parsed);
       })
-      .catch(() => {
-        // Patients endpoint unavailable — selector will be empty
+      .catch((err) => {
+        console.error("Failed to fetch patients:", err);
       });
   }, []);
 
