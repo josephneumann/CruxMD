@@ -20,10 +20,10 @@ from app.schemas import AgentResponse, PatientContext
 logger = logging.getLogger(__name__)
 
 # Default model for agent responses
-DEFAULT_MODEL = "gpt-4o"
+DEFAULT_MODEL = "gpt-5"
 
 # Models that support reasoning effort parameter
-REASONING_MODELS = {"gpt-5.2", "o1", "o1-mini", "o1-preview", "o3-mini"}
+REASONING_MODELS = {"gpt-5", "gpt-5-mini", "gpt-5.2", "o1", "o1-mini", "o1-preview", "o3-mini"}
 
 # Default reasoning effort (low for fast responses)
 DEFAULT_REASONING_EFFORT: Literal["low", "medium", "high"] = "low"

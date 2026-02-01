@@ -79,7 +79,7 @@ export default function ChatPage() {
               {/* Right toolbar */}
               <div className="flex items-center gap-2">
                 <span className="flex items-center gap-1 text-sm text-muted-foreground">
-                  GPT-4o
+                  GPT-5
                   <ChevronDown className="h-3 w-3" />
                 </span>
                 <Button

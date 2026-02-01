@@ -31,14 +31,14 @@ export interface ChatMessage {
 
 /** Available model options for the chat */
 export const MODEL_OPTIONS = [
-  { id: "gpt-4o", label: "GPT-4o", description: "Fast and capable" },
-  { id: "gpt-4o-mini", label: "GPT-4o mini", description: "Fastest responses" },
-  { id: "gpt-5.2", label: "GPT-5.2", description: "Deep reasoning" },
+  { id: "gpt-5", label: "GPT-5", description: "Intelligent reasoning model" },
+  { id: "gpt-5-mini", label: "GPT-5 mini", description: "Fast and cost-efficient" },
+  { id: "gpt-4.1", label: "GPT-4.1", description: "Smartest non-reasoning model" },
 ] as const;
 
 export type ModelId = (typeof MODEL_OPTIONS)[number]["id"];
 
-export const DEFAULT_MODEL: ModelId = "gpt-4o";
+export const DEFAULT_MODEL: ModelId = "gpt-5";
 
 /** Request body for POST /api/chat */
 export interface ChatRequest {
