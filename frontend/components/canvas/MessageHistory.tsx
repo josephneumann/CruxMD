@@ -1,10 +1,14 @@
 "use client";
 
 import { useRef, useEffect } from "react";
+import dynamic from "next/dynamic";
+import Image from "next/image";
 import type { DisplayMessage } from "@/hooks";
 import { UserMessage } from "./UserMessage";
 import { AgentMessage } from "./AgentMessage";
 import { ThinkingIndicator } from "./ThinkingIndicator";
+
+const Lottie = dynamic(() => import("lottie-react"), { ssr: false });
 
 interface MessageHistoryProps {
   messages: DisplayMessage[];
@@ -40,7 +44,28 @@ export function MessageHistory({
           )
         )}
 
-        {isLoading && <ThinkingIndicator lottieData={lottieData} />}
+        {isLoading && <ThinkingIndicator />}
+
+        {/* Crux mark — spinning while loading, static when idle */}
+        <div className="flex justify-start mt-2 mb-4">
+          {isLoading && lottieData ? (
+            <div className="w-8 h-8">
+              <Lottie
+                animationData={lottieData}
+                loop
+                style={{ width: "100%", height: "100%" }}
+              />
+            </div>
+          ) : (
+            <Image
+              src="/brand/mark-primary.svg"
+              alt=""
+              width={28}
+              height={28}
+              className="opacity-40"
+            />
+          )}
+        </div>
 
         <div ref={bottomRef} />
       </div>
