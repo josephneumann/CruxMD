@@ -3,4 +3,4 @@
  */
 
 export { useChat } from "./useChat";
-export type { DisplayMessage, ChatError, UseChatReturn } from "./useChat";
+export type { DisplayMessage, ChatError, UseChatReturn, StreamingState, StreamPhase } from "./useChat";
