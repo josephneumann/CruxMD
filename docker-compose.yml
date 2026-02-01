@@ -40,6 +40,23 @@ services:
       - backend
     restart: unless-stopped
 
+  caddy:
+    image: caddy:2-alpine
+    ports:
+      - "80:80"
+      - "443:443"
+      - "443:443/udp"
+    volumes:
+      - ./Caddyfile:/etc/caddy/Caddyfile
+      - caddy_data:/data
+      - caddy_config:/config
+    environment:
+      - DOMAIN=${DOMAIN:-app.cruxmd.ai}
+    depends_on:
+      - frontend
+      - backend
+    restart: unless-stopped
+
   db:
     image: pgvector/pgvector:pg16
     ports:
@@ -77,3 +94,5 @@ services:
 volumes:
   postgres_data:
   neo4j_data:
+  caddy_data:
+  caddy_config:
