@@ -34,6 +34,7 @@ docker compose up -d             # Start in background
 - **LLM decides, UI renders** — When tempted to add a new page or predefined view, ask: "Could the agent generate this dynamically?" If yes, don't build the static version.
 - **Follow conventional commits** — `feat:`, `fix:`, `docs:`, `refactor:`, etc.
 - **NEVER merge a PR without explicit user confirmation** — Always ask and wait for approval before running `gh pr merge` or any equivalent.
+- **Never use built-in plan mode for planning** — When asked to "plan", "brainstorm", or "deepen a plan", use the custom skills (`/plan`, `/brainstorm`, `/deepen-plan`), never the built-in `EnterPlanMode` tool.
 
 ## Commands
 
