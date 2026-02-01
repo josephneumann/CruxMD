@@ -50,7 +50,7 @@ function LoginForm() {
       return;
     }
 
-    router.push(callbackUrl);
+    window.location.href = callbackUrl;
   };
 
   return (
