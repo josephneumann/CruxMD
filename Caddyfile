@@ -7,7 +7,21 @@
         reverse_proxy frontend:3000
     }
 
-    # API routes -> backend
+    # Next.js proxy routes -> frontend (adds Bearer token from session)
+    handle /api/patients {
+        reverse_proxy frontend:3000
+    }
+    handle /api/patients/* {
+        reverse_proxy frontend:3000
+    }
+    handle /api/chat {
+        reverse_proxy frontend:3000
+    }
+    handle /api/chat/* {
+        reverse_proxy frontend:3000
+    }
+
+    # All other API routes -> backend directly
     handle /api/* {
         reverse_proxy backend:8000
     }
