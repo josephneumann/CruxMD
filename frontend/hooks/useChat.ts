@@ -139,6 +139,17 @@ export function useChat(patientId: string | null): UseChatReturn {
   // AbortController for cancelling in-flight streams
   const abortControllerRef = useRef<AbortController | null>(null);
 
+  // Ref to access latest messages without adding to dependency arrays
+  const messagesRef = useRef<DisplayMessage[]>(messages);
+  messagesRef.current = messages;
+
+  // Abort in-flight stream on unmount
+  useEffect(() => {
+    return () => {
+      abortControllerRef.current?.abort();
+    };
+  }, []);
+
   // Reset conversation when patient changes
   useEffect(() => {
     if (previousPatientIdRef.current !== patientId) {
@@ -215,56 +226,79 @@ export function useChat(patientId: string | null): UseChatReturn {
           sseBuffer = remaining;
 
           for (const evt of events) {
+            let data: unknown;
+            try {
+              data = JSON.parse(evt.data);
+            } catch {
+              continue; // Skip malformed SSE data
+            }
+
             if (evt.event === "reasoning" || evt.event === "narrative") {
-              const parsed = JSON.parse(evt.data) as StreamDeltaEvent;
+              const parsed = data as StreamDeltaEvent;
               const phase = evt.event as StreamPhase;
 
-              setMessages((prev) =>
-                prev.map((msg) => {
-                  if (msg.id !== assistantMessageId) return msg;
-                  const s = msg.streaming ?? {
-                    phase: "reasoning",
-                    reasoningText: "",
-                    narrativeText: "",
-                  };
-                  const updated: StreamingState = {
-                    ...s,
-                    phase,
-                    ...(phase === "reasoning"
-                      ? { reasoningText: s.reasoningText + parsed.delta }
-                      : { narrativeText: s.narrativeText + parsed.delta }),
-                  };
-                  return {
-                    ...msg,
-                    streaming: updated,
-                    content: updated.narrativeText,
-                  };
-                })
-              );
+              setMessages((prev) => {
+                const idx = prev.findIndex((m) => m.id === assistantMessageId);
+                if (idx === -1) return prev;
+                const msg = prev[idx];
+                const s = msg.streaming ?? {
+                  phase: "reasoning",
+                  reasoningText: "",
+                  narrativeText: "",
+                };
+                const updated: StreamingState = {
+                  ...s,
+                  phase,
+                  ...(phase === "reasoning"
+                    ? { reasoningText: s.reasoningText + parsed.delta }
+                    : { narrativeText: s.narrativeText + parsed.delta }),
+                };
+                const next = [...prev];
+                next[idx] = {
+                  ...msg,
+                  streaming: updated,
+                  content: updated.narrativeText,
+                };
+                return next;
+              });
             } else if (evt.event === "done") {
-              const parsed = JSON.parse(evt.data) as StreamDoneEvent;
+              const parsed = data as StreamDoneEvent;
               conversationIdRef.current = parsed.conversation_id;
 
-              setMessages((prev) =>
-                prev.map((msg) => {
-                  if (msg.id !== assistantMessageId) return msg;
-                  return {
-                    ...msg,
-                    content: parsed.response.narrative,
-                    agentResponse: parsed.response,
-                    streaming: {
-                      phase: "done" as StreamPhase,
-                      reasoningText: msg.streaming?.reasoningText ?? "",
-                      narrativeText: parsed.response.narrative,
-                    },
-                    pending: false,
-                  };
-                })
-              );
+              setMessages((prev) => {
+                const idx = prev.findIndex((m) => m.id === assistantMessageId);
+                if (idx === -1) return prev;
+                const msg = prev[idx];
+                const next = [...prev];
+                next[idx] = {
+                  ...msg,
+                  content: parsed.response.narrative,
+                  agentResponse: parsed.response,
+                  streaming: {
+                    phase: "done" as StreamPhase,
+                    reasoningText: msg.streaming?.reasoningText ?? "",
+                    narrativeText: parsed.response.narrative,
+                  },
+                  pending: false,
+                };
+                return next;
+              });
               lastFailedMessageRef.current = null;
               return true;
             } else if (evt.event === "error") {
-              const parsed = JSON.parse(evt.data) as StreamErrorEvent;
+              const parsed = data as StreamErrorEvent;
+              // Clean up streaming state before throwing
+              setMessages((prev) => {
+                const idx = prev.findIndex((m) => m.id === assistantMessageId);
+                if (idx === -1) return prev;
+                const next = [...prev];
+                next[idx] = {
+                  ...prev[idx],
+                  streaming: undefined,
+                  pending: false,
+                };
+                return next;
+              });
               throw new Error(parsed.detail);
             }
           }
@@ -378,7 +412,7 @@ export function useChat(patientId: string | null): UseChatReturn {
       setIsLoading(true);
 
       try {
-        const conversationHistory: ChatMessage[] = messages
+        const conversationHistory: ChatMessage[] = messagesRef.current
           .filter((msg) => !msg.pending)
           .map((msg) => ({ role: msg.role, content: msg.content }));
 
@@ -458,7 +492,7 @@ export function useChat(patientId: string | null): UseChatReturn {
         setIsLoading(false);
       }
     },
-    [patientId, messages, model, sendStreaming, sendNonStreaming]
+    [patientId, model, sendStreaming, sendNonStreaming]
   );
 
   const retry = useCallback(async (): Promise<void> => {
