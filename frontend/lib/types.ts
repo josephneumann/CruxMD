@@ -33,7 +33,6 @@ export interface ChatMessage {
 export const MODEL_OPTIONS = [
   { id: "gpt-5", label: "GPT-5", description: "Intelligent reasoning model" },
   { id: "gpt-5-mini", label: "GPT-5 mini", description: "Fast and cost-efficient" },
-  { id: "gpt-4.1", label: "GPT-4.1", description: "Smartest non-reasoning model" },
 ] as const;
 
 export type ModelId = (typeof MODEL_OPTIONS)[number]["id"];
