@@ -139,6 +139,26 @@ export interface AgentResponse {
 }
 
 // =============================================================================
+// SSE Stream Event Types (mirrors backend POST /api/chat/stream)
+// =============================================================================
+
+/** Reasoning text delta streamed during generation */
+export interface StreamDeltaEvent {
+  delta: string;
+}
+
+/** Final response when stream completes */
+export interface StreamDoneEvent {
+  conversation_id: string;
+  response: AgentResponse;
+}
+
+/** Error during streaming */
+export interface StreamErrorEvent {
+  detail: string;
+}
+
+// =============================================================================
 // Type Guards for Runtime Validation
 // =============================================================================
 
