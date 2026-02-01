@@ -29,6 +29,7 @@ export const designSystemNav: NavItem[] = [
       { title: "Table", href: "/design/components/table" },
       { title: "Chart", href: "/design/components/chart" },
       { title: "Alert", href: "/design/components/alert" },
+      { title: "Chat", href: "/design/components/chat" },
       { title: "Avatar", href: "/design/components/avatar" },
       { title: "Select", href: "/design/components/select" },
     ],

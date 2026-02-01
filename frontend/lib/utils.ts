@@ -105,6 +105,21 @@ export interface FhirPatient extends FhirPatientLike {
 }
 
 /**
+ * Get avatar URL for a patient based on their display name.
+ * Strips diacritics and converts to a hyphenated slug.
+ * Falls back gracefully via AvatarFallback if file doesn't exist.
+ */
+export function getPatientAvatarUrl(patient: FhirPatientLike): string {
+  const name = getPatientDisplayName(patient);
+  const slug = name
+    .normalize("NFD")
+    .replace(/[\u0300-\u036f]/g, "")
+    .toLowerCase()
+    .replace(/\s+/g, "-");
+  return `/brand/avatars/${slug}.png`;
+}
+
+/**
  * Get MRN (Medical Record Number) from patient identifiers.
  */
 export function getPatientMRN(patient: FhirPatient): string | null {

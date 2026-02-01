@@ -3,15 +3,13 @@
 /**
  * Chat Session Page - Conversational canvas for a specific chat session.
  *
- * Uses the real useChat hook wired to the backend agent API.
- * Patient selection is required before chatting (will be replaced
- * by session-model-based patient binding in a future task).
+ * Patient is selected via query param (from the patients list page).
  */
 
 import { useState, useEffect } from "react";
 import { useParams, useSearchParams } from "next/navigation";
 import { Sidebar } from "@/components/Sidebar";
-import { PatientSelector } from "@/components/patient/PatientSelector";
+import { PatientBadge } from "@/components/patient/PatientBadge";
 import { ConversationalCanvas } from "@/components/canvas";
 import type { PatientListItem } from "@/lib/types";
 import { parsePatientList } from "@/lib/types";
@@ -20,25 +18,28 @@ export default function ChatSessionPage() {
   const params = useParams();
   const searchParams = useSearchParams();
   const sessionId = params.id as string;
+  const patientIdParam = searchParams.get("patient");
   const initialMessage = searchParams.get("message")
     ? decodeURIComponent(searchParams.get("message")!)
     : undefined;
 
-  const [patients, setPatients] = useState<PatientListItem[]>([]);
-  const [selectedPatientId, setSelectedPatientId] = useState<string | null>(null);
+  const [selectedPatient, setSelectedPatient] = useState<PatientListItem | null>(null);
 
-  // Fetch patients list
+  // Fetch patient info when a patient ID is provided via query param
   useEffect(() => {
+    if (!patientIdParam) return;
+
     fetch("/api/patients")
       .then((res) => res.json())
       .then((data) => {
         const parsed = parsePatientList(data);
-        setPatients(parsed);
+        const match = parsed.find((p) => p.id === patientIdParam);
+        if (match) setSelectedPatient(match);
       })
       .catch((err) => {
         console.error("Failed to fetch patients:", err);
       });
-  }, []);
+  }, [patientIdParam]);
 
   return (
     <div className="flex min-h-screen bg-background">
@@ -46,16 +47,12 @@ export default function ChatSessionPage() {
 
       <main className="flex-1 flex flex-col min-h-0">
         {/* Patient context bar */}
-        <div className="sticky top-0 z-10 border-b border-border bg-background px-4 py-3">
-          <PatientSelector
-            patients={patients}
-            selectedPatientId={selectedPatientId}
-            onPatientChange={setSelectedPatientId}
-          />
+        <div className="sticky top-0 z-10 border-b border-border bg-background px-4 py-3 pl-12 md:pl-4">
+          <PatientBadge patient={selectedPatient} />
         </div>
 
         <ConversationalCanvas
-          patientId={selectedPatientId}
+          patient={selectedPatient}
           initialMessage={initialMessage}
         />
       </main>

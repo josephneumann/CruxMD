@@ -1,10 +1,12 @@
 "use client";
 
+import { useState, useEffect, useCallback } from "react";
 import Image from "next/image";
 import Link from "next/link";
 import { usePathname } from "next/navigation";
 import { cn } from "@/lib/utils";
 import { designSystemNav } from "@/lib/design-system-nav";
+import { Button } from "@/components/ui/button";
 import {
   Palette,
   Type,
@@ -14,6 +16,8 @@ import {
   Image as ImageIcon,
   BookOpen,
   LayoutGrid,
+  PanelLeft,
+  PanelLeftClose,
   type LucideIcon,
 } from "lucide-react";
 
@@ -30,26 +34,26 @@ const iconMap: Record<string, LucideIcon> = {
 
 export function DocsSidebar() {
   const pathname = usePathname();
+  const [mobileOpen, setMobileOpen] = useState(false);
 
-  return (
-    <aside className="w-14 md:w-64 border-r bg-muted/30 p-2 md:px-6 md:py-3 overflow-y-auto flex-shrink-0">
-      {/* Logo: mark on mobile, wordmark on desktop */}
-      <div className="mb-6 flex justify-center md:justify-start">
-        <Link href="/design" className="flex items-center">
-          <Image
-            src="/brand/mark-primary.svg"
-            alt="CruxMD"
-            width={24}
-            height={24}
-            className="md:hidden"
-            priority
-          />
+  // Close mobile sidebar on route change
+  useEffect(() => {
+    setMobileOpen(false);
+  }, [pathname]);
+
+  const closeMobile = useCallback(() => setMobileOpen(false), []);
+
+  const sidebarContent = (
+    <>
+      {/* Header */}
+      <div className="flex items-center justify-between px-4 py-3 h-14">
+        <Link href="/design" className="flex items-center" onClick={closeMobile}>
           <Image
             src="/brand/wordmark-primary.svg"
             alt="CruxMD"
             width={120}
             height={28}
-            className="hidden md:block dark:md:hidden"
+            className="dark:hidden"
             priority
           />
           <Image
@@ -57,12 +61,23 @@ export function DocsSidebar() {
             alt="CruxMD"
             width={120}
             height={28}
-            className="hidden dark:md:block"
+            className="hidden dark:block"
             priority
           />
         </Link>
+        <Button
+          variant="ghost"
+          size="icon"
+          className="h-8 w-8 text-muted-foreground hover:text-foreground md:hidden"
+          onClick={closeMobile}
+          aria-label="Close sidebar"
+        >
+          <PanelLeftClose className="h-5 w-5" />
+        </Button>
       </div>
-      <nav className="space-y-1">
+
+      {/* Navigation */}
+      <nav className="space-y-1 px-3 py-2 overflow-y-auto flex-1">
         {designSystemNav.map((item) => {
           const isActive = pathname === item.href;
           const isParentActive = item.children?.some((child) => pathname === child.href);
@@ -73,24 +88,26 @@ export function DocsSidebar() {
               <Link
                 href={item.href}
                 title={item.title}
+                onClick={closeMobile}
                 className={cn(
-                  "flex items-center justify-center md:justify-start gap-3 rounded-md p-2 md:px-3 md:py-2 text-sm transition-colors",
+                  "flex items-center gap-3 rounded-md px-3 py-2 text-sm transition-colors",
                   isActive || isParentActive
                     ? "bg-primary/10 text-primary font-medium"
                     : "text-muted-foreground hover:bg-muted hover:text-foreground"
                 )}
               >
                 {Icon && <Icon className="size-4 flex-shrink-0" />}
-                <span className="hidden md:inline">{item.title}</span>
+                <span>{item.title}</span>
               </Link>
               {item.children && (
-                <div className="hidden md:block ml-7 mt-1 space-y-1 border-l pl-3">
+                <div className="ml-7 mt-1 space-y-1 border-l pl-3">
                   {item.children.map((child) => {
                     const isChildActive = pathname === child.href;
                     return (
                       <Link
                         key={child.href}
                         href={child.href}
+                        onClick={closeMobile}
                         className={cn(
                           "block rounded-md px-3 py-1.5 text-sm transition-colors",
                           isChildActive
@@ -108,6 +125,46 @@ export function DocsSidebar() {
           );
         })}
       </nav>
-    </aside>
+    </>
+  );
+
+  return (
+    <>
+      {/* Mobile: floating toggle button */}
+      {!mobileOpen && (
+        <Button
+          variant="ghost"
+          size="icon"
+          className="fixed top-3 left-3 z-40 h-8 w-8 text-muted-foreground hover:text-foreground md:hidden"
+          onClick={() => setMobileOpen(true)}
+          aria-label="Open sidebar"
+        >
+          <PanelLeft className="h-5 w-5" />
+        </Button>
+      )}
+
+      {/* Mobile: backdrop */}
+      {mobileOpen && (
+        <div
+          className="fixed inset-0 z-40 bg-black/40 md:hidden"
+          onClick={closeMobile}
+        />
+      )}
+
+      {/* Mobile sidebar: overlay, slides in from left */}
+      <aside
+        className={cn(
+          "fixed inset-y-0 left-0 z-50 flex flex-col w-64 border-r border-border bg-background transition-transform duration-300 ease-in-out md:hidden",
+          mobileOpen ? "translate-x-0" : "-translate-x-full",
+        )}
+      >
+        {sidebarContent}
+      </aside>
+
+      {/* Desktop sidebar: static */}
+      <aside className="hidden md:flex flex-col w-64 border-r bg-muted/30 flex-shrink-0">
+        {sidebarContent}
+      </aside>
+    </>
   );
 }

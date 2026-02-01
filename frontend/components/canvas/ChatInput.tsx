@@ -3,9 +3,10 @@
 import { useState, useRef, useEffect } from "react";
 import { ArrowUp, Plus, Clock, ChevronDown, Check } from "lucide-react";
 import { Button } from "@/components/ui/button";
+import { Tooltip, TooltipTrigger, TooltipContent } from "@/components/ui/tooltip";
 import { AutoResizeTextarea } from "@/components/chat/AutoResizeTextarea";
 import { MODEL_OPTIONS } from "@/lib/types";
-import type { ModelId } from "@/lib/types";
+import type { ModelId, ReasoningEffort } from "@/lib/types";
 
 interface ChatInputProps {
   value: string;
@@ -15,6 +16,8 @@ interface ChatInputProps {
   disabled?: boolean;
   model: ModelId;
   onModelChange: (model: ModelId) => void;
+  reasoningEffort: ReasoningEffort;
+  onReasoningEffortChange: (effort: ReasoningEffort) => void;
 }
 
 export function ChatInput({
@@ -25,6 +28,8 @@ export function ChatInput({
   disabled = false,
   model,
   onModelChange,
+  reasoningEffort,
+  onReasoningEffortChange,
 }: ChatInputProps) {
   const [showModelMenu, setShowModelMenu] = useState(false);
   const menuRef = useRef<HTMLDivElement>(null);
@@ -69,18 +74,31 @@ export function ChatInput({
           </div>
           <div className="flex items-center justify-between px-4 pb-4">
             <div className="flex items-center gap-1">
-              <Button variant="ghost" size="icon" className="h-8 w-8 rounded-lg">
-                <Plus className="h-4 w-4" />
-              </Button>
-              <Button variant="ghost" size="icon" className="h-8 w-8 rounded-lg">
-                <Clock className="h-4 w-4" />
-              </Button>
+              <Tooltip>
+                <TooltipTrigger asChild>
+                  <button className="p-2 rounded-lg text-muted-foreground hover:text-foreground hover:bg-muted transition-colors cursor-pointer">
+                    <Plus className="h-5 w-5" />
+                  </button>
+                </TooltipTrigger>
+                <TooltipContent side="top">Add files, connectors and more</TooltipContent>
+              </Tooltip>
+              <Tooltip>
+                <TooltipTrigger asChild>
+                  <button
+                    className="p-2 rounded-lg text-muted-foreground hover:text-foreground hover:bg-muted transition-colors cursor-pointer"
+                    onClick={() => onReasoningEffortChange(reasoningEffort === "high" ? "medium" : "high")}
+                  >
+                    <Clock className={`h-5 w-5 ${reasoningEffort === "high" ? "text-primary" : ""}`} />
+                  </button>
+                </TooltipTrigger>
+                <TooltipContent side="top">Extended thinking</TooltipContent>
+              </Tooltip>
             </div>
             <div className="flex items-center gap-2">
               <div className="relative" ref={menuRef}>
                 <button
                   onClick={() => setShowModelMenu((v) => !v)}
-                  className="flex items-center gap-1 text-sm text-muted-foreground hover:text-foreground transition-colors cursor-pointer"
+                  className="flex items-center gap-1 text-sm text-muted-foreground hover:text-foreground hover:bg-muted rounded-lg px-2 py-1 transition-colors cursor-pointer"
                 >
                   {selectedModel.label}
                   <ChevronDown className="h-3 w-3" />

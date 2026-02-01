@@ -4,7 +4,6 @@
 
 // Clinical reasoning verbs for thinking animation
 export const THINKING_VERBS = [
-  "Starting context engine",
   "Traversing knowledge graph",
   "Expanding the graph",
   "Running semantic search",

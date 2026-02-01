@@ -1,5 +1,6 @@
 "use client";
 
+import Image from "next/image";
 import {
   Avatar,
   AvatarImage,
@@ -10,6 +11,7 @@ import {
 } from "@/components/ui/avatar";
 import { ComponentPreview, PreviewGrid } from "@/components/design-system/ComponentPreview";
 import { PropsTable } from "@/components/design-system/PropsTable";
+import { CodeBlock } from "@/components/design-system/CodeBlock";
 import { Check, Plus } from "lucide-react";
 
 const avatarProps = [
@@ -69,6 +71,67 @@ export default function AvatarPage() {
           Avatars represent users with images or initials. They support multiple
           sizes, fallback states, badges, and can be grouped for team displays.
         </p>
+      </div>
+
+      {/* Watercolor Portraits */}
+      <div className="space-y-6">
+        <h2 className="text-2xl font-medium">Watercolor Portraits</h2>
+        <p className="text-muted-foreground">
+          CruxMD uses AI-generated watercolor portraits for doctor and patient avatars.
+          These are created with <strong>Nano Banana Pro</strong> using a consistent prompt
+          that produces soft, bleeding ink washes in our brand palette. The style avoids
+          photorealism in favor of an artistic, approachable aesthetic.
+        </p>
+
+        <div className="grid grid-cols-1 md:grid-cols-2 gap-8">
+          <div className="flex flex-col items-center">
+            <div className="h-40 w-40 rounded-full overflow-hidden mb-4">
+              <Image
+                src="/brand/doctor-watercolor-portrait-1.png"
+                alt="Dr. Brian Wilcox"
+                width={300}
+                height={300}
+                className="h-full w-full object-cover"
+              />
+            </div>
+            <p className="text-sm font-medium">Dr. Brian Wilcox, MD</p>
+            <p className="text-xs text-muted-foreground">Internal Medicine</p>
+          </div>
+          <div className="flex flex-col items-center">
+            <div className="h-40 w-40 rounded-full overflow-hidden mb-4">
+              <Image
+                src="/brand/doctor-watercolor-portrait-2.png"
+                alt="Dr. Priya Patel"
+                width={300}
+                height={300}
+                className="h-full w-full object-cover"
+              />
+            </div>
+            <p className="text-sm font-medium">Dr. Priya Patel, MD</p>
+            <p className="text-xs text-muted-foreground">Family Medicine</p>
+          </div>
+        </div>
+
+        <div className="space-y-3">
+          <h3 className="text-lg font-medium">Generation Prompt</h3>
+          <p className="text-sm text-muted-foreground">
+            Use the following prompt with Nano Banana Pro, substituting the description
+            for each person:
+          </p>
+          <CodeBlock className="[&_pre]:whitespace-pre-wrap [&_pre]:overflow-x-hidden" code={`Generate minimalist, wet-ink watercolor portrait of <description of person or reference image>. The person is in a smiling, front-facing "observer" pose, facing straight ahead, centered in the image. The form is defined by soft, bleeding washes of color rather than hard lines. The primary colors are "Vibrant Forest" (#2F5E52) and "Glacier Teal" (#5A7D7C), forming the silhouette of the head, brown hair, and shoulders. The edges of the watercolor are organic and feathery, bleeding into a textured, off-white "Alabaster" (#F0EAD6) paper background. No sharp details, just flowing color and texture.`} />
+        </div>
+
+        <div className="space-y-3">
+          <h3 className="text-lg font-medium">Guidelines</h3>
+          <ul className="list-disc pl-5 text-sm text-muted-foreground space-y-1">
+            <li>Always use the brand colors Vibrant Forest and Glacier Teal as the primary palette</li>
+            <li>Portraits should be front-facing and centered for consistent circular cropping</li>
+            <li>File naming convention: lowercase, hyphenated name (e.g. <code className="text-xs bg-muted px-1.5 py-0.5 rounded">miguel-bashirian.png</code>)</li>
+            <li>Strip diacritics from filenames (e.g. Andrés → andres) for URL compatibility</li>
+            <li>Place files in <code className="text-xs bg-muted px-1.5 py-0.5 rounded">public/brand/avatars/</code></li>
+            <li>The Avatar component falls back to initials if the image file is missing</li>
+          </ul>
+        </div>
       </div>
 
       {/* Basic Usage */}

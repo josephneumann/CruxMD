@@ -1,3 +1,4 @@
+import NextImage from "next/image";
 import { AlertCircle, Check, X } from "lucide-react";
 
 function Principle({ number, title, description }: { number: number; title: string; description: string }) {
@@ -19,7 +20,7 @@ function Principle({ number, title, description }: { number: number; title: stri
 function DoItem({ children }: { children: React.ReactNode }) {
   return (
     <div className="flex items-start gap-2">
-      <Check className="mt-0.5 size-4 shrink-0 text-[#388E3C]" />
+      <Check className="mt-0.5 size-4 shrink-0 text-insight-positive" />
       <span className="text-sm">{children}</span>
     </div>
   );
@@ -28,7 +29,7 @@ function DoItem({ children }: { children: React.ReactNode }) {
 function DontItem({ children }: { children: React.ReactNode }) {
   return (
     <div className="flex items-start gap-2">
-      <X className="mt-0.5 size-4 shrink-0 text-[#C24E42]" />
+      <X className="mt-0.5 size-4 shrink-0 text-insight-critical" />
       <span className="text-sm">{children}</span>
     </div>
   );
@@ -157,9 +158,16 @@ export default function BrandPage() {
 
       {/* Central Metaphor */}
       <div className="space-y-6">
-        <h2 className="text-2xl font-medium">The Central Metaphor</h2>
-        <div className="rounded-lg border bg-muted/50 p-6">
-          <p className="italic text-center text-lg">
+        <div className="relative -mx-8 overflow-hidden rounded-none py-16 md:py-20 flex flex-col items-center justify-center">
+          <NextImage
+            src="/brand/office-background.png"
+            alt=""
+            fill
+            className="object-cover object-center"
+          />
+          <div className="absolute inset-0 bg-background/70 dark:bg-background/80" />
+          <h2 className="relative z-10 text-2xl font-medium mb-4">The Central Metaphor</h2>
+          <p className="relative z-10 italic text-center text-lg max-w-2xl px-6">
             &ldquo;A well-organized study with natural wood elements and medical textbooks — with a view of a forested hillside in the early morning mist. Evoking the metaphor of seeing the forest through the trees.&rdquo;
           </p>
         </div>
@@ -240,7 +248,7 @@ export default function BrandPage() {
         <h2 className="text-2xl font-medium">Writing Guidelines</h2>
         <div className="grid grid-cols-1 md:grid-cols-2 gap-6">
           <div className="space-y-4">
-            <h3 className="font-medium text-[#388E3C]">Do</h3>
+            <h3 className="font-medium text-insight-positive">Do</h3>
             <div className="space-y-3">
               <DoItem>&ldquo;Medications for John Smith&rdquo;</DoItem>
               <DoItem>&ldquo;Last updated 2 hours ago&rdquo;</DoItem>
@@ -250,7 +258,7 @@ export default function BrandPage() {
             </div>
           </div>
           <div className="space-y-4">
-            <h3 className="font-medium text-[#C24E42]">Don&apos;t</h3>
+            <h3 className="font-medium text-insight-critical">Don&apos;t</h3>
             <div className="space-y-3">
               <DontItem>&ldquo;Patient Medications&rdquo; (generic)</DontItem>
               <DontItem>&ldquo;Synced!&rdquo; (exclamatory)</DontItem>
@@ -292,7 +300,7 @@ export default function BrandPage() {
         <h2 className="text-2xl font-medium">Visual Guidelines</h2>
         <div className="grid grid-cols-1 md:grid-cols-2 gap-6">
           <div className="rounded-lg border bg-card p-5">
-            <h3 className="font-medium mb-4 text-[#388E3C]">Do</h3>
+            <h3 className="font-medium mb-4 text-insight-positive">Do</h3>
             <div className="space-y-3">
               <DoItem>Use Vibrant Forest sparingly for emphasis</DoItem>
               <DoItem>Let Ivory and White dominate</DoItem>
@@ -303,7 +311,7 @@ export default function BrandPage() {
             </div>
           </div>
           <div className="rounded-lg border bg-card p-5">
-            <h3 className="font-medium mb-4 text-[#C24E42]">Don&apos;t</h3>
+            <h3 className="font-medium mb-4 text-insight-critical">Don&apos;t</h3>
             <div className="space-y-3">
               <DontItem>Saturate interface with green</DontItem>
               <DontItem>Use pure gray (#808080)</DontItem>

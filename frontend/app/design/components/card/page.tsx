@@ -13,6 +13,7 @@ import {
 import { Button } from "@/components/ui/button";
 import { Badge } from "@/components/ui/badge";
 import { Avatar, AvatarFallback } from "@/components/ui/avatar";
+import { PatientSummaryCard } from "@/components/patient/PatientSummaryCard";
 import { ComponentPreview, PreviewGrid } from "@/components/design-system/ComponentPreview";
 import { PropsTable } from "@/components/design-system/PropsTable";
 import { cn } from "@/lib/utils";
@@ -177,34 +178,20 @@ export default function CardPage() {
         <h2 className="text-2xl font-medium">Patient Summary Card</h2>
         <p className="text-muted-foreground">
           A comprehensive card for displaying patient information at a glance.
+          This is the same component used on the Patients list page.
         </p>
         <div className="max-w-md">
-          <Card className="p-5">
-            <div className="flex items-start gap-4">
-              <Avatar className="size-12 bg-primary/20">
-                <AvatarFallback className="bg-primary/20 text-primary font-medium">
-                  J
-                </AvatarFallback>
-              </Avatar>
-              <div className="flex-1 min-w-0">
-                <div className="flex items-start justify-between gap-2">
-                  <div>
-                    <h3 className="font-semibold">Johnson, Emily</h3>
-                    <p className="text-sm text-muted-foreground">Dr. Williams</p>
-                  </div>
-                  <Badge variant="jade" size="sm">Low Risk</Badge>
-                </div>
-                <div className="mt-2 text-sm text-muted-foreground">
-                  <p>MRN: 789012</p>
-                  <p>49y, Female • DOB: 06/22/1975</p>
-                </div>
-                <div className="flex flex-wrap gap-1.5 mt-2">
-                  <Badge variant="neutral" size="sm">Hypertension</Badge>
-                  <Badge variant="neutral" size="sm">Type 2 Diabetes</Badge>
-                </div>
-              </div>
-            </div>
-          </Card>
+          <PatientSummaryCard
+            patient={{
+              id: "demo-patient",
+              fhir_id: "demo-patient",
+              data: {
+                name: [{ given: ["Emily"], family: "Johnson" }],
+                birthDate: "1975-06-22",
+                gender: "female",
+              },
+            }}
+          />
         </div>
       </div>
 

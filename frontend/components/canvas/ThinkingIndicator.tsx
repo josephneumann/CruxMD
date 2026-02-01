@@ -1,10 +1,15 @@
 "use client";
 
+import dynamic from "next/dynamic";
 import { useThinkingAnimation } from "@/lib/hooks/use-thinking-animation";
+
+const Lottie = dynamic(() => import("lottie-react"), { ssr: false });
 
 interface ThinkingIndicatorProps {
   /** Accumulated reasoning summary text from SSE stream */
   reasoningText?: string;
+  /** Lottie animation data for the spinning mark */
+  lottieData?: object | null;
 }
 
 /**
@@ -29,12 +34,21 @@ function extractHeadline(text: string): string | null {
   return firstLine.length > 80 ? firstLine.slice(0, 77) + "..." : firstLine;
 }
 
-export function ThinkingIndicator({ reasoningText }: ThinkingIndicatorProps) {
+export function ThinkingIndicator({ reasoningText, lottieData }: ThinkingIndicatorProps) {
   const thinkingVerb = useThinkingAnimation(true);
   const headline = extractHeadline(reasoningText ?? "");
 
   return (
-    <div className="mb-4 flex items-center gap-2 text-sm text-muted-foreground">
+    <div className="mb-4 flex items-start gap-2 text-sm text-muted-foreground">
+      {lottieData && (
+        <div className="w-5 h-5 shrink-0 mt-0.5">
+          <Lottie
+            animationData={lottieData}
+            loop
+            style={{ width: "100%", height: "100%" }}
+          />
+        </div>
+      )}
       <span className="animate-pulse">
         {headline ?? thinkingVerb}
       </span>

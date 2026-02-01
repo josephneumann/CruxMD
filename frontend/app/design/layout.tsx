@@ -19,7 +19,7 @@ export default function DesignLayout({
     <div className="flex h-screen bg-background">
       <DocsSidebar />
       <div className="flex-1 flex flex-col overflow-hidden">
-        <header className="flex items-center justify-between border-b px-6 py-3">
+        <header className="flex items-center justify-between border-b px-6 py-3 pl-12 md:pl-6">
           <Button variant="ghost" size="sm" asChild>
             <Link href="/">
               <ArrowLeft className="size-4" />

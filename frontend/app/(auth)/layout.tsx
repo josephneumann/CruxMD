@@ -12,7 +12,7 @@ export default function AuthLayout({
         <div className="relative overflow-hidden rounded-xl border shadow-sm">
           {/* Forest background */}
           <Image
-            src="/brand/forest-background-login.png"
+            src="/brand/forest-background-login-watercolor.png"
             alt=""
             fill
             className="object-cover object-center"

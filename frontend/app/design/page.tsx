@@ -1,3 +1,4 @@
+import NextImage from "next/image";
 import Link from "next/link";
 import { Palette, Type, Component, Smile, BookOpen, Image, LayoutGrid } from "lucide-react";
 
@@ -48,79 +49,91 @@ const sections = [
 
 export default function DesignOverviewPage() {
   return (
-    <div className="space-y-12">
-      {/* Hero */}
-      <div className="space-y-4">
-        <h1 className="text-4xl font-medium tracking-tight">CruxMD Design System</h1>
-        <p className="text-lg text-muted-foreground max-w-2xl">
-          A comprehensive guide to the colors, typography, and components that make up the
-          CruxMD clinical intelligence platform. Built on a natural forest and jade palette
-          with organic, professional aesthetics.
+    <div>
+      {/* Hero banner — breaks out of parent max-w container */}
+      <div className="relative -mx-8 -mt-12 mb-12 flex flex-col items-center justify-center overflow-hidden py-24 md:py-32">
+        <NextImage
+          src="/brand/watercolor-pallette.png"
+          alt=""
+          fill
+          className="object-cover object-center"
+          priority
+        />
+        <div className="absolute inset-0 bg-background/70 dark:bg-background/80" />
+        <h1 className="relative z-10 text-4xl md:text-5xl font-medium tracking-tight text-foreground text-center mb-4">
+          CruxMD Design System
+        </h1>
+        <p className="relative z-10 text-muted-foreground text-center max-w-xl px-6">
+          Colors, typography, and components for the CruxMD clinical intelligence platform.
         </p>
       </div>
 
-      {/* Design Philosophy */}
-      <div className="space-y-4">
-        <h2 className="text-2xl font-medium">Design Philosophy</h2>
-        <div className="grid gap-4 md:grid-cols-2">
-          <div className="rounded-lg border bg-card p-6">
-            <h3 className="font-semibold mb-2">Natural & Professional</h3>
-            <p className="text-sm text-muted-foreground">
-              The palette uses organic greens, teals, and golds balanced with neutral
-              ivories, creating an approachable yet trustworthy aesthetic for clinical contexts.
-            </p>
-          </div>
-          <div className="rounded-lg border bg-card p-6">
-            <h3 className="font-semibold mb-2">Clinical Clarity</h3>
-            <p className="text-sm text-muted-foreground">
-              Information hierarchy is paramount. Color-coded insight cards communicate
-              urgency at a glance: blue for info, yellow for warning, red for critical,
-              green for positive.
-            </p>
-          </div>
-          <div className="rounded-lg border bg-card p-6">
-            <h3 className="font-semibold mb-2">Accessible by Default</h3>
-            <p className="text-sm text-muted-foreground">
-              All color combinations meet WCAG contrast requirements. Dark mode is fully
-              supported with carefully tuned values for each semantic token.
-            </p>
-          </div>
-          <div className="rounded-lg border bg-card p-6">
-            <h3 className="font-semibold mb-2">Component-First</h3>
-            <p className="text-sm text-muted-foreground">
-              Built on shadcn/ui primitives with Radix UI accessibility. Components are
-              composable, theme-aware, and designed for consistency across the platform.
-            </p>
+      {/* Content */}
+      <div className="max-w-4xl mx-auto px-8 space-y-12">
+
+        {/* Design Philosophy */}
+        <div className="space-y-4">
+          <h2 className="text-2xl font-medium">Design Philosophy</h2>
+          <div className="grid gap-4 md:grid-cols-2">
+            <div className="rounded-lg border bg-card p-6">
+              <h3 className="font-semibold mb-2">Natural & Professional</h3>
+              <p className="text-sm text-muted-foreground">
+                The palette uses organic greens, teals, and golds balanced with neutral
+                ivories, creating an approachable yet trustworthy aesthetic for clinical contexts.
+              </p>
+            </div>
+            <div className="rounded-lg border bg-card p-6">
+              <h3 className="font-semibold mb-2">Clinical Clarity</h3>
+              <p className="text-sm text-muted-foreground">
+                Information hierarchy is paramount. Color-coded insight cards communicate
+                urgency at a glance: blue for info, yellow for warning, red for critical,
+                green for positive.
+              </p>
+            </div>
+            <div className="rounded-lg border bg-card p-6">
+              <h3 className="font-semibold mb-2">Accessible by Default</h3>
+              <p className="text-sm text-muted-foreground">
+                All color combinations meet WCAG contrast requirements. Dark mode is fully
+                supported with carefully tuned values for each semantic token.
+              </p>
+            </div>
+            <div className="rounded-lg border bg-card p-6">
+              <h3 className="font-semibold mb-2">Component-First</h3>
+              <p className="text-sm text-muted-foreground">
+                Built on shadcn/ui primitives with Radix UI accessibility. Components are
+                composable, theme-aware, and designed for consistency across the platform.
+              </p>
+            </div>
           </div>
         </div>
-      </div>
 
-      {/* Quick Links */}
-      <div className="space-y-4">
-        <h2 className="text-2xl font-medium">Explore</h2>
-        <div className="grid gap-4 md:grid-cols-2 lg:grid-cols-3">
-          {sections.map((section) => {
-            const Icon = section.icon;
-            return (
-              <Link
-                key={section.href}
-                href={section.href}
-                className="group flex items-start gap-4 rounded-lg border bg-card p-6 transition-colors hover:bg-muted/50"
-              >
-                <div className="rounded-md bg-primary/10 p-2.5">
-                  <Icon className="size-5 text-primary" />
-                </div>
-                <div>
-                  <h3 className="font-semibold group-hover:text-primary transition-colors">
-                    {section.title}
-                  </h3>
-                  <p className="text-sm text-muted-foreground mt-1">
-                    {section.description}
-                  </p>
-                </div>
-              </Link>
-            );
-          })}
+        {/* Quick Links */}
+        <div className="space-y-4">
+          <h2 className="text-2xl font-medium">Explore</h2>
+          <div className="grid gap-4 md:grid-cols-2 lg:grid-cols-3">
+            {sections.map((section) => {
+              const Icon = section.icon;
+              return (
+                <Link
+                  key={section.href}
+                  href={section.href}
+                  className="group flex items-start gap-4 rounded-lg border bg-card p-6 transition-colors hover:bg-muted/50"
+                >
+                  <div className="rounded-md bg-primary/10 p-2.5">
+                    <Icon className="size-5 text-primary" />
+                  </div>
+                  <div>
+                    <h3 className="font-semibold group-hover:text-primary transition-colors">
+                      {section.title}
+                    </h3>
+                    <p className="text-sm text-muted-foreground mt-1">
+                      {section.description}
+                    </p>
+                  </div>
+                </Link>
+              );
+            })}
+          </div>
         </div>
       </div>
     </div>

@@ -30,6 +30,12 @@ const insightTypeProps = [
     default: "[]",
     description: "Optional source citations",
   },
+  {
+    name: "defaultExpanded",
+    type: "boolean",
+    default: "false",
+    description: "Whether the card starts expanded",
+  },
 ];
 
 export default function AlertPage() {
@@ -81,11 +87,38 @@ export default function AlertPage() {
         </PreviewGrid>
       </div>
 
+      {/* Expand / Collapse */}
+      <div className="space-y-6">
+        <h2 className="text-2xl font-medium">Expand / Collapse</h2>
+        <p className="text-muted-foreground">
+          Cards are collapsed by default, showing only the title. Click the title or chevron to expand.
+          Use <code className="text-xs bg-muted px-1.5 py-0.5 rounded">defaultExpanded</code> to start open.
+        </p>
+        <div className="max-w-xl space-y-3">
+          <InsightCard
+            insight={{
+              type: "info",
+              title: "Collapsed by default",
+              content: "This content is hidden until the user clicks to expand.",
+            }}
+          />
+          <InsightCard
+            defaultExpanded
+            insight={{
+              type: "positive",
+              title: "Expanded by default",
+              content: "This card starts open because defaultExpanded is true.",
+            }}
+          />
+        </div>
+      </div>
+
       {/* With Citations */}
       <div className="space-y-6">
         <h2 className="text-2xl font-medium">With Citations</h2>
         <div className="max-w-xl">
           <InsightCard
+            defaultExpanded
             insight={{
               type: "warning",
               title: "Medication Dosage",

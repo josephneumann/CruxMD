@@ -4,6 +4,7 @@ import asyncio
 import copy
 import json
 import logging
+import re
 import uuid
 from typing import Any
 
@@ -20,6 +21,34 @@ logger = logging.getLogger(__name__)
 PROFILE_EXTENSION_URL = (
     "http://cruxmd.ai/fhir/StructureDefinition/patient-narrative-profile"
 )
+
+
+def _strip_numbers_from_name(name_obj: dict[str, Any]) -> dict[str, Any]:
+    """Strip trailing digits from FHIR HumanName fields.
+
+    Synthea appends numeric suffixes to patient names (e.g. "Andrés117").
+    This cleans given, family, text, and prefix/suffix fields.
+    """
+    strip = lambda s: re.sub(r"\d+", "", s).strip() if isinstance(s, str) else s
+
+    for field in ("family", "text"):
+        if field in name_obj:
+            name_obj[field] = strip(name_obj[field])
+
+    for field in ("given", "prefix", "suffix"):
+        if field in name_obj and isinstance(name_obj[field], list):
+            name_obj[field] = [strip(v) for v in name_obj[field]]
+
+    return name_obj
+
+
+def _clean_patient_names(resource: dict[str, Any]) -> dict[str, Any]:
+    """Clean Synthea numeric suffixes from a Patient resource's name array."""
+    if resource.get("resourceType") != "Patient":
+        return resource
+    for name_obj in resource.get("name", []):
+        _strip_numbers_from_name(name_obj)
+    return resource
 
 
 async def load_bundle(
@@ -50,6 +79,7 @@ async def load_bundle(
     for entry in entries:
         resource = entry.get("resource", {})
         if resource and resource.get("resourceType"):
+            _clean_patient_names(resource)
             resources_data.append(resource)
 
     if not resources_data:

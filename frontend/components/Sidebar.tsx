@@ -1,17 +1,16 @@
 "use client";
 
-import { useState, useEffect, useRef } from "react";
+import { useState, useEffect, useRef, useCallback } from "react";
 import Image from "next/image";
 import Link from "next/link";
+import { usePathname } from "next/navigation";
 import { useTheme } from "next-themes";
 import {
   PanelLeftClose,
   PanelLeft,
-  Plus,
   Search,
   Users,
   CheckSquare,
-  ChevronDown,
   ChevronUp,
   Sun,
   Moon,
@@ -20,37 +19,30 @@ import {
 } from "lucide-react";
 import { cn } from "@/lib/utils";
 import { Button } from "@/components/ui/button";
+import { Tooltip, TooltipTrigger, TooltipContent } from "@/components/ui/tooltip";
 import { useSession, signOut } from "@/lib/auth-client";
 
 interface SidebarProps {
   className?: string;
 }
 
-// Recent sessions with fixture patients (dummy time data)
-const RECENT_SESSIONS = [
-  { id: "session-1", patientId: "5c9f20d5-8361-b331-9267-5303ca5b136a", patientName: "Andrés Olivo", timeAgo: "10 minutes ago" },
-  { id: "session-2", patientId: "d545798e-09a4-ef89-abc5-9f62dc5a5095", patientName: "Ash Brekke", timeAgo: "30 minutes ago" },
-  { id: "session-3", patientId: "eed8a921-eac8-0778-4113-255f4e35506a", patientName: "Kimi Wyman", timeAgo: "2 hours ago" },
-  { id: "session-4", patientId: "3c4b499b-090b-c6fa-28d7-b56c6056d0a2", patientName: "Lou Russel", timeAgo: "Yesterday" },
-  { id: "session-5", patientId: "5393ea7f-1fea-4064-9df4-460a2f662d07", patientName: "Miguel Bashirian", timeAgo: "2 days ago" },
-];
-
 // Navigation items
 const NAV_ITEMS = [
-  { icon: Plus, label: "New chat", href: "/chat" },
   { icon: Search, label: "Search", href: "#" },
-  { icon: Users, label: "Patients", href: "#" },
+  { icon: Users, label: "Patients", href: "/patients" },
   { icon: CheckSquare, label: "Tasks", href: "/tasks" },
 ];
 
 export function Sidebar({ className }: SidebarProps) {
   const [isExpanded, setIsExpanded] = useState(false);
-  const [isRecentsExpanded, setIsRecentsExpanded] = useState(true);
+  const [mobileOpen, setMobileOpen] = useState(false);
   const [showUserMenu, setShowUserMenu] = useState(false);
   const userMenuRef = useRef<HTMLDivElement>(null);
   const { theme, setTheme, resolvedTheme } = useTheme();
   const [mounted, setMounted] = useState(false);
   const { data: session } = useSession();
+  const pathname = usePathname();
+  const isOnChat = pathname?.startsWith("/chat");
 
   const userName = session?.user?.name || "User";
   const userInitials = userName
@@ -65,6 +57,11 @@ export function Sidebar({ className }: SidebarProps) {
     setMounted(true);
   }, []);
 
+  // Close mobile sidebar on route change
+  useEffect(() => {
+    setMobileOpen(false);
+  }, [pathname]);
+
   // Close user menu on outside click
   useEffect(() => {
     if (!showUserMenu) return;
@@ -77,37 +74,36 @@ export function Sidebar({ className }: SidebarProps) {
     return () => document.removeEventListener("mousedown", handleClick);
   }, [showUserMenu]);
 
-  const wordmarkSrc = mounted && resolvedTheme === "dark"
-    ? "/brand/wordmark-reversed.svg"
-    : "/brand/wordmark-primary.svg";
+  const closeMobile = useCallback(() => setMobileOpen(false), []);
 
-  return (
-    <aside
-      className={cn(
-        "flex flex-col h-screen sticky top-0 border-r border-border bg-background transition-all duration-300 ease-in-out",
-        isExpanded ? "w-64" : "w-14",
-        className
-      )}
-    >
+  const wordmarkSrc = mounted && resolvedTheme === "dark"
+    ? "/brand/wordmark-reversed.png"
+    : "/brand/wordmark-primary.png";
+
+  const sidebarContent = (
+    <>
       {/* Header */}
       <div className="flex items-center justify-between px-3 py-3 h-14">
-        {isExpanded ? (
-          <Link href="/" className="flex items-center">
+        {isExpanded || mobileOpen ? (
+          <Link href="/" className="flex items-center" onClick={closeMobile}>
             <Image
               src={wordmarkSrc}
               alt="CruxMD"
-              width={100}
-              height={24}
+              width={200}
+              height={67}
+              className="h-7 w-auto"
+              unoptimized
               priority
             />
           </Link>
         ) : (
-          <div className="w-8" /> // Spacer when collapsed
+          <div className="w-8" />
         )}
+        {/* Desktop toggle */}
         <Button
           variant="ghost"
           size="icon"
-          className="h-8 w-8 text-muted-foreground hover:text-foreground"
+          className="h-8 w-8 text-muted-foreground hover:text-foreground hidden md:flex"
           onClick={() => setIsExpanded(!isExpanded)}
           aria-label={isExpanded ? "Collapse sidebar" : "Expand sidebar"}
         >
@@ -117,81 +113,98 @@ export function Sidebar({ className }: SidebarProps) {
             <PanelLeft className="h-5 w-5" />
           )}
         </Button>
+        {/* Mobile close */}
+        <Button
+          variant="ghost"
+          size="icon"
+          className="h-8 w-8 text-muted-foreground hover:text-foreground md:hidden"
+          onClick={closeMobile}
+          aria-label="Close sidebar"
+        >
+          <PanelLeftClose className="h-5 w-5" />
+        </Button>
       </div>
 
       {/* Navigation */}
       <nav className="flex flex-col gap-1 px-2 py-2">
-        {NAV_ITEMS.map((item) => (
-          <Link
-            key={item.label}
-            href={item.href}
-            className={cn(
-              "flex items-center gap-3 rounded-lg px-3 py-2 text-sm text-muted-foreground hover:bg-muted hover:text-foreground transition-colors",
-              !isExpanded && "justify-center px-0"
-            )}
-          >
-            <item.icon className="h-5 w-5 shrink-0" />
-            {isExpanded && <span>{item.label}</span>}
-          </Link>
-        ))}
+        {NAV_ITEMS.map((item) => {
+          const isActive = item.href !== "#" && pathname?.startsWith(item.href);
+          const navLink = (
+            <Link
+              key={item.label}
+              href={item.href}
+              onClick={closeMobile}
+              className={cn(
+                "flex items-center gap-3 rounded-lg px-3 py-2 text-sm transition-colors",
+                isActive
+                  ? "bg-muted text-foreground"
+                  : "text-muted-foreground hover:bg-muted hover:text-foreground",
+                !isExpanded && !mobileOpen && "justify-center px-0"
+              )}
+            >
+              <item.icon className="h-5 w-5 shrink-0" />
+              {(isExpanded || mobileOpen) && <span>{item.label}</span>}
+            </Link>
+          );
+          return !isExpanded && !mobileOpen ? (
+            <Tooltip key={item.label}>
+              <TooltipTrigger asChild>{navLink}</TooltipTrigger>
+              <TooltipContent side="right">{item.label}</TooltipContent>
+            </Tooltip>
+          ) : (
+            navLink
+          );
+        })}
+        {/* CruxMD Mark */}
+        {(() => {
+          const chatLink = (
+            <Link
+              href="/chat"
+              onClick={closeMobile}
+              className={cn(
+                "flex items-center gap-3 rounded-lg px-3 py-2 text-sm transition-colors",
+                isOnChat
+                  ? "bg-muted text-foreground"
+                  : "text-muted-foreground hover:bg-muted hover:text-foreground",
+                !isExpanded && !mobileOpen && "justify-center px-0"
+              )}
+              aria-label="CruxMD Chat"
+            >
+              <span className="relative flex items-center justify-center h-5 w-5 shrink-0">
+                {mounted && (
+                  <Image
+                    src={resolvedTheme === "dark" ? "/brand/mark-reversed.svg" : "/brand/mark-primary.svg"}
+                    alt="CruxMD"
+                    width={20}
+                    height={20}
+                    className="h-5 w-5"
+                  />
+                )}
+              </span>
+              {(isExpanded || mobileOpen) && <span>Chat</span>}
+            </Link>
+          );
+          return !isExpanded && !mobileOpen ? (
+            <Tooltip>
+              <TooltipTrigger asChild>{chatLink}</TooltipTrigger>
+              <TooltipContent side="right">Chat</TooltipContent>
+            </Tooltip>
+          ) : (
+            chatLink
+          );
+        })()}
       </nav>
 
-      {/* Recent Sessions Section */}
-      {isExpanded && (
-        <div className="flex-1 flex flex-col min-h-0 px-2 py-2">
-          {/* Section Header */}
-          <button
-            onClick={() => setIsRecentsExpanded(!isRecentsExpanded)}
-            className="flex items-center justify-between px-3 py-1.5 text-xs font-medium text-muted-foreground hover:text-foreground"
-          >
-            <span>Recent Sessions</span>
-            {isRecentsExpanded ? (
-              <ChevronUp className="h-3 w-3" />
-            ) : (
-              <ChevronDown className="h-3 w-3" />
-            )}
-          </button>
-
-          {/* Sessions List */}
-          {isRecentsExpanded && (
-            <div className="flex-1 overflow-y-auto">
-              <div className="flex flex-col gap-1 py-1">
-                {RECENT_SESSIONS.map((session) => (
-                  <Link
-                    key={session.id}
-                    href={`/chat?patient=${session.patientId}&session=${session.id}`}
-                    className="group flex flex-col rounded-lg px-3 py-2 transition-all hover:bg-card hover:shadow-md hover:border hover:border-border/50"
-                  >
-                    <span className="truncate text-sm text-foreground group-hover:text-foreground">
-                      {session.patientName}
-                    </span>
-                    <span className="text-xs text-muted-foreground">
-                      {session.timeAgo}
-                    </span>
-                  </Link>
-                ))}
-              </div>
-            </div>
-          )}
-        </div>
-      )}
-
-      {/* Collapsed state - show icons only for recents */}
-      {!isExpanded && (
-        <div className="flex-1 flex flex-col items-center gap-1 py-2">
-          {/* Could show mini avatars or patient icons here */}
-        </div>
-      )}
+      {/* Spacer */}
+      <div className="flex-1" />
 
       {/* Theme Toggle */}
-      <div className={cn(
-        "px-2 py-2",
-        !isExpanded && "flex justify-center"
-      )}>
-        <Button
-          variant="ghost"
-          size="icon"
-          className="h-8 w-8 text-muted-foreground hover:text-foreground"
+      <div className="px-2 py-2">
+        <button
+          className={cn(
+            "flex items-center gap-3 rounded-lg px-3 py-2 text-sm text-muted-foreground hover:bg-muted hover:text-foreground transition-colors w-full",
+            !isExpanded && !mobileOpen && "justify-center px-0"
+          )}
           onClick={() => {
             if (theme === "light") setTheme("dark");
             else if (theme === "dark") setTheme("system");
@@ -201,18 +214,25 @@ export function Sidebar({ className }: SidebarProps) {
         >
           {mounted && (
             <>
-              {theme === "light" && <Sun className="h-5 w-5" />}
-              {theme === "dark" && <Moon className="h-5 w-5" />}
-              {theme === "system" && <Monitor className="h-5 w-5" />}
+              {theme === "light" && <Sun className="h-5 w-5 shrink-0" />}
+              {theme === "dark" && <Moon className="h-5 w-5 shrink-0" />}
+              {theme === "system" && <Monitor className="h-5 w-5 shrink-0" />}
             </>
           )}
-        </Button>
+          {(isExpanded || mobileOpen) && mounted && (
+            <span>
+              {theme === "light" && "Light"}
+              {theme === "dark" && "Dark"}
+              {theme === "system" && "System"}
+            </span>
+          )}
+        </button>
       </div>
 
       {/* Footer - User Profile */}
       <div ref={userMenuRef} className="relative border-t border-border">
         {showUserMenu && (
-          <div className="fixed inset-0 z-50 flex items-end justify-start p-4">
+          <div className="fixed inset-0 z-60 flex items-end justify-start p-4">
             <div
               className="absolute inset-0 bg-black/20"
               onClick={() => setShowUserMenu(false)}
@@ -238,19 +258,25 @@ export function Sidebar({ className }: SidebarProps) {
         <div
           className={cn(
             "flex items-center gap-3 w-full px-3 py-3",
-            !isExpanded && "justify-center"
+            !isExpanded && !mobileOpen && "justify-center"
           )}
         >
           <button
-            className="h-8 w-8 rounded-full bg-foreground text-background flex items-center justify-center text-sm font-medium shrink-0 hover:opacity-80 transition-opacity cursor-pointer"
+            className="h-8 w-8 rounded-full overflow-hidden shrink-0 hover:opacity-80 transition-opacity"
             onClick={() => setShowUserMenu(!showUserMenu)}
             aria-label="User menu"
           >
-            {userInitials}
+            <Image
+              src="/brand/avatars/admin-avatar-right-facing.png"
+              alt={userName}
+              width={32}
+              height={32}
+              className="h-full w-full object-cover"
+            />
           </button>
-          {isExpanded && (
+          {(isExpanded || mobileOpen) && (
             <button
-              className="flex-1 flex items-center justify-between min-w-0 cursor-pointer hover:opacity-80 transition-opacity"
+              className="flex-1 flex items-center justify-between min-w-0 hover:opacity-80 transition-opacity"
               onClick={() => setShowUserMenu(!showUserMenu)}
             >
               <span className="text-sm font-medium text-foreground truncate">
@@ -261,7 +287,54 @@ export function Sidebar({ className }: SidebarProps) {
           )}
         </div>
       </div>
-    </aside>
+    </>
+  );
+
+  return (
+    <>
+      {/* Mobile: floating toggle button (visible when sidebar is closed) */}
+      {!mobileOpen && (
+        <Button
+          variant="ghost"
+          size="icon"
+          className="fixed top-3 left-3 z-40 h-8 w-8 text-muted-foreground hover:text-foreground md:hidden"
+          onClick={() => setMobileOpen(true)}
+          aria-label="Open sidebar"
+        >
+          <PanelLeft className="h-5 w-5" />
+        </Button>
+      )}
+
+      {/* Mobile: backdrop */}
+      {mobileOpen && (
+        <div
+          className="fixed inset-0 z-40 bg-black/40 md:hidden"
+          onClick={closeMobile}
+        />
+      )}
+
+      {/* Mobile sidebar: overlay, slides in from left */}
+      <aside
+        className={cn(
+          "fixed inset-y-0 left-0 z-50 flex flex-col w-64 border-r border-border bg-background transition-transform duration-300 ease-in-out md:hidden",
+          mobileOpen ? "translate-x-0" : "-translate-x-full",
+          className,
+        )}
+      >
+        {sidebarContent}
+      </aside>
+
+      {/* Desktop sidebar: static, collapsible */}
+      <aside
+        className={cn(
+          "hidden md:flex flex-col h-screen sticky top-0 z-50 border-r border-border bg-background transition-all duration-300 ease-in-out",
+          isExpanded ? "w-64" : "w-14",
+          className
+        )}
+      >
+        {sidebarContent}
+      </aside>
+    </>
   );
 }
 

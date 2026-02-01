@@ -88,6 +88,10 @@ class ChatRequest(BaseModel):
         default=None,
         description="Model to use for generation. Defaults to server-side default.",
     )
+    reasoning_effort: Literal["low", "medium", "high"] | None = Field(
+        default=None,
+        description="Reasoning effort level. Defaults to server-side default.",
+    )
 
 
 class ChatResponse(BaseModel):
@@ -223,6 +227,7 @@ async def chat(
             context=chat_ctx.context,
             message=request.message,
             history=chat_ctx.history,
+            reasoning_effort=request.reasoning_effort,
         )
 
         return ChatResponse(
@@ -285,6 +290,7 @@ async def chat_stream(
                 context=chat_ctx.context,
                 message=request.message,
                 history=chat_ctx.history,
+                reasoning_effort=request.reasoning_effort,
             ):
                 if event_type == "done":
                     # Wrap with conversation_id — data_json is already valid JSON

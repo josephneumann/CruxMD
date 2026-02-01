@@ -1,5 +1,6 @@
 "use client";
 
+import { useState } from "react";
 import { Alert, AlertTitle, AlertDescription } from "@/components/ui/alert";
 import { cn } from "@/lib/utils";
 import type { Insight, InsightType } from "@/lib/types";
@@ -14,6 +15,7 @@ import {
   Pill,
   FileText,
   Stethoscope,
+  ChevronDown,
 } from "lucide-react";
 
 /**
@@ -80,6 +82,8 @@ export interface InsightCardProps {
   insight: Insight;
   /** Additional CSS classes */
   className?: string;
+  /** Start expanded (default: false) */
+  defaultExpanded?: boolean;
 }
 
 /**
@@ -91,7 +95,8 @@ export interface InsightCardProps {
  * - critical (red): Urgent clinical alerts
  * - positive (green): Favorable findings
  */
-export function InsightCard({ insight, className }: InsightCardProps) {
+export function InsightCard({ insight, className, defaultExpanded = false }: InsightCardProps) {
+  const [expanded, setExpanded] = useState(defaultExpanded);
   const { type, title, content, citations } = insight;
 
   // Validate type at runtime (in case of malformed data from API)
@@ -100,29 +105,44 @@ export function InsightCard({ insight, className }: InsightCardProps) {
   const styles = INSIGHT_STYLES[validType];
 
   return (
-    <Alert className={cn(styles, className)}>
+    <Alert className={cn(styles, "relative", className)}>
       <Icon className="h-4 w-4" />
-      <AlertTitle>{title}</AlertTitle>
-      <AlertDescription>
-        <p>{content}</p>
-        {citations && citations.length > 0 && (
-          <div className="mt-3 flex flex-wrap gap-2">
-            {citations.map((citation, index) => {
-              const citationType = detectCitationType(citation);
-              const CitationIcon = CITATION_ICONS[citationType];
-              return (
-                <span
-                  key={index}
-                  className="inline-flex items-center gap-1.5 rounded-md bg-background/50 dark:bg-background/30 px-2 py-1 text-xs text-muted-foreground"
-                >
-                  <CitationIcon className="size-3" />
-                  {citation}
-                </span>
-              );
-            })}
-          </div>
-        )}
-      </AlertDescription>
+      <div className="flex items-start justify-between gap-2">
+        <div className="flex-1 min-w-0">
+          <AlertTitle className="cursor-pointer select-none" onClick={() => setExpanded(!expanded)}>
+            {title}
+          </AlertTitle>
+          {expanded && (
+            <AlertDescription>
+              <p>{content}</p>
+              {citations && citations.length > 0 && (
+                <div className="mt-3 flex flex-wrap gap-2">
+                  {citations.map((citation, index) => {
+                    const citationType = detectCitationType(citation);
+                    const CitationIcon = CITATION_ICONS[citationType];
+                    return (
+                      <span
+                        key={index}
+                        className="inline-flex items-center gap-1.5 rounded-md bg-background/50 dark:bg-background/30 px-2 py-1 text-xs text-muted-foreground"
+                      >
+                        <CitationIcon className="size-3" />
+                        {citation}
+                      </span>
+                    );
+                  })}
+                </div>
+              )}
+            </AlertDescription>
+          )}
+        </div>
+        <button
+          onClick={() => setExpanded(!expanded)}
+          className="shrink-0 p-0.5 rounded text-muted-foreground hover:text-foreground transition-transform cursor-pointer"
+          aria-label={expanded ? "Collapse" : "Expand"}
+        >
+          <ChevronDown className={cn("h-4 w-4 transition-transform duration-200", expanded && "rotate-180")} />
+        </button>
+      </div>
     </Alert>
   );
 }

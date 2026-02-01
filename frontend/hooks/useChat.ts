@@ -16,6 +16,7 @@ import type {
   StreamDeltaEvent,
   StreamDoneEvent,
   StreamErrorEvent,
+  ReasoningEffort,
 } from "@/lib/types";
 import { isChatResponse, DEFAULT_MODEL } from "@/lib/types";
 
@@ -73,6 +74,10 @@ export interface UseChatReturn {
   model: ModelId;
   /** Change the model */
   setModel: (model: ModelId) => void;
+  /** Current reasoning effort level */
+  reasoningEffort: ReasoningEffort;
+  /** Change the reasoning effort */
+  setReasoningEffort: (effort: ReasoningEffort) => void;
 }
 
 /** Generate a unique message ID */
@@ -128,6 +133,7 @@ export function useChat(patientId: string | null): UseChatReturn {
   const [isLoading, setIsLoading] = useState(false);
   const [error, setError] = useState<ChatError | null>(null);
   const [model, setModel] = useState<ModelId>(DEFAULT_MODEL);
+  const [reasoningEffort, setReasoningEffort] = useState<ReasoningEffort>("medium");
 
   // Store conversation_id across messages
   const conversationIdRef = useRef<string | null>(null);
@@ -439,6 +445,7 @@ export function useChat(patientId: string | null): UseChatReturn {
           conversation_history:
             conversationHistory.length > 0 ? conversationHistory : undefined,
           model,
+          reasoning_effort: reasoningEffort !== "medium" ? reasoningEffort : undefined,
         };
 
         // Try streaming first, fall back to non-streaming
@@ -508,7 +515,7 @@ export function useChat(patientId: string | null): UseChatReturn {
         setIsLoading(false);
       }
     },
-    [patientId, model, sendStreaming, sendNonStreaming]
+    [patientId, model, reasoningEffort, sendStreaming, sendNonStreaming]
   );
 
   const retry = useCallback(async (): Promise<void> => {
@@ -528,5 +535,7 @@ export function useChat(patientId: string | null): UseChatReturn {
     cancelStream,
     model,
     setModel,
+    reasoningEffort,
+    setReasoningEffort,
   };
 }

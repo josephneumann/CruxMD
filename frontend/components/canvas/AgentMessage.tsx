@@ -4,6 +4,7 @@ import { useState, useEffect, useRef } from "react";
 import ReactMarkdown from "react-markdown";
 import remarkGfm from "remark-gfm";
 import { ChevronDown, ChevronUp, Clock, CircleCheck, Copy, ThumbsUp, ThumbsDown, RefreshCw, Check } from "lucide-react";
+import { Tooltip, TooltipTrigger, TooltipContent } from "@/components/ui/tooltip";
 import type { DisplayMessage } from "@/hooks";
 import { InsightCard } from "@/components/clinical/InsightCard";
 import { FollowUpSuggestions } from "./FollowUpSuggestions";
@@ -14,6 +15,8 @@ interface AgentMessageProps {
   onFollowUpSelect: (question: string) => void;
   /** Called during typewriter/animation so parent can auto-scroll */
   onContentGrow?: () => void;
+  /** Called to regenerate this response */
+  onRetry?: () => void;
 }
 
 const NARRATIVE_STYLES = [
@@ -104,7 +107,7 @@ const INSIGHT_SEVERITY_ORDER: Record<string, number> = {
 /** Stagger delay in ms between each insight card appearing */
 const INSIGHT_STAGGER_MS = 150;
 
-export function AgentMessage({ message, onFollowUpSelect, onContentGrow }: AgentMessageProps) {
+export function AgentMessage({ message, onFollowUpSelect, onContentGrow, onRetry }: AgentMessageProps) {
   const [thinkingExpanded, setThinkingExpanded] = useState(false);
   const agentResponse = message.agentResponse;
   const isStreaming = message.streaming && message.streaming.phase !== "done";
@@ -132,6 +135,7 @@ export function AgentMessage({ message, onFollowUpSelect, onContentGrow }: Agent
       onFollowUpSelect={onFollowUpSelect}
       animate={!!justFinished}
       onContentGrow={onContentGrow}
+      onRetry={onRetry}
     />
   );
 }
@@ -146,6 +150,7 @@ function AgentMessageInner({
   onFollowUpSelect,
   animate,
   onContentGrow,
+  onRetry,
 }: {
   narrativeContent: string;
   agentResponse?: DisplayMessage["agentResponse"];
@@ -156,6 +161,7 @@ function AgentMessageInner({
   onFollowUpSelect: (question: string) => void;
   animate: boolean;
   onContentGrow?: () => void;
+  onRetry?: () => void;
 }) {
   const { visibleText, done } = useTypewriter(narrativeContent, animate, onContentGrow);
   const showExtras = !animate || done;
@@ -193,7 +199,7 @@ function AgentMessageInner({
   return (
     <div className="mb-8 space-y-3">
       {/* Thinking section — Claude-style "Thought for Xs" */}
-      {showExtras && reasoningText && (
+      {reasoningText && (
         <button
           onClick={() => setThinkingExpanded(!thinkingExpanded)}
           className="flex items-center gap-2 text-xs text-muted-foreground hover:text-foreground transition-colors cursor-pointer"
@@ -231,9 +237,6 @@ function AgentMessageInner({
           <ReactMarkdown remarkPlugins={[remarkGfm]}>
             {visibleText}
           </ReactMarkdown>
-          {!done && (
-            <span className="inline-block w-1.5 h-4 bg-foreground/60 animate-pulse ml-0.5 align-text-bottom" />
-          )}
         </div>
       )}
 
@@ -252,7 +255,7 @@ function AgentMessageInner({
       )}
 
       {/* Message actions */}
-      {showExtras && <MessageActions narrativeContent={narrativeContent} />}
+      {showExtras && <MessageActions narrativeContent={narrativeContent} onRetry={onRetry} />}
 
       {/* Follow-up suggestions */}
       {showExtras && visibleInsightCount >= insights.length &&
@@ -266,8 +269,9 @@ function AgentMessageInner({
   );
 }
 
-function MessageActions({ narrativeContent }: { narrativeContent: string }) {
+function MessageActions({ narrativeContent, onRetry }: { narrativeContent: string; onRetry?: () => void }) {
   const [copied, setCopied] = useState(false);
+  const [feedback, setFeedback] = useState<"up" | "down" | null>(null);
 
   const handleCopy = async () => {
     try {
@@ -289,31 +293,50 @@ function MessageActions({ narrativeContent }: { narrativeContent: string }) {
 
   return (
     <div className="flex items-center gap-1 mt-2">
-      <button
-        onClick={handleCopy}
-        className="p-1.5 rounded-md text-muted-foreground hover:text-foreground hover:bg-muted transition-colors"
-        title="Copy response"
-      >
-        {copied ? <Check className="h-4 w-4" /> : <Copy className="h-4 w-4" />}
-      </button>
-      <button
-        className="p-1.5 rounded-md text-muted-foreground hover:text-foreground hover:bg-muted transition-colors"
-        title="Good response"
-      >
-        <ThumbsUp className="h-4 w-4" />
-      </button>
-      <button
-        className="p-1.5 rounded-md text-muted-foreground hover:text-foreground hover:bg-muted transition-colors"
-        title="Bad response"
-      >
-        <ThumbsDown className="h-4 w-4" />
-      </button>
-      <button
-        className="p-1.5 rounded-md text-muted-foreground hover:text-foreground hover:bg-muted transition-colors"
-        title="Retry"
-      >
-        <RefreshCw className="h-4 w-4" />
-      </button>
+      <Tooltip>
+        <TooltipTrigger asChild>
+          <button
+            onClick={handleCopy}
+            className="p-1.5 rounded-md text-muted-foreground hover:text-foreground hover:bg-muted transition-colors cursor-pointer"
+          >
+            {copied ? <Check className="h-4 w-4" /> : <Copy className="h-4 w-4" />}
+          </button>
+        </TooltipTrigger>
+        <TooltipContent side="bottom">Copy</TooltipContent>
+      </Tooltip>
+      <Tooltip>
+        <TooltipTrigger asChild>
+          <button
+            onClick={() => setFeedback(feedback === "up" ? null : "up")}
+            className={`p-1.5 rounded-md transition-colors cursor-pointer ${feedback === "up" ? "text-primary bg-primary/10" : "text-muted-foreground hover:text-foreground hover:bg-muted"}`}
+          >
+            <ThumbsUp className="h-4 w-4" />
+          </button>
+        </TooltipTrigger>
+        <TooltipContent side="bottom">Give positive feedback</TooltipContent>
+      </Tooltip>
+      <Tooltip>
+        <TooltipTrigger asChild>
+          <button
+            onClick={() => setFeedback(feedback === "down" ? null : "down")}
+            className={`p-1.5 rounded-md transition-colors cursor-pointer ${feedback === "down" ? "text-destructive bg-destructive/10" : "text-muted-foreground hover:text-foreground hover:bg-muted"}`}
+          >
+            <ThumbsDown className="h-4 w-4" />
+          </button>
+        </TooltipTrigger>
+        <TooltipContent side="bottom">Give negative feedback</TooltipContent>
+      </Tooltip>
+      <Tooltip>
+        <TooltipTrigger asChild>
+          <button
+            onClick={onRetry}
+            className="p-1.5 rounded-md text-muted-foreground hover:text-foreground hover:bg-muted transition-colors cursor-pointer"
+          >
+            <RefreshCw className="h-4 w-4" />
+          </button>
+        </TooltipTrigger>
+        <TooltipContent side="bottom">Retry</TooltipContent>
+      </Tooltip>
     </div>
   );
 }
