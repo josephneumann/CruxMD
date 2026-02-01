@@ -7,6 +7,8 @@ import {
   AlertCircle,
   MessageSquare,
   Brain,
+  Github,
+  Palette,
 } from "lucide-react";
 import { Button } from "@/components/ui/button";
 import { Card, CardHeader, CardTitle, CardContent } from "@/components/ui/card";
@@ -244,15 +246,15 @@ export default function Home() {
         </section>
 
         {/* Final CTA */}
-        <section className="bg-muted dark:bg-muted/50 border-t border-border px-8 py-16 md:py-20">
-          <div className="max-w-2xl mx-auto text-center">
-            <Image
-              src="/brand/medical-office-2.png"
-              alt="CruxMD medical office"
-              width={600}
-              height={400}
-              className="mx-auto mb-8 rounded-xl opacity-80"
-            />
+        <section className="relative border-t border-border px-8 py-20 md:py-28 overflow-hidden">
+          <Image
+            src="/brand/medical-office-2.png"
+            alt=""
+            fill
+            className="object-cover object-center"
+          />
+          <div className="absolute inset-0 bg-background/75 dark:bg-background/85" />
+          <div className="relative z-10 max-w-2xl mx-auto text-center">
             <h2 className="text-2xl md:text-3xl font-medium text-foreground mb-2">
               Hire CruxMD to your staff
             </h2>
@@ -283,13 +285,22 @@ export default function Home() {
             height={24}
             className="hidden dark:block"
           />
-          <nav className="flex gap-6 text-sm text-muted-foreground">
-            <Link
-              href="/design"
-              className="hover:text-foreground transition-colors"
-            >
-              Design System
-            </Link>
+          <nav className="flex items-center gap-2">
+            <Button variant="ghost" size="icon" asChild>
+              <Link href="/design" aria-label="Design System">
+                <Palette className="size-5" />
+              </Link>
+            </Button>
+            <Button variant="ghost" size="icon" asChild>
+              <a
+                href="https://github.com/josephneumann/CruxMD"
+                target="_blank"
+                rel="noopener noreferrer"
+                aria-label="View on GitHub"
+              >
+                <Github className="size-5" />
+              </a>
+            </Button>
           </nav>
         </div>
         <p className="text-center text-xs text-muted-foreground mt-6">
