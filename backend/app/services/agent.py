@@ -8,7 +8,9 @@ Uses the OpenAI Responses API with Pydantic structured outputs for type-safe
 response parsing.
 """
 
+import json
 import logging
+from collections.abc import AsyncGenerator
 from typing import Any, Literal
 
 from openai import AsyncOpenAI
@@ -418,3 +420,68 @@ class AgentService:
         )
 
         return agent_response
+
+    async def generate_response_stream(
+        self,
+        context: PatientContext,
+        message: str,
+        history: list[dict[str, str]] | None = None,
+        reasoning_effort: Literal["low", "medium", "high"] | None = None,
+    ) -> AsyncGenerator[tuple[str, str], None]:
+        """Stream a structured response, yielding deltas as they arrive.
+
+        Yields (event_type, data_json) tuples:
+          - ("reasoning", json) for reasoning summary text deltas
+          - ("narrative", json) for output text deltas
+
+        After all deltas, yields ("done", json) with the final parsed AgentResponse.
+
+        Args:
+            context: PatientContext with verified facts and retrieved resources
+            message: The user's question or message
+            history: Optional conversation history
+            reasoning_effort: Override default reasoning effort for this call
+
+        Raises:
+            ValueError: If message is empty
+        """
+        if not message or not message.strip():
+            raise ValueError("message cannot be empty")
+
+        input_messages = self._build_input_messages(context, message, history)
+        effort = reasoning_effort or self._reasoning_effort
+
+        logger.debug(
+            f"Streaming response with model={self._model}, "
+            f"{len(input_messages)} messages, reasoning_effort={effort}"
+        )
+
+        kwargs: dict[str, Any] = {
+            "model": self._model,
+            "input": input_messages,
+            "text_format": AgentResponse,
+            "max_output_tokens": self._max_output_tokens,
+            "reasoning": Reasoning(effort=effort),
+        }
+
+        async with self._client.responses.stream(**kwargs) as stream:
+            async for event in stream:
+                if event.type == "response.reasoning_summary_text.delta":
+                    yield ("reasoning", json.dumps({"delta": event.delta}))
+                elif event.type == "response.output_text.delta":
+                    yield ("narrative", json.dumps({"delta": event.delta}))
+
+            final = await stream.get_final_response()
+
+        agent_response = final.output_parsed
+        if agent_response is None:
+            raw_output = getattr(final, "output_text", None)
+            if raw_output:
+                agent_response = AgentResponse.model_validate_json(raw_output)
+            else:
+                raise RuntimeError(
+                    "LLM response could not be parsed. "
+                    "Neither structured output nor raw text was available."
+                )
+
+        yield ("done", agent_response.model_dump_json())

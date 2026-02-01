@@ -3,6 +3,7 @@
 Tests LLM agent service with mocked OpenAI client to avoid real API calls.
 """
 
+import json
 import uuid
 from unittest.mock import AsyncMock, MagicMock, patch
 
@@ -649,6 +650,133 @@ class TestAgentServiceGenerateResponse:
 
         # system + 2 valid history + current = 4
         assert len(input_messages) == 4
+
+
+def create_mock_stream(response: AgentResponse | None = None):
+    """Create a mock stream context manager with reasoning and text delta events."""
+    if response is None:
+        response = create_mock_agent_response()
+
+    reasoning_event = MagicMock()
+    reasoning_event.type = "response.reasoning_summary_text.delta"
+    reasoning_event.delta = "thinking about diabetes"
+
+    text_event = MagicMock()
+    text_event.type = "response.output_text.delta"
+    text_event.delta = "The patient has diabetes."
+
+    # Build the async iterator for events
+    async def mock_aiter(self):
+        yield reasoning_event
+        yield text_event
+
+    mock_final = MagicMock()
+    mock_final.output_parsed = response
+    mock_final.output_text = response.model_dump_json()
+
+    stream = AsyncMock()
+    stream.__aiter__ = mock_aiter
+    stream.get_final_response = AsyncMock(return_value=mock_final)
+
+    ctx = AsyncMock()
+    ctx.__aenter__ = AsyncMock(return_value=stream)
+    ctx.__aexit__ = AsyncMock(return_value=False)
+
+    return ctx
+
+
+class TestAgentServiceGenerateResponseStream:
+    """Tests for AgentService.generate_response_stream method."""
+
+    @pytest.mark.asyncio
+    async def test_stream_yields_reasoning_and_narrative(self, full_context: PatientContext):
+        """Test that stream yields reasoning and narrative deltas then done."""
+        mock_client = AsyncMock()
+        expected = create_mock_agent_response()
+        mock_client.responses.stream = MagicMock(return_value=create_mock_stream(expected))
+
+        service = AgentService(client=mock_client)
+
+        events = []
+        async for event_type, data in service.generate_response_stream(
+            context=full_context,
+            message="What about diabetes?",
+        ):
+            events.append((event_type, data))
+
+        assert events[0][0] == "reasoning"
+        assert json.loads(events[0][1])["delta"] == "thinking about diabetes"
+
+        assert events[1][0] == "narrative"
+        assert json.loads(events[1][1])["delta"] == "The patient has diabetes."
+
+        assert events[2][0] == "done"
+        done_data = AgentResponse.model_validate_json(events[2][1])
+        assert done_data.narrative == expected.narrative
+
+    @pytest.mark.asyncio
+    async def test_stream_empty_message_raises(self, minimal_context: PatientContext):
+        """Test that empty message raises ValueError."""
+        mock_client = AsyncMock()
+        service = AgentService(client=mock_client)
+
+        with pytest.raises(ValueError, match="message cannot be empty"):
+            async for _ in service.generate_response_stream(
+                context=minimal_context, message=""
+            ):
+                pass
+
+    @pytest.mark.asyncio
+    async def test_stream_passes_correct_kwargs(self, minimal_context: PatientContext):
+        """Test that stream call uses same params as generate_response."""
+        mock_client = AsyncMock()
+        mock_client.responses.stream = MagicMock(
+            return_value=create_mock_stream()
+        )
+
+        service = AgentService(client=mock_client, model="gpt-5.2-preview", reasoning_effort="high")
+
+        async for _ in service.generate_response_stream(
+            context=minimal_context,
+            message="Test question",
+        ):
+            pass
+
+        call_args = mock_client.responses.stream.call_args
+        assert call_args.kwargs["model"] == "gpt-5.2-preview"
+        assert call_args.kwargs["text_format"] is AgentResponse
+        reasoning = call_args.kwargs["reasoning"]
+        effort = getattr(reasoning, "effort", None) or reasoning.get("effort")
+        assert effort == "high"
+
+    @pytest.mark.asyncio
+    async def test_stream_fallback_on_none_parsed(self, minimal_context: PatientContext):
+        """Test fallback when structured parsing returns None."""
+        mock_client = AsyncMock()
+        expected = create_mock_agent_response()
+
+        ctx = create_mock_stream(expected)
+        # Make output_parsed None on the final response
+        stream_obj = await ctx.__aenter__()
+        final = await stream_obj.get_final_response()
+        final.output_parsed = None
+        final.output_text = expected.model_dump_json()
+
+        mock_client.responses.stream = MagicMock(return_value=ctx)
+
+        service = AgentService(client=mock_client)
+
+        events = []
+        async for event_type, data in service.generate_response_stream(
+            context=minimal_context,
+            message="Test",
+        ):
+            events.append((event_type, data))
+
+        done_events = [e for e in events if e[0] == "done"]
+        assert len(done_events) == 1
+        parsed = AgentResponse.model_validate_json(done_events[0][1])
+        assert parsed.narrative == expected.narrative
 
 
 class TestAgentServiceClose:
