@@ -4,21 +4,23 @@
 
 // Clinical reasoning verbs for thinking animation
 export const THINKING_VERBS = [
-  "Researching",
-  "Reviewing history",
-  "Considering differential",
-  "Analyzing labs",
-  "Cross-referencing",
-  "Refining thinking",
-  "Ruling out",
-  "Synthesizing",
-  "Correlating findings",
-  "Checking interactions",
+  "Starting context engine",
+  "Traversing knowledge graph",
+  "Expanding the graph",
+  "Running semantic search",
+  "Compiling FHIR resources",
+  "Assembling clinical guidelines",
+  "Completing clinical review",
   "Cogitating",
-  "Introspecting",
   "Discombobulating",
   "Reflecting",
   "Meditating",
+  "Introspecting",
+  "Thinking again",
+  "Considering alternatives",
+  "Checking my work",
+  "Resolving gaps",
+  "Exploring further",
 ] as const;
 
 // Streaming text animation timing

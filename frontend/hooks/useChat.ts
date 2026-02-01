@@ -27,6 +27,8 @@ export interface StreamingState {
   phase: StreamPhase;
   reasoningText: string;
   narrativeText: string;
+  /** How long reasoning took in ms (set when phase transitions to done) */
+  reasoningDurationMs?: number;
 }
 
 /** Extended message type that includes agent response metadata */
@@ -139,6 +141,9 @@ export function useChat(patientId: string | null): UseChatReturn {
   // AbortController for cancelling in-flight streams
   const abortControllerRef = useRef<AbortController | null>(null);
 
+  // Track when reasoning started for duration calculation
+  const reasoningStartRef = useRef<number | null>(null);
+
   // Ref to access latest messages without adding to dependency arrays
   const messagesRef = useRef<DisplayMessage[]>(messages);
   messagesRef.current = messages;
@@ -237,6 +242,11 @@ export function useChat(patientId: string | null): UseChatReturn {
               const parsed = data as StreamDeltaEvent;
               const phase = evt.event as StreamPhase;
 
+              // Track when reasoning first starts
+              if (phase === "reasoning" && reasoningStartRef.current === null) {
+                reasoningStartRef.current = Date.now();
+              }
+
               setMessages((prev) => {
                 const idx = prev.findIndex((m) => m.id === assistantMessageId);
                 if (idx === -1) return prev;
@@ -265,6 +275,11 @@ export function useChat(patientId: string | null): UseChatReturn {
               const parsed = data as StreamDoneEvent;
               conversationIdRef.current = parsed.conversation_id;
 
+              const reasoningDurationMs = reasoningStartRef.current
+                ? Date.now() - reasoningStartRef.current
+                : undefined;
+              reasoningStartRef.current = null;
+
               setMessages((prev) => {
                 const idx = prev.findIndex((m) => m.id === assistantMessageId);
                 if (idx === -1) return prev;
@@ -278,6 +293,7 @@ export function useChat(patientId: string | null): UseChatReturn {
                     phase: "done" as StreamPhase,
                     reasoningText: msg.streaming?.reasoningText ?? "",
                     narrativeText: parsed.response.narrative,
+                    reasoningDurationMs,
                   },
                   pending: false,
                 };

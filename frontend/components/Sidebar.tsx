@@ -84,7 +84,7 @@ export function Sidebar({ className }: SidebarProps) {
   return (
     <aside
       className={cn(
-        "flex flex-col h-screen border-r border-border bg-background transition-all duration-300 ease-in-out",
+        "flex flex-col h-screen sticky top-0 border-r border-border bg-background transition-all duration-300 ease-in-out",
         isExpanded ? "w-64" : "w-14",
         className
       )}
