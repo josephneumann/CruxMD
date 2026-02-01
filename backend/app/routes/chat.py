@@ -287,17 +287,21 @@ async def chat_stream(
                 history=chat_ctx.history,
             ):
                 if event_type == "done":
-                    # Wrap with conversation_id
-                    response_data = json.loads(data_json)
-                    done_payload = json.dumps({
-                        "conversation_id": str(chat_ctx.conversation_id),
-                        "response": response_data,
-                    })
+                    # Wrap with conversation_id — data_json is already valid JSON
+                    done_payload = f'{{"conversation_id":"{chat_ctx.conversation_id}","response":{data_json}}}'
                     yield f"event: done\ndata: {done_payload}\n\n"
                 else:
                     yield f"event: {event_type}\ndata: {data_json}\n\n"
+        except ValueError as e:
+            logger.error("ValueError in chat stream: %s", e, exc_info=True)
+            error_payload = json.dumps({"detail": "Invalid request parameters."})
+            yield f"event: error\ndata: {error_payload}\n\n"
+        except RuntimeError:
+            logger.error("Agent response parsing failed in stream", exc_info=True)
+            error_payload = json.dumps({"detail": "Failed to generate response."})
+            yield f"event: error\ndata: {error_payload}\n\n"
         except Exception:
-            logger.exception("Error during chat stream")
+            logger.exception("Unexpected error during chat stream")
             error_payload = json.dumps({"detail": "An error occurred during streaming."})
             yield f"event: error\ndata: {error_payload}\n\n"
         finally:
