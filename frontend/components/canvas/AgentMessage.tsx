@@ -34,6 +34,9 @@ const NARRATIVE_STYLES = [
 export function AgentMessage({ message, onFollowUpSelect }: AgentMessageProps) {
   const [thinkingExpanded, setThinkingExpanded] = useState(false);
   const agentResponse = message.agentResponse;
+  const streaming = message.streaming;
+  const isStreaming = streaming && streaming.phase !== "done";
+  const isNarrativePhase = streaming?.phase === "narrative";
 
   return (
     <div className="mb-8 space-y-3">
@@ -61,14 +64,19 @@ export function AgentMessage({ message, onFollowUpSelect }: AgentMessageProps) {
       )}
 
       {/* Narrative (markdown) */}
-      <div className={NARRATIVE_STYLES}>
-        <ReactMarkdown remarkPlugins={[remarkGfm]}>
-          {message.content}
-        </ReactMarkdown>
-      </div>
+      {(message.content || isNarrativePhase) && (
+        <div className={NARRATIVE_STYLES}>
+          <ReactMarkdown remarkPlugins={[remarkGfm]}>
+            {message.content}
+          </ReactMarkdown>
+          {isNarrativePhase && (
+            <span className="inline-block w-1.5 h-4 bg-foreground/60 animate-pulse ml-0.5 align-text-bottom" />
+          )}
+        </div>
+      )}
 
-      {/* Insights */}
-      {agentResponse?.insights && agentResponse.insights.length > 0 && (
+      {/* Insights — hidden while streaming */}
+      {!isStreaming && agentResponse?.insights && agentResponse.insights.length > 0 && (
         <div className="space-y-2 mt-4">
           {agentResponse.insights.map((insight, index) => (
             <InsightCard key={index} insight={insight} />
@@ -76,8 +84,8 @@ export function AgentMessage({ message, onFollowUpSelect }: AgentMessageProps) {
         </div>
       )}
 
-      {/* Follow-up suggestions */}
-      {agentResponse?.follow_ups && agentResponse.follow_ups.length > 0 && (
+      {/* Follow-up suggestions — hidden while streaming */}
+      {!isStreaming && agentResponse?.follow_ups && agentResponse.follow_ups.length > 0 && (
         <FollowUpSuggestions
           followUps={agentResponse.follow_ups}
           onSelect={onFollowUpSelect}

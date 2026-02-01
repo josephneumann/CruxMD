@@ -44,7 +44,16 @@ export function MessageHistory({
           )
         )}
 
-        {isLoading && <ThinkingIndicator />}
+        {isLoading && (() => {
+          const streamingMsg = messages.find(
+            (m) => m.streaming && m.streaming.phase === "reasoning"
+          );
+          return (
+            <ThinkingIndicator
+              reasoningText={streamingMsg?.streaming?.reasoningText}
+            />
+          );
+        })()}
 
         {/* Crux mark — spinning while loading, static when idle */}
         <div className="flex justify-start mt-2 mb-4">
