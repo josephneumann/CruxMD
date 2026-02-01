@@ -11,7 +11,7 @@ interface ConversationalCanvasProps {
 }
 
 export function ConversationalCanvas({ patientId, initialMessage }: ConversationalCanvasProps) {
-  const { messages, sendMessage, isLoading, error, clearError, retry } = useChat(patientId);
+  const { messages, sendMessage, isLoading, error, clearError, retry, model, setModel } = useChat(patientId);
   const [inputValue, setInputValue] = useState("");
   const [lottieData, setLottieData] = useState<object | null>(null);
   const initialSentRef = useRef(false);
@@ -96,7 +96,10 @@ export function ConversationalCanvas({ patientId, initialMessage }: Conversation
         value={inputValue}
         onChange={setInputValue}
         onSubmit={handleSubmit}
-        disabled={isLoading || !patientId}
+        isLoading={isLoading}
+        disabled={!patientId}
+        model={model}
+        onModelChange={setModel}
       />
     </div>
   );

@@ -11,8 +11,9 @@ import type {
   ChatRequest,
   ChatResponse,
   AgentResponse,
+  ModelId,
 } from "@/lib/types";
-import { isChatResponse } from "@/lib/types";
+import { isChatResponse, DEFAULT_MODEL } from "@/lib/types";
 
 /** Extended message type that includes agent response metadata */
 export interface DisplayMessage extends ChatMessage {
@@ -48,6 +49,10 @@ export interface UseChatReturn {
   retry: () => Promise<void>;
   /** Clear all messages and start fresh */
   clearMessages: () => void;
+  /** Currently selected model */
+  model: ModelId;
+  /** Change the model */
+  setModel: (model: ModelId) => void;
 }
 
 /** Generate a unique message ID */
@@ -84,6 +89,7 @@ export function useChat(patientId: string | null): UseChatReturn {
   const [messages, setMessages] = useState<DisplayMessage[]>([]);
   const [isLoading, setIsLoading] = useState(false);
   const [error, setError] = useState<ChatError | null>(null);
+  const [model, setModel] = useState<ModelId>(DEFAULT_MODEL);
 
   // Store conversation_id across messages
   const conversationIdRef = useRef<string | null>(null);
@@ -165,6 +171,7 @@ export function useChat(patientId: string | null): UseChatReturn {
           conversation_id: conversationIdRef.current ?? undefined,
           conversation_history:
             conversationHistory.length > 0 ? conversationHistory : undefined,
+          model,
         };
 
         // Make API call to Next.js API route
@@ -249,7 +256,7 @@ export function useChat(patientId: string | null): UseChatReturn {
         setIsLoading(false);
       }
     },
-    [patientId, messages]
+    [patientId, messages, model]
   );
 
   const retry = useCallback(async (): Promise<void> => {
@@ -266,5 +273,7 @@ export function useChat(patientId: string | null): UseChatReturn {
     clearError,
     retry,
     clearMessages,
+    model,
+    setModel,
   };
 }

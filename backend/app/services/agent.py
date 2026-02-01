@@ -20,7 +20,10 @@ from app.schemas import AgentResponse, PatientContext
 logger = logging.getLogger(__name__)
 
 # Default model for agent responses
-DEFAULT_MODEL = "gpt-5.2"
+DEFAULT_MODEL = "gpt-4o"
+
+# Models that support reasoning effort parameter
+REASONING_MODELS = {"gpt-5.2", "o1", "o1-mini", "o1-preview", "o3-mini"}
 
 # Default reasoning effort (low for fast responses)
 DEFAULT_REASONING_EFFORT: Literal["low", "medium", "high"] = "low"
@@ -382,19 +385,24 @@ class AgentService:
 
         input_messages = self._build_input_messages(context, message, history)
         effort = reasoning_effort or self._reasoning_effort
+        is_reasoning_model = self._model in REASONING_MODELS
 
         logger.debug(
-            f"Generating response with {len(input_messages)} messages, "
-            f"reasoning_effort={effort}"
+            f"Generating response with model={self._model}, "
+            f"{len(input_messages)} messages, reasoning={is_reasoning_model}"
         )
 
-        response = await self._client.responses.parse(
-            model=self._model,
-            input=input_messages,
-            text_format=AgentResponse,
-            reasoning=Reasoning(effort=effort),
-            max_output_tokens=self._max_output_tokens,
-        )
+        # Only pass reasoning param for models that support it
+        kwargs: dict[str, Any] = {
+            "model": self._model,
+            "input": input_messages,
+            "text_format": AgentResponse,
+            "max_output_tokens": self._max_output_tokens,
+        }
+        if is_reasoning_model:
+            kwargs["reasoning"] = Reasoning(effort=effort)
+
+        response = await self._client.responses.parse(**kwargs)
 
         agent_response = response.output_parsed
 

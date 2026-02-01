@@ -29,12 +29,24 @@ export interface ChatMessage {
   content: string;
 }
 
+/** Available model options for the chat */
+export const MODEL_OPTIONS = [
+  { id: "gpt-4o", label: "GPT-4o", description: "Fast and capable" },
+  { id: "gpt-4o-mini", label: "GPT-4o mini", description: "Fastest responses" },
+  { id: "gpt-5.2", label: "GPT-5.2", description: "Deep reasoning" },
+] as const;
+
+export type ModelId = (typeof MODEL_OPTIONS)[number]["id"];
+
+export const DEFAULT_MODEL: ModelId = "gpt-4o";
+
 /** Request body for POST /api/chat */
 export interface ChatRequest {
   patient_id: string;
   message: string;
   conversation_id?: string;
   conversation_history?: ChatMessage[];
+  model?: string;
 }
 
 /** Response wrapper from POST /api/chat */

@@ -78,10 +78,10 @@ export default function ChatPage() {
 
               {/* Right toolbar */}
               <div className="flex items-center gap-2">
-                <button className="flex items-center gap-1 text-sm text-muted-foreground hover:text-foreground transition-colors">
-                  Opus 4.5
+                <span className="flex items-center gap-1 text-sm text-muted-foreground">
+                  GPT-4o
                   <ChevronDown className="h-3 w-3" />
-                </button>
+                </span>
                 <Button
                   size="icon"
                   className="h-8 w-8 rounded-lg"

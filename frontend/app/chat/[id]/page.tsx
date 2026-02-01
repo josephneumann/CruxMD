@@ -46,7 +46,7 @@ export default function ChatSessionPage() {
 
       <main className="flex-1 flex flex-col min-h-0">
         {/* Patient context bar */}
-        <div className="border-b border-border px-4 py-3">
+        <div className="sticky top-0 z-10 border-b border-border bg-background px-4 py-3">
           <div className="max-w-3xl mx-auto">
             <PatientSelector
               patients={patients}

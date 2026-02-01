@@ -80,6 +80,10 @@ class ChatRequest(BaseModel):
         max_length=MAX_CONVERSATION_HISTORY,
         description="Optional previous messages in the conversation",
     )
+    model: str | None = Field(
+        default=None,
+        description="Model to use for generation. Defaults to server-side default.",
+    )
 
 
 class ChatResponse(BaseModel):
@@ -135,7 +139,7 @@ async def chat(
     graph = KnowledgeGraph()
     embedding_service = EmbeddingService()
     vector_search = VectorSearchService(db)
-    agent = AgentService()
+    agent = AgentService(model=request.model) if request.model else AgentService()
 
     try:
         context_engine = ContextEngine(
