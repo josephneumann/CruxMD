@@ -33,6 +33,7 @@ docker compose up -d             # Start in background
 - **FHIR-native by default** — Store and pass raw FHIR JSON. Only extract specific fields when there's a concrete performance or UX need.
 - **LLM decides, UI renders** — When tempted to add a new page or predefined view, ask: "Could the agent generate this dynamically?" If yes, don't build the static version.
 - **Follow conventional commits** — `feat:`, `fix:`, `docs:`, `refactor:`, etc.
+- **NEVER merge a PR without explicit user confirmation** — Always ask and wait for approval before running `gh pr merge` or any equivalent.
 
 ## Commands
 
