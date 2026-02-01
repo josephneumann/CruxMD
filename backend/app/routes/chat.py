@@ -1,10 +1,13 @@
 """Chat API routes for clinical reasoning agent."""
 
+import json
 import logging
 import uuid
+from dataclasses import dataclass
 from typing import Literal
 
 from fastapi import APIRouter, Depends, HTTPException, status
+from fastapi.responses import StreamingResponse
 from pydantic import BaseModel, Field
 from sqlalchemy import select
 from sqlalchemy.ext.asyncio import AsyncSession
@@ -13,6 +16,7 @@ from app.auth import verify_bearer_token
 from app.database import get_db
 from app.models import FhirResource
 from app.schemas import AgentResponse
+from app.schemas.context import PatientContext
 from app.services.agent import AgentService
 from app.services.context_engine import ContextEngine
 from app.services.embeddings import EmbeddingService
@@ -93,6 +97,100 @@ class ChatResponse(BaseModel):
     response: AgentResponse = Field(description="Agent's structured response")
 
 
+@dataclass
+class ChatContext:
+    """Prepared context for chat endpoints."""
+
+    conversation_id: uuid.UUID
+    context: PatientContext
+    history: list[dict[str, str]] | None
+    graph: KnowledgeGraph
+    embedding_service: EmbeddingService
+    agent: AgentService
+
+    async def cleanup(self) -> None:
+        """Close all services."""
+        await self.graph.close()
+        await self.embedding_service.close()
+        await self.agent.close()
+
+
+async def _prepare_chat_context(
+    request: ChatRequest,
+    db: AsyncSession,
+) -> ChatContext:
+    """Validate patient, build context, and initialize services.
+
+    Shared setup used by both /chat and /chat/stream endpoints.
+
+    Args:
+        request: Chat request with patient_id, message, and optional history.
+        db: Database session.
+
+    Returns:
+        ChatContext with all prepared services and context.
+
+    Raises:
+        HTTPException: 404 if patient not found.
+    """
+    conversation_id = request.conversation_id or uuid.uuid4()
+
+    # Validate patient exists FIRST (before initializing expensive services)
+    stmt = select(FhirResource).where(
+        FhirResource.id == request.patient_id,
+        FhirResource.resource_type == "Patient",
+    )
+    result = await db.execute(stmt)
+    patient_resource = result.scalar_one_or_none()
+
+    if patient_resource is None:
+        raise HTTPException(
+            status_code=status.HTTP_404_NOT_FOUND,
+            detail="Patient not found",
+        )
+
+    # Initialize services
+    graph = KnowledgeGraph()
+    embedding_service = EmbeddingService()
+    vector_search = VectorSearchService(db)
+    agent = AgentService(model=request.model) if request.model else AgentService()
+
+    context_engine = ContextEngine(
+        graph=graph,
+        embedding_service=embedding_service,
+        vector_search=vector_search,
+    )
+
+    # Extract patient profile summary if available
+    profile = get_patient_profile(patient_resource.data)
+    profile_summary = _format_profile_summary(profile) if profile else None
+
+    # Build patient context with the patient resource
+    context = await context_engine.build_context_with_patient(
+        patient_id=str(request.patient_id),
+        patient_resource=patient_resource.data,
+        query=request.message,
+        profile_summary=profile_summary,
+    )
+
+    # Convert conversation history to the format expected by AgentService
+    history = None
+    if request.conversation_history:
+        history = [
+            {"role": msg.role, "content": msg.content}
+            for msg in request.conversation_history
+        ]
+
+    return ChatContext(
+        conversation_id=conversation_id,
+        context=context,
+        history=history,
+        graph=graph,
+        embedding_service=embedding_service,
+        agent=agent,
+    )
+
+
 @router.post("", response_model=ChatResponse)
 async def chat(
     request: ChatRequest,
@@ -118,91 +216,102 @@ async def chat(
     Raises:
         HTTPException: 404 if patient not found, 500 on agent errors.
     """
-    # Generate conversation_id if not provided
-    conversation_id = request.conversation_id or uuid.uuid4()
-
-    # Validate patient exists FIRST (before initializing expensive services)
-    stmt = select(FhirResource).where(
-        FhirResource.id == request.patient_id,
-        FhirResource.resource_type == "Patient",
-    )
-    result = await db.execute(stmt)
-    patient_resource = result.scalar_one_or_none()
-
-    if patient_resource is None:
-        raise HTTPException(
-            status_code=status.HTTP_404_NOT_FOUND,
-            detail="Patient not found",
-        )
-
-    # Initialize services inside try block for proper cleanup
-    graph = KnowledgeGraph()
-    embedding_service = EmbeddingService()
-    vector_search = VectorSearchService(db)
-    agent = AgentService(model=request.model) if request.model else AgentService()
+    chat_ctx = await _prepare_chat_context(request, db)
 
     try:
-        context_engine = ContextEngine(
-            graph=graph,
-            embedding_service=embedding_service,
-            vector_search=vector_search,
-        )
-
-        # Extract patient profile summary if available
-        profile = get_patient_profile(patient_resource.data)
-        profile_summary = _format_profile_summary(profile) if profile else None
-
-        # Build patient context with the patient resource
-        context = await context_engine.build_context_with_patient(
-            patient_id=str(request.patient_id),
-            patient_resource=patient_resource.data,
-            query=request.message,
-            profile_summary=profile_summary,
-        )
-
-        # Convert conversation history to the format expected by AgentService
-        history = None
-        if request.conversation_history:
-            history = [
-                {"role": msg.role, "content": msg.content}
-                for msg in request.conversation_history
-            ]
-
-        # Generate response
-        agent_response = await agent.generate_response(
-            context=context,
+        agent_response = await chat_ctx.agent.generate_response(
+            context=chat_ctx.context,
             message=request.message,
-            history=history,
+            history=chat_ctx.history,
         )
 
         return ChatResponse(
-            conversation_id=conversation_id,
+            conversation_id=chat_ctx.conversation_id,
             response=agent_response,
         )
 
     except ValueError as e:
-        # Validation errors from AgentService - don't expose internal details
         logger.error("ValueError in chat endpoint: %s", e, exc_info=True)
         raise HTTPException(
             status_code=status.HTTP_400_BAD_REQUEST,
             detail="Invalid request parameters",
         )
     except RuntimeError:
-        # LLM parsing failures - log but don't expose details
         logger.error("Agent response parsing failed", exc_info=True)
         raise HTTPException(
             status_code=status.HTTP_500_INTERNAL_SERVER_ERROR,
             detail="Failed to generate response. Please try again.",
         )
     except Exception:
-        # Catch-all for unexpected errors - log with stack trace
         logger.exception("Unexpected error in chat endpoint")
         raise HTTPException(
             status_code=status.HTTP_500_INTERNAL_SERVER_ERROR,
             detail="An unexpected error occurred.",
         )
     finally:
-        # Clean up services
-        await graph.close()
-        await embedding_service.close()
-        await agent.close()
+        await chat_ctx.cleanup()
+
+
+@router.post("/stream")
+async def chat_stream(
+    request: ChatRequest,
+    db: AsyncSession = Depends(get_db),
+    _user_id: str = Depends(verify_bearer_token),
+) -> StreamingResponse:
+    """Stream a chat response as Server-Sent Events.
+
+    SSE event types:
+    - event: reasoning — reasoning summary text deltas
+    - event: narrative — output text deltas
+    - event: done — final AgentResponse with conversation_id
+    - event: error — error details
+
+    Args:
+        request: Chat request with patient_id, message, and optional history.
+        db: Database session (injected).
+        _user_id: Authenticated user ID (injected).
+
+    Returns:
+        StreamingResponse with SSE events.
+
+    Raises:
+        HTTPException: 404 if patient not found.
+    """
+    chat_ctx = await _prepare_chat_context(request, db)
+
+    async def event_generator():
+        try:
+            async for event_type, data_json in chat_ctx.agent.generate_response_stream(
+                context=chat_ctx.context,
+                message=request.message,
+                history=chat_ctx.history,
+            ):
+                if event_type == "done":
+                    # Wrap with conversation_id — data_json is already valid JSON
+                    done_payload = f'{{"conversation_id":"{chat_ctx.conversation_id}","response":{data_json}}}'
+                    yield f"event: done\ndata: {done_payload}\n\n"
+                else:
+                    yield f"event: {event_type}\ndata: {data_json}\n\n"
+        except ValueError as e:
+            logger.error("ValueError in chat stream: %s", e, exc_info=True)
+            error_payload = json.dumps({"detail": "Invalid request parameters."})
+            yield f"event: error\ndata: {error_payload}\n\n"
+        except RuntimeError:
+            logger.error("Agent response parsing failed in stream", exc_info=True)
+            error_payload = json.dumps({"detail": "Failed to generate response."})
+            yield f"event: error\ndata: {error_payload}\n\n"
+        except Exception:
+            logger.exception("Unexpected error during chat stream")
+            error_payload = json.dumps({"detail": "An error occurred during streaming."})
+            yield f"event: error\ndata: {error_payload}\n\n"
+        finally:
+            await chat_ctx.cleanup()
+
+    return StreamingResponse(
+        event_generator(),
+        media_type="text/event-stream",
+        headers={
+            "Cache-Control": "no-cache",
+            "X-Accel-Buffering": "no",
+        },
+    )

@@ -1,13 +1,15 @@
-"""Tests for the Chat API endpoint.
+"""Tests for the Chat API endpoints.
 
-Tests the POST /api/chat endpoint covering:
+Tests the POST /api/chat and POST /api/chat/stream endpoints covering:
 - Authentication (API key validation)
 - Request validation
 - Patient existence checks
 - Integration with ContextEngine and AgentService
 - Error handling
+- SSE streaming
 """
 
+import json
 import uuid
 from unittest.mock import AsyncMock, MagicMock, patch
 
@@ -801,4 +803,196 @@ class TestChatIntegration:
             # Verify cleanup was still called
             mock_graph.close.assert_called_once()
             mock_embedding.close.assert_called_once()
+            mock_agent.close.assert_called_once()
+
+
+# =============================================================================
+# Streaming Endpoint Tests
+# =============================================================================
+
+
+def _parse_sse_events(body: str) -> list[dict]:
+    """Parse SSE event stream body into list of {event, data} dicts."""
+    events = []
+    for block in body.strip().split("\n\n"):
+        event = {}
+        for line in block.strip().split("\n"):
+            if line.startswith("event: "):
+                event["event"] = line[7:]
+            elif line.startswith("data: "):
+                event["data"] = json.loads(line[6:])
+        if event:
+            events.append(event)
+    return events
+
+
+async def _mock_stream_generator():
+    """Mock async generator yielding reasoning, narrative, and done events."""
+    yield ("reasoning", json.dumps({"delta": "Thinking..."}))
+    yield ("narrative", json.dumps({"delta": "The patient"}))
+    yield ("narrative", json.dumps({"delta": " has diabetes."}))
+    yield ("done", AgentResponse(
+        narrative="The patient has diabetes.",
+        insights=[],
+        follow_ups=[],
+    ).model_dump_json())
+
+
+class TestChatStream:
+    """Tests for the POST /api/chat/stream SSE endpoint."""
+
+    @pytest.mark.asyncio
+    async def test_stream_patient_not_found_returns_404(
+        self, client: AsyncClient, auth_headers: dict
+    ):
+        """Test that non-existent patient returns 404 (before streaming starts)."""
+        response = await client.post(
+            "/api/chat/stream",
+            json={
+                "patient_id": str(uuid.uuid4()),
+                "message": "Tell me about this patient",
+            },
+            headers=auth_headers,
+        )
+        assert response.status_code == 404
+
+    @pytest.mark.asyncio
+    async def test_stream_success_emits_sse_events(
+        self,
+        client: AsyncClient,
+        auth_headers: dict,
+        patient_in_db: uuid.UUID,
+        sample_patient_context: PatientContext,
+    ):
+        """Test successful streaming returns reasoning, narrative, and done SSE events."""
+        with patch("app.routes.chat.ContextEngine") as mock_ce_cls, \
+             patch("app.routes.chat.AgentService") as mock_agent_cls, \
+             patch("app.routes.chat.KnowledgeGraph") as mock_graph_cls, \
+             patch("app.routes.chat.EmbeddingService") as mock_emb_cls, \
+             patch("app.routes.chat.VectorSearchService"):
+
+            mock_graph_cls.return_value = AsyncMock()
+            mock_emb_cls.return_value = AsyncMock()
+
+            mock_ce = AsyncMock()
+            mock_ce.build_context_with_patient = AsyncMock(return_value=sample_patient_context)
+            mock_ce_cls.return_value = mock_ce
+
+            mock_agent = AsyncMock()
+            mock_agent.generate_response_stream = MagicMock(return_value=_mock_stream_generator())
+            mock_agent_cls.return_value = mock_agent
+
+            response = await client.post(
+                "/api/chat/stream",
+                json={
+                    "patient_id": str(patient_in_db),
+                    "message": "Tell me about this patient",
+                },
+                headers=auth_headers,
+            )
+
+            assert response.status_code == 200
+            assert response.headers["content-type"].startswith("text/event-stream")
+
+            events = _parse_sse_events(response.text)
+            event_types = [e["event"] for e in events]
+
+            assert "reasoning" in event_types
+            assert "narrative" in event_types
+            assert "done" in event_types
+
+            # Verify done event contains conversation_id and response
+            done_event = next(e for e in events if e["event"] == "done")
+            assert "conversation_id" in done_event["data"]
+            assert "response" in done_event["data"]
+            assert done_event["data"]["response"]["narrative"] == "The patient has diabetes."
+
+    @pytest.mark.asyncio
+    async def test_stream_error_emits_error_event(
+        self,
+        client: AsyncClient,
+        auth_headers: dict,
+        patient_in_db: uuid.UUID,
+        sample_patient_context: PatientContext,
+    ):
+        """Test that errors during streaming emit an error SSE event."""
+
+        async def _failing_stream():
+            yield ("reasoning", json.dumps({"delta": "Thinking..."}))
+            raise RuntimeError("LLM crashed")
+
+        with patch("app.routes.chat.ContextEngine") as mock_ce_cls, \
+             patch("app.routes.chat.AgentService") as mock_agent_cls, \
+             patch("app.routes.chat.KnowledgeGraph") as mock_graph_cls, \
+             patch("app.routes.chat.EmbeddingService") as mock_emb_cls, \
+             patch("app.routes.chat.VectorSearchService"):
+
+            mock_graph_cls.return_value = AsyncMock()
+            mock_emb_cls.return_value = AsyncMock()
+
+            mock_ce = AsyncMock()
+            mock_ce.build_context_with_patient = AsyncMock(return_value=sample_patient_context)
+            mock_ce_cls.return_value = mock_ce
+
+            mock_agent = AsyncMock()
+            mock_agent.generate_response_stream = MagicMock(return_value=_failing_stream())
+            mock_agent_cls.return_value = mock_agent
+
+            response = await client.post(
+                "/api/chat/stream",
+                json={
+                    "patient_id": str(patient_in_db),
+                    "message": "Tell me about this patient",
+                },
+                headers=auth_headers,
+            )
+
+            assert response.status_code == 200
+            events = _parse_sse_events(response.text)
+            event_types = [e["event"] for e in events]
+
+            assert "error" in event_types
+            error_event = next(e for e in events if e["event"] == "error")
+            assert "detail" in error_event["data"]
+
+    @pytest.mark.asyncio
+    async def test_stream_cleans_up_services(
+        self,
+        client: AsyncClient,
+        auth_headers: dict,
+        patient_in_db: uuid.UUID,
+        sample_patient_context: PatientContext,
+    ):
+        """Test that services are cleaned up after streaming completes."""
+        with patch("app.routes.chat.ContextEngine") as mock_ce_cls, \
+             patch("app.routes.chat.AgentService") as mock_agent_cls, \
+             patch("app.routes.chat.KnowledgeGraph") as mock_graph_cls, \
+             patch("app.routes.chat.EmbeddingService") as mock_emb_cls, \
+             patch("app.routes.chat.VectorSearchService"):
+
+            mock_graph = AsyncMock()
+            mock_graph_cls.return_value = mock_graph
+
+            mock_emb = AsyncMock()
+            mock_emb_cls.return_value = mock_emb
+
+            mock_ce = AsyncMock()
+            mock_ce.build_context_with_patient = AsyncMock(return_value=sample_patient_context)
+            mock_ce_cls.return_value = mock_ce
+
+            mock_agent = AsyncMock()
+            mock_agent.generate_response_stream = MagicMock(return_value=_mock_stream_generator())
+            mock_agent_cls.return_value = mock_agent
+
+            await client.post(
+                "/api/chat/stream",
+                json={
+                    "patient_id": str(patient_in_db),
+                    "message": "Tell me about this patient",
+                },
+                headers=auth_headers,
+            )
+
+            mock_graph.close.assert_called_once()
+            mock_emb.close.assert_called_once()
             mock_agent.close.assert_called_once()
