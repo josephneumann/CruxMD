@@ -114,6 +114,8 @@ export function getPatientAvatarUrl(patient: FhirPatientLike): string {
   const slug = name
     .normalize("NFD")
     .replace(/[\u0300-\u036f]/g, "")
+    .replace(/\d+/g, "")
+    .trim()
     .toLowerCase()
     .replace(/\s+/g, "-");
   return `/brand/avatars/${slug}.png`;
