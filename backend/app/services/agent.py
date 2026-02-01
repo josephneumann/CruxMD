@@ -22,10 +22,10 @@ from app.schemas import AgentResponse, PatientContext
 logger = logging.getLogger(__name__)
 
 # Default model for agent responses
-DEFAULT_MODEL = "gpt-5"
+DEFAULT_MODEL = "gpt-5-mini"
 
-# Default reasoning effort (low for fast responses)
-DEFAULT_REASONING_EFFORT: Literal["low", "medium", "high"] = "low"
+# Default reasoning effort (medium balances quality with speed; summary="concise" enables streaming summaries)
+DEFAULT_REASONING_EFFORT: Literal["low", "medium", "high"] = "medium"
 
 # Maximum tokens for response generation
 DEFAULT_MAX_OUTPUT_TOKENS = 16384
@@ -395,7 +395,7 @@ class AgentService:
             "input": input_messages,
             "text_format": AgentResponse,
             "max_output_tokens": self._max_output_tokens,
-            "reasoning": Reasoning(effort=effort),
+            "reasoning": Reasoning(effort=effort, summary="concise"),
         }
 
         response = await self._client.responses.parse(**kwargs)
@@ -461,7 +461,7 @@ class AgentService:
             "input": input_messages,
             "text_format": AgentResponse,
             "max_output_tokens": self._max_output_tokens,
-            "reasoning": Reasoning(effort=effort),
+            "reasoning": Reasoning(effort=effort, summary="concise"),
         }
 
         async with self._client.responses.stream(**kwargs) as stream:

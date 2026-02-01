@@ -1,6 +1,6 @@
 "use client";
 
-import { useRef, useEffect } from "react";
+import { useRef, useEffect, useCallback } from "react";
 import dynamic from "next/dynamic";
 import Image from "next/image";
 import type { DisplayMessage } from "@/hooks";
@@ -25,13 +25,17 @@ export function MessageHistory({
 }: MessageHistoryProps) {
   const bottomRef = useRef<HTMLDivElement>(null);
 
-  useEffect(() => {
+  const scrollToBottom = useCallback(() => {
     bottomRef.current?.scrollIntoView({ behavior: "smooth" });
-  }, [messages, isLoading]);
+  }, []);
+
+  useEffect(() => {
+    scrollToBottom();
+  }, [messages, isLoading, scrollToBottom]);
 
   return (
     <div className="flex-1 overflow-y-auto">
-      <div className="max-w-3xl mx-auto px-4 py-8">
+      <div className="max-w-3xl mx-auto px-4 pt-8 pb-36">
         {messages.map((message) =>
           message.role === "user" ? (
             <UserMessage key={message.id} message={message} />
@@ -40,11 +44,21 @@ export function MessageHistory({
               key={message.id}
               message={message}
               onFollowUpSelect={onFollowUpSelect}
+              onContentGrow={scrollToBottom}
             />
           )
         )}
 
-        {isLoading && <ThinkingIndicator />}
+        {isLoading && (() => {
+          const streamingMsg = messages.find(
+            (m) => m.streaming && m.streaming.phase !== "done"
+          );
+          return (
+            <ThinkingIndicator
+              reasoningText={streamingMsg?.streaming?.reasoningText}
+            />
+          );
+        })()}
 
         {/* Crux mark — spinning while loading, static when idle */}
         <div className="flex justify-start mt-2 mb-4">

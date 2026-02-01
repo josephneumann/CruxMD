@@ -4,19 +4,37 @@
  * Chat Entry Page - Initial greeting and input that redirects to chat session
  */
 
-import { useState } from "react";
+import { useState, useRef, useEffect } from "react";
 import { useRouter } from "next/navigation";
 import Image from "next/image";
-import { ArrowUp, Users, AlertCircle, BookOpen, Plus, Clock, ChevronDown } from "lucide-react";
+import { ArrowUp, Users, AlertCircle, BookOpen, Plus, Clock, ChevronDown, Check } from "lucide-react";
 import { Button } from "@/components/ui/button";
 import { Sidebar } from "@/components/Sidebar";
 import { AutoResizeTextarea } from "@/components/chat/AutoResizeTextarea";
 import { useSession } from "@/lib/auth-client";
+import { MODEL_OPTIONS, DEFAULT_MODEL } from "@/lib/types";
+import type { ModelId } from "@/lib/types";
 
 export default function ChatPage() {
   const router = useRouter();
   const [inputValue, setInputValue] = useState("");
+  const [model, setModel] = useState<ModelId>(DEFAULT_MODEL);
+  const [showModelMenu, setShowModelMenu] = useState(false);
+  const menuRef = useRef<HTMLDivElement>(null);
   const { data: session } = useSession();
+
+  useEffect(() => {
+    if (!showModelMenu) return;
+    function handleClick(e: MouseEvent) {
+      if (menuRef.current && !menuRef.current.contains(e.target as Node)) {
+        setShowModelMenu(false);
+      }
+    }
+    document.addEventListener("mousedown", handleClick);
+    return () => document.removeEventListener("mousedown", handleClick);
+  }, [showModelMenu]);
+
+  const selectedModel = MODEL_OPTIONS.find((m) => m.id === model) ?? MODEL_OPTIONS[0];
   const firstName = session?.user?.name?.split(" ")[0] || "there";
 
   const handleSubmit = () => {
@@ -78,10 +96,41 @@ export default function ChatPage() {
 
               {/* Right toolbar */}
               <div className="flex items-center gap-2">
-                <span className="flex items-center gap-1 text-sm text-muted-foreground">
-                  GPT-5
-                  <ChevronDown className="h-3 w-3" />
-                </span>
+                <div className="relative" ref={menuRef}>
+                  <button
+                    onClick={() => setShowModelMenu((v) => !v)}
+                    className="flex items-center gap-1 text-sm text-muted-foreground hover:text-foreground transition-colors cursor-pointer"
+                  >
+                    {selectedModel.label}
+                    <ChevronDown className="h-3 w-3" />
+                  </button>
+                  {showModelMenu && (
+                    <div className="absolute bottom-full right-0 mb-2 w-56 rounded-lg border border-border bg-popover shadow-lg py-1 z-50">
+                      {MODEL_OPTIONS.map((option) => (
+                        <button
+                          key={option.id}
+                          onClick={() => {
+                            setModel(option.id as ModelId);
+                            setShowModelMenu(false);
+                          }}
+                          className="w-full flex items-center gap-3 px-3 py-2.5 text-left cursor-pointer rounded-md hover:bg-muted transition-colors"
+                        >
+                          <div className="w-4 flex-shrink-0">
+                            {option.id === model && (
+                              <Check className="h-4 w-4 text-primary" />
+                            )}
+                          </div>
+                          <div>
+                            <div className="text-sm font-medium">{option.label}</div>
+                            <div className="text-xs text-muted-foreground">
+                              {option.description}
+                            </div>
+                          </div>
+                        </button>
+                      ))}
+                    </div>
+                  )}
+                </div>
                 <Button
                   size="icon"
                   className="h-8 w-8 rounded-lg"

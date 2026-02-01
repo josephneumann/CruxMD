@@ -13,8 +13,7 @@ export function useThinkingAnimation(isThinking: boolean): string {
   useEffect(() => {
     if (!isThinking) return;
 
-    // Start from a random position for variety
-    setVerbIndex(Math.floor(Math.random() * THINKING_VERBS.length));
+    setVerbIndex(0);
 
     const interval = setInterval(() => {
       setVerbIndex((prev) => (prev + 1) % THINKING_VERBS.length);
