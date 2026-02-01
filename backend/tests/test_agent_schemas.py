@@ -30,12 +30,12 @@ class TestDataQuery:
         """DataQuery with all fields populated."""
         query = DataQuery(
             resource_types=["Observation", "Condition"],
-            filters={"code": "HbA1c", "status": "final"},
+            filters='{"code": "HbA1c", "status": "final"}',
             time_range="last_6_months",
             limit=50,
         )
         assert query.resource_types == ["Observation", "Condition"]
-        assert query.filters["code"] == "HbA1c"
+        assert "HbA1c" in query.filters
         assert query.time_range == "last_6_months"
         assert query.limit == 50
 
@@ -97,7 +97,7 @@ class TestVisualization:
             title="HbA1c Trend",
             data_query=DataQuery(
                 resource_types=["Observation"],
-                filters={"code": "HbA1c"},
+                filters='{"code": "HbA1c"}',
             ),
         )
         assert viz.type == "line_chart"
@@ -112,9 +112,9 @@ class TestVisualization:
             title="Medication Adherence",
             description="Weekly adherence rates",
             data_query=DataQuery(),
-            config={"color": "blue", "showLegend": True},
+            config='{"color": "blue", "showLegend": true}',
         )
-        assert viz.config["color"] == "blue"
+        assert "blue" in viz.config
         assert viz.description == "Weekly adherence rates"
 
     def test_visualization_type_validation(self):
@@ -177,9 +177,9 @@ class TestAction:
             label="Schedule Follow-up",
             type="refer",
             description="Schedule with endocrinology",
-            payload={"specialty": "endocrinology", "urgency": "routine"},
+            payload='{"specialty": "endocrinology", "urgency": "routine"}',
         )
-        assert action.payload["specialty"] == "endocrinology"
+        assert "endocrinology" in action.payload
 
     def test_action_type_validation(self):
         """Action type must be valid literal."""
