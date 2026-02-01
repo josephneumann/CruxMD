@@ -23,9 +23,9 @@ class DataQuery(BaseModel):
         default=None,
         description="FHIR resource types to query (e.g., ['Observation', 'Condition'])",
     )
-    filters: dict | None = Field(
+    filters: str | None = Field(
         default=None,
-        description="Key-value filters to apply (e.g., {'code': 'HbA1c'})",
+        description="JSON-encoded key-value filters (e.g., '{\"code\": \"HbA1c\"}')",
     )
     time_range: str | None = Field(
         default=None,
@@ -99,9 +99,9 @@ class Visualization(BaseModel):
     data_query: DataQuery = Field(
         description="Query to resolve the visualization data"
     )
-    config: dict | None = Field(
+    config: str | None = Field(
         default=None,
-        description="Additional configuration for the visualization",
+        description="JSON-encoded configuration for the visualization",
     )
 
 
@@ -137,9 +137,9 @@ class Action(BaseModel):
         default=None,
         description="Explanation of what the action does",
     )
-    payload: dict | None = Field(
+    payload: str | None = Field(
         default=None,
-        description="Data payload for the action",
+        description="JSON-encoded data payload for the action",
     )
 
 
@@ -148,7 +148,8 @@ class FollowUp(BaseModel):
 
     question: str = Field(
         min_length=1,
-        description="The follow-up question text",
+        max_length=80,
+        description="Short follow-up question (max 80 chars) displayed as a clickable chip",
     )
     intent: str | None = Field(
         default=None,

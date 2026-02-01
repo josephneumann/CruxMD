@@ -122,9 +122,12 @@ async def seed_database(fixtures_dir: Path) -> dict[str, int]:
 
 def main() -> None:
     """Main entry point for the seed script."""
-    # Resolve fixtures directory relative to repo root
+    # Resolve fixtures directory — try repo-relative first, then Docker mount
     repo_root = Path(__file__).parent.parent.parent.parent
     fixtures_dir = repo_root / "fixtures" / "synthea"
+    if not fixtures_dir.exists():
+        # Docker: fixtures mounted at /fixtures
+        fixtures_dir = Path("/fixtures/synthea")
 
     if not fixtures_dir.exists():
         print(f"Fixtures directory not found: {fixtures_dir}")

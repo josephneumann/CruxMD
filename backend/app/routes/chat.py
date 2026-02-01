@@ -176,8 +176,9 @@ async def chat(
             response=agent_response,
         )
 
-    except ValueError:
+    except ValueError as e:
         # Validation errors from AgentService - don't expose internal details
+        logger.error("ValueError in chat endpoint: %s", e, exc_info=True)
         raise HTTPException(
             status_code=status.HTTP_400_BAD_REQUEST,
             detail="Invalid request parameters",

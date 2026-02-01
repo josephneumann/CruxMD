@@ -50,7 +50,7 @@ export interface ChatResponse {
 /** Query specification for resolving data at runtime */
 export interface DataQuery {
   resource_types?: string[];
-  filters?: Record<string, unknown>;
+  filters?: string;
   time_range?: string;
   limit?: number;
 }
@@ -88,7 +88,7 @@ export interface Visualization {
   title: string;
   description?: string;
   data_query: DataQuery;
-  config?: Record<string, unknown>;
+  config?: string;
 }
 
 /** Table specification for displaying structured data */
@@ -107,7 +107,7 @@ export interface Action {
   label: string;
   type: ActionType;
   description?: string;
-  payload?: Record<string, unknown>;
+  payload?: string;
 }
 
 /** Suggested follow-up question for emergent navigation */
@@ -149,13 +149,13 @@ export function isChatMessage(obj: unknown): obj is ChatMessage {
 export function isDataQuery(obj: unknown): obj is DataQuery {
   if (!isObject(obj)) return false;
   // All fields are optional, but validate types if present
-  if (obj.resource_types !== undefined) {
+  if (obj.resource_types != null) {
     if (!Array.isArray(obj.resource_types)) return false;
     if (!obj.resource_types.every((t) => typeof t === "string")) return false;
   }
-  if (obj.filters !== undefined && !isObject(obj.filters)) return false;
-  if (obj.time_range !== undefined && typeof obj.time_range !== "string") return false;
-  if (obj.limit !== undefined && typeof obj.limit !== "number") return false;
+  if (obj.filters != null && typeof obj.filters !== "string") return false;
+  if (obj.time_range != null && typeof obj.time_range !== "string") return false;
+  if (obj.limit != null && typeof obj.limit !== "number") return false;
   return true;
 }
 
@@ -166,7 +166,7 @@ export function isInsight(obj: unknown): obj is Insight {
   if (typeof obj.title !== "string") return false;
   if (typeof obj.content !== "string") return false;
   // Validate citations array if present
-  if (obj.citations !== undefined) {
+  if (obj.citations != null) {
     if (!Array.isArray(obj.citations)) return false;
     if (!obj.citations.every((c) => typeof c === "string")) return false;
   }
@@ -178,7 +178,7 @@ export function isTableColumn(obj: unknown): obj is TableColumn {
   if (!isObject(obj)) return false;
   if (typeof obj.key !== "string") return false;
   if (typeof obj.header !== "string") return false;
-  if (obj.format !== undefined && !COLUMN_FORMATS.includes(obj.format as ColumnFormat)) return false;
+  if (obj.format != null && !COLUMN_FORMATS.includes(obj.format as ColumnFormat)) return false;
   return true;
 }
 
@@ -187,9 +187,9 @@ export function isVisualization(obj: unknown): obj is Visualization {
   if (!isObject(obj)) return false;
   if (!VISUALIZATION_TYPES.includes(obj.type as VisualizationType)) return false;
   if (typeof obj.title !== "string") return false;
-  if (obj.description !== undefined && typeof obj.description !== "string") return false;
+  if (obj.description != null && typeof obj.description !== "string") return false;
   if (!isDataQuery(obj.data_query)) return false;
-  if (obj.config !== undefined && !isObject(obj.config)) return false;
+  if (obj.config != null && typeof obj.config !== "string") return false;
   return true;
 }
 
@@ -208,8 +208,8 @@ export function isAction(obj: unknown): obj is Action {
   if (!isObject(obj)) return false;
   if (typeof obj.label !== "string") return false;
   if (!ACTION_TYPES.includes(obj.type as ActionType)) return false;
-  if (obj.description !== undefined && typeof obj.description !== "string") return false;
-  if (obj.payload !== undefined && !isObject(obj.payload)) return false;
+  if (obj.description != null && typeof obj.description !== "string") return false;
+  if (obj.payload != null && typeof obj.payload !== "string") return false;
   return true;
 }
 
@@ -217,7 +217,7 @@ export function isAction(obj: unknown): obj is Action {
 export function isFollowUp(obj: unknown): obj is FollowUp {
   if (!isObject(obj)) return false;
   if (typeof obj.question !== "string") return false;
-  if (obj.intent !== undefined && typeof obj.intent !== "string") return false;
+  if (obj.intent != null && typeof obj.intent !== "string") return false;
   return true;
 }
 
@@ -226,25 +226,26 @@ export function isAgentResponse(obj: unknown): obj is AgentResponse {
   if (!isObject(obj)) return false;
   // narrative is the only required field
   if (typeof obj.narrative !== "string") return false;
-  if (obj.thinking !== undefined && typeof obj.thinking !== "string") return false;
+  if (obj.thinking != null && typeof obj.thinking !== "string") return false;
   // Validate optional arrays with element-level validation
-  if (obj.insights !== undefined) {
+  // Backend sends null for absent optional fields (Python None → JSON null)
+  if (obj.insights != null) {
     if (!Array.isArray(obj.insights)) return false;
     if (!obj.insights.every(isInsight)) return false;
   }
-  if (obj.visualizations !== undefined) {
+  if (obj.visualizations != null) {
     if (!Array.isArray(obj.visualizations)) return false;
     if (!obj.visualizations.every(isVisualization)) return false;
   }
-  if (obj.tables !== undefined) {
+  if (obj.tables != null) {
     if (!Array.isArray(obj.tables)) return false;
     if (!obj.tables.every(isDataTable)) return false;
   }
-  if (obj.actions !== undefined) {
+  if (obj.actions != null) {
     if (!Array.isArray(obj.actions)) return false;
     if (!obj.actions.every(isAction)) return false;
   }
-  if (obj.follow_ups !== undefined) {
+  if (obj.follow_ups != null) {
     if (!Array.isArray(obj.follow_ups)) return false;
     if (!obj.follow_ups.every(isFollowUp)) return false;
   }

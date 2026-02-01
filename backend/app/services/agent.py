@@ -26,7 +26,7 @@ DEFAULT_MODEL = "gpt-5.2"
 DEFAULT_REASONING_EFFORT: Literal["low", "medium", "high"] = "low"
 
 # Maximum tokens for response generation
-DEFAULT_MAX_OUTPUT_TOKENS = 4096
+DEFAULT_MAX_OUTPUT_TOKENS = 16384
 
 # System prompt template for clinical reasoning
 SYSTEM_PROMPT_TEMPLATE = """You are a clinical reasoning assistant helping healthcare providers understand patient data.
@@ -79,7 +79,7 @@ Provide your response as a structured JSON object with:
 - visualizations: Charts/graphs if data warrants visualization
 - tables: Structured data displays if helpful
 - actions: Suggested clinical actions if appropriate
-- follow_ups: 2-3 suggested follow-up questions with intent labels
+- follow_ups: 2-3 SHORT follow-up questions (under 80 chars each) displayed as clickable chips
 """
 
 

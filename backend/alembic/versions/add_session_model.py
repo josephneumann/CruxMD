@@ -26,7 +26,7 @@ def upgrade() -> None:
         "orchestrating",
         "patient_task",
         name="session_type",
-        create_type=True,
+        create_type=False,
     )
     session_type_enum.create(op.get_bind(), checkfirst=True)
 
@@ -35,7 +35,7 @@ def upgrade() -> None:
         "paused",
         "completed",
         name="session_status",
-        create_type=True,
+        create_type=False,
     )
     session_status_enum.create(op.get_bind(), checkfirst=True)
 
