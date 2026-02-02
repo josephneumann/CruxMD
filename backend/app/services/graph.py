@@ -347,6 +347,7 @@ class KnowledgeGraph:
                 c.system = $system,
                 c.clinical_status = $clinical_status,
                 c.onset_date = $onset_date,
+                c.abatement_date = $abatement_date,
                 c.encounter_fhir_id = $encounter_fhir_id,
                 c.fhir_resource = $fhir_resource,
                 c.updated_at = datetime()
@@ -359,6 +360,7 @@ class KnowledgeGraph:
             system=first_coding.get("system"),
             clinical_status=status_code,
             onset_date=resource.get("onsetDateTime"),
+            abatement_date=resource.get("abatementDateTime"),
             encounter_fhir_id=encounter_fhir_id,
             fhir_resource=json.dumps(resource),
         )
@@ -437,6 +439,9 @@ class KnowledgeGraph:
         first_coding = _extract_first_coding(resource.get("code", {}))
         value, value_unit = _extract_observation_value(resource)
         encounter_fhir_id = _extract_encounter_fhir_id(resource)
+        category_coding = _extract_first_coding(
+            resource.get("category", [{}])[0] if resource.get("category") else {}
+        )
 
         await session.run(
             """
@@ -449,6 +454,7 @@ class KnowledgeGraph:
                 o.effective_date = $effective_date,
                 o.value = $value,
                 o.value_unit = $value_unit,
+                o.category = $category,
                 o.encounter_fhir_id = $encounter_fhir_id,
                 o.fhir_resource = $fhir_resource,
                 o.updated_at = datetime()
@@ -463,6 +469,7 @@ class KnowledgeGraph:
             effective_date=resource.get("effectiveDateTime"),
             value=value,
             value_unit=value_unit,
+            category=category_coding.get("code"),
             encounter_fhir_id=encounter_fhir_id,
             fhir_resource=json.dumps(resource),
         )
@@ -475,6 +482,9 @@ class KnowledgeGraph:
         first_type = types[0] if types else {}
         first_coding = _extract_first_coding(first_type)
         period = resource.get("period", {})
+        reason_coding = _extract_first_coding(
+            resource.get("reasonCode", [{}])[0] if resource.get("reasonCode") else {}
+        )
 
         await session.run(
             """
@@ -486,6 +496,8 @@ class KnowledgeGraph:
                 e.class_code = $class_code,
                 e.period_start = $period_start,
                 e.period_end = $period_end,
+                e.reason_display = $reason_display,
+                e.reason_code = $reason_code,
                 e.fhir_resource = $fhir_resource,
                 e.updated_at = datetime()
             MERGE (p)-[:HAS_ENCOUNTER]->(e)
@@ -498,6 +510,8 @@ class KnowledgeGraph:
             class_code=resource.get("class", {}).get("code"),
             period_start=period.get("start"),
             period_end=period.get("end"),
+            reason_display=reason_coding.get("display"),
+            reason_code=reason_coding.get("code"),
             fhir_resource=json.dumps(resource),
         )
 

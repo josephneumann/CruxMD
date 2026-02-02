@@ -193,11 +193,13 @@ class ContextEngine:
         conditions = await self._graph.get_verified_conditions(patient_id)
         medications = await self._graph.get_verified_medications(patient_id)
         allergies = await self._graph.get_verified_allergies(patient_id)
+        immunizations = await self._graph.get_verified_immunizations(patient_id)
 
         return VerifiedLayer(
             conditions=conditions,
             medications=medications,
             allergies=allergies,
+            immunizations=immunizations,
         )
 
     async def _build_retrieved_layer(

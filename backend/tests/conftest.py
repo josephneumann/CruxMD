@@ -577,6 +577,103 @@ def sample_condition_with_urn_uuid_encounter() -> dict:
 
 
 # =============================================================================
+# Fixtures for expanded node properties (category, reasonCode, abatement)
+# =============================================================================
+
+
+@pytest.fixture
+def sample_observation_with_category() -> dict:
+    """Sample FHIR Observation with category field for testing category extraction."""
+    return {
+        "resourceType": "Observation",
+        "id": "observation-test-with-category",
+        "subject": {"reference": "Patient/patient-test-123"},
+        "code": {
+            "coding": [
+                {
+                    "system": "http://loinc.org",
+                    "code": "8480-6",
+                    "display": "Systolic blood pressure",
+                }
+            ]
+        },
+        "category": [
+            {
+                "coding": [
+                    {
+                        "system": "http://terminology.hl7.org/CodeSystem/observation-category",
+                        "code": "vital-signs",
+                        "display": "Vital Signs",
+                    }
+                ]
+            }
+        ],
+        "status": "final",
+        "valueQuantity": {"value": 120, "unit": "mmHg"},
+    }
+
+
+@pytest.fixture
+def sample_encounter_with_reason() -> dict:
+    """Sample FHIR Encounter with reasonCode for testing reason extraction."""
+    return {
+        "resourceType": "Encounter",
+        "id": "encounter-test-with-reason",
+        "subject": {"reference": "Patient/patient-test-123"},
+        "type": [
+            {
+                "coding": [
+                    {
+                        "system": "http://snomed.info/sct",
+                        "code": "185349003",
+                        "display": "Outpatient visit",
+                    }
+                ]
+            }
+        ],
+        "status": "finished",
+        "class": {"code": "AMB"},
+        "period": {
+            "start": "2024-03-01T10:00:00Z",
+            "end": "2024-03-01T10:30:00Z",
+        },
+        "reasonCode": [
+            {
+                "coding": [
+                    {
+                        "system": "http://snomed.info/sct",
+                        "code": "38341003",
+                        "display": "Hypertension",
+                    }
+                ]
+            }
+        ],
+    }
+
+
+@pytest.fixture
+def sample_condition_with_abatement() -> dict:
+    """Sample FHIR Condition with abatementDateTime for testing abatement extraction."""
+    return {
+        "resourceType": "Condition",
+        "id": "condition-test-with-abatement",
+        "subject": {"reference": "Patient/patient-test-123"},
+        "code": {
+            "coding": [
+                {
+                    "system": "http://snomed.info/sct",
+                    "code": "195662009",
+                    "display": "Acute viral pharyngitis",
+                }
+            ]
+        },
+        "clinicalStatus": {"coding": [{"code": "resolved"}]},
+        "onsetDateTime": "2024-01-10T00:00:00Z",
+        "abatementDateTime": "2024-01-24T00:00:00Z",
+    }
+
+
+# =============================================================================
 # Helper Functions (available to tests)
 # =============================================================================
 
