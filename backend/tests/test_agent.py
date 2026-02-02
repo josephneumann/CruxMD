@@ -22,6 +22,7 @@ from app.services.agent import (
     DEFAULT_MODEL,
     DEFAULT_REASONING_EFFORT,
     DEFAULT_MAX_OUTPUT_TOKENS,
+    MAX_TOOL_ROUNDS,
     build_system_prompt,
     _format_patient_info,
     _format_resource_list,
@@ -32,6 +33,7 @@ from app.services.agent import (
     _format_constraints,
     _get_display_name,
 )
+from app.services.agent_tools import TOOL_SCHEMAS, execute_tool
 
 
 # =============================================================================
@@ -415,6 +417,13 @@ class TestBuildSystemPrompt:
         assert "Safety Constraints" in prompt
         assert "Response Format" in prompt
 
+    def test_prompt_includes_tools_section(self, minimal_context: PatientContext):
+        """Test that prompt includes tools section."""
+        prompt = build_system_prompt(minimal_context)
+
+        assert "## Tools" in prompt
+        assert "call a tool" in prompt
+
 
 # =============================================================================
 # AgentService Tests
@@ -791,3 +800,331 @@ class TestAgentServiceClose:
         await service.close()
 
         mock_client.close.assert_called_once()
+
+
+# =============================================================================
+# Tool Schema Tests
+# =============================================================================
+
+
+class TestToolSchemas:
+    """Tests for TOOL_SCHEMAS definitions."""
+
+    def test_all_tools_defined(self):
+        """Test that all 5 tool schemas are defined."""
+        assert len(TOOL_SCHEMAS) == 5
+
+    def test_tool_names(self):
+        """Test that tool names match the function names."""
+        names = {t["name"] for t in TOOL_SCHEMAS}
+        assert names == {
+            "search_patient_data",
+            "get_encounter_details",
+            "get_lab_history",
+            "find_related_resources",
+            "get_patient_timeline",
+        }
+
+    def test_all_schemas_have_required_fields(self):
+        """Test that each schema has type, name, description, parameters."""
+        for schema in TOOL_SCHEMAS:
+            assert schema["type"] == "function"
+            assert "name" in schema
+            assert "description" in schema
+            assert "parameters" in schema
+            assert schema["parameters"]["type"] == "object"
+
+
+# =============================================================================
+# Tool Execution Tests
+# =============================================================================
+
+
+class TestExecuteTool:
+    """Tests for execute_tool dispatch function."""
+
+    @pytest.mark.asyncio
+    async def test_dispatch_search_patient_data(self):
+        """Test that execute_tool dispatches to search_patient_data."""
+        mock_graph = AsyncMock()
+        mock_db = AsyncMock()
+        mock_graph.search_nodes_by_name = AsyncMock(return_value=[])
+
+        result = await execute_tool(
+            name="search_patient_data",
+            arguments='{"query": "diabetes"}',
+            patient_id="patient-123",
+            graph=mock_graph,
+            db=mock_db,
+        )
+
+        assert "No resources found" in result
+        mock_graph.search_nodes_by_name.assert_called_once()
+
+    @pytest.mark.asyncio
+    async def test_dispatch_unknown_tool(self):
+        """Test that unknown tool returns error message."""
+        result = await execute_tool(
+            name="nonexistent_tool",
+            arguments="{}",
+            patient_id="patient-123",
+            graph=AsyncMock(),
+            db=AsyncMock(),
+        )
+
+        assert "Unknown tool" in result
+
+
+# =============================================================================
+# Tool-Use Loop Tests
+# =============================================================================
+
+
+def _make_function_call_item(name: str, arguments: str, call_id: str = "call_1"):
+    """Create a mock function_call output item."""
+    item = MagicMock()
+    item.type = "function_call"
+    item.name = name
+    item.arguments = arguments
+    item.call_id = call_id
+    return item
+
+
+def _make_text_item():
+    """Create a mock text output item."""
+    item = MagicMock()
+    item.type = "message"
+    return item
+
+
+def create_mock_openai_client_with_tools(
+    tool_responses: list[list] | None = None,
+    final_response: AgentResponse | None = None,
+):
+    """Create a mock client that returns tool calls then a final text response.
+
+    Args:
+        tool_responses: List of lists of function_call items for each round.
+        final_response: The final AgentResponse after tool calls complete.
+    """
+    if final_response is None:
+        final_response = create_mock_agent_response()
+
+    mock_client = AsyncMock()
+    responses = []
+
+    # Tool call rounds
+    for tool_calls in (tool_responses or []):
+        mock_resp = MagicMock()
+        mock_resp.output = tool_calls
+        mock_resp.output_parsed = None
+        responses.append(mock_resp)
+
+    # Final text response
+    final_mock = MagicMock()
+    final_mock.output = [_make_text_item()]
+    final_mock.output_parsed = final_response
+    final_mock.output_text = final_response.model_dump_json()
+    responses.append(final_mock)
+
+    mock_client.responses.parse = AsyncMock(side_effect=responses)
+
+    return mock_client
+
+
+class TestToolUseLoop:
+    """Tests for the tool-use loop in generate_response."""
+
+    @pytest.mark.asyncio
+    async def test_no_tools_when_graph_db_absent(self, full_context: PatientContext):
+        """Test that tools are not passed when graph/db not provided."""
+        mock_client = create_mock_openai_client()
+        service = AgentService(client=mock_client)
+
+        await service.generate_response(
+            context=full_context,
+            message="What medications?",
+        )
+
+        call_args = mock_client.responses.parse.call_args
+        assert "tools" not in call_args.kwargs
+
+    @pytest.mark.asyncio
+    async def test_tools_passed_when_graph_db_provided(self, full_context: PatientContext):
+        """Test that tools are passed when graph and db are provided."""
+        mock_client = create_mock_openai_client()
+        service = AgentService(client=mock_client)
+
+        await service.generate_response(
+            context=full_context,
+            message="What medications?",
+            graph=AsyncMock(),
+            db=AsyncMock(),
+        )
+
+        call_args = mock_client.responses.parse.call_args
+        assert call_args.kwargs["tools"] is TOOL_SCHEMAS
+
+    @pytest.mark.asyncio
+    @patch("app.services.agent.execute_tool", new_callable=AsyncMock)
+    async def test_single_tool_call_round(
+        self, mock_execute, full_context: PatientContext
+    ):
+        """Test that a single tool call is executed and result fed back."""
+        mock_execute.return_value = "Search results: diabetes found"
+
+        tool_call = _make_function_call_item(
+            "search_patient_data", '{"query": "diabetes"}'
+        )
+        mock_client = create_mock_openai_client_with_tools(
+            tool_responses=[[tool_call]],
+        )
+        service = AgentService(client=mock_client)
+
+        response = await service.generate_response(
+            context=full_context,
+            message="Tell me about diabetes",
+            graph=AsyncMock(),
+            db=AsyncMock(),
+        )
+
+        assert isinstance(response, AgentResponse)
+        assert mock_client.responses.parse.call_count == 2
+        mock_execute.assert_called_once()
+
+        # Verify function_call_output was fed back
+        second_call_input = mock_client.responses.parse.call_args_list[1].kwargs["input"]
+        outputs = [m for m in second_call_input if isinstance(m, dict) and m.get("type") == "function_call_output"]
+        assert len(outputs) == 1
+        assert outputs[0]["output"] == "Search results: diabetes found"
+        assert outputs[0]["call_id"] == "call_1"
+
+    @pytest.mark.asyncio
+    @patch("app.services.agent.execute_tool", new_callable=AsyncMock)
+    async def test_multiple_tool_call_rounds(
+        self, mock_execute, full_context: PatientContext
+    ):
+        """Test multi-round tool calling."""
+        mock_execute.side_effect = ["Round 1 result", "Round 2 result"]
+
+        round1_call = _make_function_call_item(
+            "search_patient_data", '{"query": "diabetes"}', "call_r1"
+        )
+        round2_call = _make_function_call_item(
+            "get_lab_history", '{"lab_name": "A1c"}', "call_r2"
+        )
+        mock_client = create_mock_openai_client_with_tools(
+            tool_responses=[[round1_call], [round2_call]],
+        )
+        service = AgentService(client=mock_client)
+
+        response = await service.generate_response(
+            context=full_context,
+            message="Diabetes labs?",
+            graph=AsyncMock(),
+            db=AsyncMock(),
+        )
+
+        assert isinstance(response, AgentResponse)
+        assert mock_client.responses.parse.call_count == 3
+        assert mock_execute.call_count == 2
+
+    @pytest.mark.asyncio
+    @patch("app.services.agent.execute_tool", new_callable=AsyncMock)
+    async def test_parallel_tool_calls_in_one_round(
+        self, mock_execute, full_context: PatientContext
+    ):
+        """Test multiple tool calls in a single round."""
+        mock_execute.side_effect = ["Result A", "Result B"]
+
+        call_a = _make_function_call_item(
+            "search_patient_data", '{"query": "diabetes"}', "call_a"
+        )
+        call_b = _make_function_call_item(
+            "get_lab_history", '{"lab_name": "A1c"}', "call_b"
+        )
+        mock_client = create_mock_openai_client_with_tools(
+            tool_responses=[[call_a, call_b]],
+        )
+        service = AgentService(client=mock_client)
+
+        response = await service.generate_response(
+            context=full_context,
+            message="Diabetes overview",
+            graph=AsyncMock(),
+            db=AsyncMock(),
+        )
+
+        assert isinstance(response, AgentResponse)
+        assert mock_execute.call_count == 2
+        assert mock_client.responses.parse.call_count == 2
+
+
+class TestToolUseStreamLoop:
+    """Tests for tool-use in generate_response_stream."""
+
+    @pytest.mark.asyncio
+    async def test_stream_no_tools_when_graph_db_absent(self, full_context: PatientContext):
+        """Test that streaming without graph/db skips tools entirely."""
+        mock_client = AsyncMock()
+        mock_client.responses.stream = MagicMock(return_value=create_mock_stream())
+
+        service = AgentService(client=mock_client)
+
+        events = []
+        async for et, data in service.generate_response_stream(
+            context=full_context,
+            message="What medications?",
+        ):
+            events.append((et, data))
+
+        # Should have gone through streaming path
+        assert any(e[0] == "done" for e in events)
+        # .stream() was called, not .parse()
+        mock_client.responses.stream.assert_called_once()
+
+    @pytest.mark.asyncio
+    @patch("app.services.agent.execute_tool", new_callable=AsyncMock)
+    async def test_stream_with_tool_calls(
+        self, mock_execute, full_context: PatientContext
+    ):
+        """Test streaming with tool calls uses parse for tool rounds then streams final."""
+        mock_execute.return_value = "Tool result text"
+
+        tool_call = _make_function_call_item(
+            "search_patient_data", '{"query": "diabetes"}'
+        )
+
+        # First .parse() returns tool call, second returns final text (no tool calls)
+        tool_round_resp = MagicMock()
+        tool_round_resp.output = [tool_call]
+        tool_round_resp.output_parsed = None
+
+        final_response = create_mock_agent_response()
+        final_resp = MagicMock()
+        final_resp.output = [_make_text_item()]
+        final_resp.output_parsed = final_response
+        final_resp.output_text = final_response.model_dump_json()
+
+        mock_client = AsyncMock()
+        mock_client.responses.parse = AsyncMock(side_effect=[tool_round_resp, final_resp])
+
+        service = AgentService(client=mock_client)
+
+        events = []
+        async for et, data in service.generate_response_stream(
+            context=full_context,
+            message="Diabetes info",
+            graph=AsyncMock(),
+            db=AsyncMock(),
+        ):
+            events.append((et, data))
+
+        # Should get a done event with the final response
+        done_events = [e for e in events if e[0] == "done"]
+        assert len(done_events) == 1
+        parsed = AgentResponse.model_validate_json(done_events[0][1])
+        assert parsed.narrative == final_response.narrative
+
+        mock_execute.assert_called_once()
+        assert mock_client.responses.parse.call_count == 2

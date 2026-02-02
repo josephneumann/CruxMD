@@ -228,6 +228,8 @@ async def chat(
             message=request.message,
             history=chat_ctx.history,
             reasoning_effort=request.reasoning_effort,
+            graph=chat_ctx.graph,
+            db=db,
         )
 
         return ChatResponse(
@@ -291,6 +293,8 @@ async def chat_stream(
                 message=request.message,
                 history=chat_ctx.history,
                 reasoning_effort=request.reasoning_effort,
+                graph=chat_ctx.graph,
+                db=db,
             ):
                 if event_type == "done":
                     # Wrap with conversation_id — data_json is already valid JSON
