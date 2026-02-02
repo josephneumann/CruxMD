@@ -28,6 +28,7 @@ class RetrievalStats(BaseModel):
 
     verified_count: int = Field(default=0, description="Number of verified resources from graph")
     retrieved_count: int = Field(default=0, description="Number of retrieved resources from search")
+    graph_traversal_count: int = Field(default=0, description="Number of resources found via graph traversal")
     tokens_used: int = Field(default=0, description="Actual tokens used in context")
 
 
@@ -104,7 +105,7 @@ class RetrievedResource(BaseModel):
         le=1.0,
         description="Similarity score (0.0-1.0)",
     )
-    reason: Literal["semantic_match", "recent", "query_focus"] = Field(
+    reason: Literal["semantic_match", "recent", "query_focus", "graph_traversal"] = Field(
         default="semantic_match",
         description="Why this resource was retrieved",
     )

@@ -123,12 +123,25 @@ def test_retrieval_stats_defaults():
     assert stats.tokens_used == 0
 
 
+def test_retrieval_stats_defaults_graph_traversal_count():
+    """RetrievalStats should default graph_traversal_count to 0."""
+    stats = RetrievalStats()
+    assert stats.graph_traversal_count == 0
+
+
 def test_retrieval_stats_with_values():
     """RetrievalStats should accept custom values."""
     stats = RetrievalStats(verified_count=5, retrieved_count=10, tokens_used=1500)
     assert stats.verified_count == 5
     assert stats.retrieved_count == 10
     assert stats.tokens_used == 1500
+
+
+def test_retrieval_stats_with_graph_traversal_count():
+    """RetrievalStats should accept graph_traversal_count."""
+    stats = RetrievalStats(graph_traversal_count=3, verified_count=5)
+    assert stats.graph_traversal_count == 3
+    assert stats.verified_count == 5
 
 
 # =============================================================================
@@ -257,6 +270,17 @@ def test_retrieved_resource_full(sample_fhir_observation):
     )
     assert rr.score == 0.85
     assert rr.reason == "query_focus"
+
+
+def test_retrieved_resource_graph_traversal_reason(sample_fhir_observation):
+    """RetrievedResource accepts graph_traversal as a reason."""
+    rr = RetrievedResource(
+        resource=sample_fhir_observation,
+        resource_type="Observation",
+        score=0.95,
+        reason="graph_traversal",
+    )
+    assert rr.reason == "graph_traversal"
 
 
 def test_retrieved_resource_score_validation(sample_fhir_observation):
