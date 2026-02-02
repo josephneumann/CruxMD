@@ -779,7 +779,7 @@ class KnowledgeGraph:
 
         Returns:
             TypedDict with keys for each resource type, containing lists of
-            node property dictionaries (not full FHIR resources for performance).
+            parsed FHIR resources.
         """
         async with self._driver.session() as session:
             result = await session.run(
@@ -809,12 +809,19 @@ class KnowledgeGraph:
                     "diagnostic_reports": [],
                 }
 
+            def _parse_fhir_nodes(nodes: list) -> list[dict[str, Any]]:
+                return [
+                    json.loads(n["fhir_resource"])
+                    for n in nodes
+                    if n and n.get("fhir_resource")
+                ]
+
             return {
-                "conditions": [dict(c) for c in record["conditions"] if c],
-                "medications": [dict(m) for m in record["medications"] if m],
-                "observations": [dict(o) for o in record["observations"] if o],
-                "procedures": [dict(pr) for pr in record["procedures"] if pr],
-                "diagnostic_reports": [dict(dr) for dr in record["diagnostic_reports"] if dr],
+                "conditions": _parse_fhir_nodes(record["conditions"]),
+                "medications": _parse_fhir_nodes(record["medications"]),
+                "observations": _parse_fhir_nodes(record["observations"]),
+                "procedures": _parse_fhir_nodes(record["procedures"]),
+                "diagnostic_reports": _parse_fhir_nodes(record["diagnostic_reports"]),
             }
 
     async def get_medications_treating_condition(
@@ -827,20 +834,20 @@ class KnowledgeGraph:
             condition_fhir_id: The FHIR ID of the condition.
 
         Returns:
-            List of MedicationRequest node properties.
+            List of parsed FHIR MedicationRequest resources.
         """
         async with self._driver.session() as session:
             result = await session.run(
                 """
                 MATCH (c:Condition {fhir_id: $condition_id})<-[:TREATS]-(m:MedicationRequest)
-                RETURN m
+                RETURN m.fhir_resource as resource
                 """,
                 condition_id=condition_fhir_id,
             )
             medications = []
             async for record in result:
-                if record["m"]:
-                    medications.append(dict(record["m"]))
+                if record["resource"]:
+                    medications.append(json.loads(record["resource"]))
             return medications
 
     async def get_procedures_for_condition(
@@ -853,20 +860,20 @@ class KnowledgeGraph:
             condition_fhir_id: The FHIR ID of the condition.
 
         Returns:
-            List of Procedure node properties.
+            List of parsed FHIR Procedure resources.
         """
         async with self._driver.session() as session:
             result = await session.run(
                 """
                 MATCH (c:Condition {fhir_id: $condition_id})<-[:TREATS]-(pr:Procedure)
-                RETURN pr
+                RETURN pr.fhir_resource as resource
                 """,
                 condition_id=condition_fhir_id,
             )
             procedures = []
             async for record in result:
-                if record["pr"]:
-                    procedures.append(dict(record["pr"]))
+                if record["resource"]:
+                    procedures.append(json.loads(record["resource"]))
             return procedures
 
     async def get_diagnostic_report_results(
@@ -879,21 +886,90 @@ class KnowledgeGraph:
             report_fhir_id: The FHIR ID of the diagnostic report.
 
         Returns:
-            List of Observation node properties.
+            List of parsed FHIR Observation resources.
         """
         async with self._driver.session() as session:
             result = await session.run(
                 """
                 MATCH (dr:DiagnosticReport {fhir_id: $report_id})-[:CONTAINS_RESULT]->(o:Observation)
-                RETURN o
+                RETURN o.fhir_resource as resource
                 """,
                 report_id=report_fhir_id,
             )
             observations = []
             async for record in result:
-                if record["o"]:
-                    observations.append(dict(record["o"]))
+                if record["resource"]:
+                    observations.append(json.loads(record["resource"]))
             return observations
+
+    async def search_nodes_by_name(
+        self,
+        patient_id: str,
+        query_terms: list[str],
+        resource_types: list[str] | None = None,
+    ) -> list[dict[str, str]]:
+        """
+        Fuzzy search graph nodes by display name for a patient.
+
+        Performs case-insensitive substring matching of query terms against
+        node display properties. Returns matched fhir_id + resource_type pairs
+        for downstream traversal.
+
+        Args:
+            patient_id: The canonical patient UUID.
+            query_terms: List of search terms to match against display names.
+            resource_types: Optional list of FHIR resource types to filter
+                (e.g. ["Condition", "MedicationRequest"]). If None, searches all.
+
+        Returns:
+            List of dicts with 'fhir_id' and 'resource_type' keys.
+        """
+        # All searchable node types with their patient relationship and display property
+        searchable = [
+            ("Condition", "HAS_CONDITION", "display"),
+            ("MedicationRequest", "HAS_MEDICATION_REQUEST", "display"),
+            ("AllergyIntolerance", "HAS_ALLERGY_INTOLERANCE", "display"),
+            ("Observation", "HAS_OBSERVATION", "display"),
+            ("Procedure", "HAS_PROCEDURE", "display"),
+            ("DiagnosticReport", "HAS_DIAGNOSTIC_REPORT", "display"),
+            ("Encounter", "HAS_ENCOUNTER", "type_display"),
+        ]
+
+        if resource_types:
+            searchable = [s for s in searchable if s[0] in resource_types]
+
+        lower_terms = [t.lower() for t in query_terms if t]
+        if not lower_terms:
+            return []
+
+        results: list[dict[str, str]] = []
+        async with self._driver.session() as session:
+            for label, rel, display_prop in searchable:
+                # Build WHERE clause: any term matches the display property
+                conditions = " OR ".join(
+                    f"toLower(n.{display_prop}) CONTAINS $term_{i}"
+                    for i in range(len(lower_terms))
+                )
+                params: dict[str, Any] = {"patient_id": patient_id}
+                for i, term in enumerate(lower_terms):
+                    params[f"term_{i}"] = term
+
+                result = await session.run(
+                    f"""
+                    MATCH (p:Patient {{id: $patient_id}})-[:{rel}]->(n:{label})
+                    WHERE {conditions}
+                    RETURN n.fhir_id as fhir_id
+                    """,
+                    **params,
+                )
+                async for record in result:
+                    if record["fhir_id"]:
+                        results.append({
+                            "fhir_id": record["fhir_id"],
+                            "resource_type": label,
+                        })
+
+        return results
 
     # =========================================================================
     # Main Entry Points

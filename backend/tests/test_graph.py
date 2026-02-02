@@ -1229,20 +1229,26 @@ async def test_get_encounter_events(
 
     events = await graph.get_encounter_events(sample_encounter["id"])
 
+    # Traversal methods now return parsed FHIR resources (not node dicts)
     assert len(events["conditions"]) == 1
-    assert events["conditions"][0]["fhir_id"] == sample_condition_with_encounter["id"]
+    assert events["conditions"][0]["id"] == sample_condition_with_encounter["id"]
+    assert events["conditions"][0]["resourceType"] == "Condition"
 
     assert len(events["medications"]) == 1
-    assert events["medications"][0]["fhir_id"] == sample_medication_with_encounter_and_reason["id"]
+    assert events["medications"][0]["id"] == sample_medication_with_encounter_and_reason["id"]
+    assert events["medications"][0]["resourceType"] == "MedicationRequest"
 
     assert len(events["observations"]) == 1
-    assert events["observations"][0]["fhir_id"] == sample_observation_with_encounter["id"]
+    assert events["observations"][0]["id"] == sample_observation_with_encounter["id"]
+    assert events["observations"][0]["resourceType"] == "Observation"
 
     assert len(events["procedures"]) == 1
-    assert events["procedures"][0]["fhir_id"] == sample_procedure_with_encounter_and_reason["id"]
+    assert events["procedures"][0]["id"] == sample_procedure_with_encounter_and_reason["id"]
+    assert events["procedures"][0]["resourceType"] == "Procedure"
 
     assert len(events["diagnostic_reports"]) == 1
-    assert events["diagnostic_reports"][0]["fhir_id"] == sample_diagnostic_report_with_encounter_and_results["id"]
+    assert events["diagnostic_reports"][0]["id"] == sample_diagnostic_report_with_encounter_and_results["id"]
+    assert events["diagnostic_reports"][0]["resourceType"] == "DiagnosticReport"
 
 
 @pytest.mark.asyncio
@@ -1280,7 +1286,8 @@ async def test_get_medications_treating_condition(
     meds = await graph.get_medications_treating_condition(sample_condition_with_encounter["id"])
 
     assert len(meds) == 1
-    assert meds[0]["fhir_id"] == sample_medication_with_encounter_and_reason["id"]
+    assert meds[0]["id"] == sample_medication_with_encounter_and_reason["id"]
+    assert meds[0]["resourceType"] == "MedicationRequest"
 
 
 @pytest.mark.asyncio
@@ -1306,7 +1313,8 @@ async def test_get_procedures_for_condition(
     procs = await graph.get_procedures_for_condition(sample_condition_with_encounter["id"])
 
     assert len(procs) == 1
-    assert procs[0]["fhir_id"] == sample_procedure_with_encounter_and_reason["id"]
+    assert procs[0]["id"] == sample_procedure_with_encounter_and_reason["id"]
+    assert procs[0]["resourceType"] == "Procedure"
 
 
 @pytest.mark.asyncio
@@ -1334,7 +1342,8 @@ async def test_get_diagnostic_report_results(
     )
 
     assert len(obs) == 1
-    assert obs[0]["fhir_id"] == sample_observation_with_encounter["id"]
+    assert obs[0]["id"] == sample_observation_with_encounter["id"]
+    assert obs[0]["resourceType"] == "Observation"
 
 
 # =============================================================================
@@ -1403,3 +1412,123 @@ async def test_medication_stores_reason_fhir_ids(
 
     assert record is not None
     assert sample_condition_with_encounter["id"] in record["reason_ids"]
+
+
+# =============================================================================
+# Tests for search_nodes_by_name
+# =============================================================================
+
+
+@pytest.mark.asyncio
+async def test_search_nodes_by_name_finds_condition(
+    graph: KnowledgeGraph,
+    patient_id: str,
+    sample_patient,
+    sample_condition,
+):
+    """Test search_nodes_by_name finds a condition by display name substring."""
+    await graph.build_from_fhir(patient_id, [sample_patient, sample_condition])
+
+    display = sample_condition["code"]["coding"][0]["display"]
+    # Use a substring of the display name
+    term = display.split()[0].lower()
+    results = await graph.search_nodes_by_name(patient_id, [term])
+
+    assert len(results) >= 1
+    fhir_ids = [r["fhir_id"] for r in results]
+    assert sample_condition["id"] in fhir_ids
+    match = next(r for r in results if r["fhir_id"] == sample_condition["id"])
+    assert match["resource_type"] == "Condition"
+
+
+@pytest.mark.asyncio
+async def test_search_nodes_by_name_case_insensitive(
+    graph: KnowledgeGraph,
+    patient_id: str,
+    sample_patient,
+    sample_condition,
+):
+    """Test search is case-insensitive."""
+    await graph.build_from_fhir(patient_id, [sample_patient, sample_condition])
+
+    display = sample_condition["code"]["coding"][0]["display"]
+    results = await graph.search_nodes_by_name(patient_id, [display.upper()])
+
+    fhir_ids = [r["fhir_id"] for r in results]
+    assert sample_condition["id"] in fhir_ids
+
+
+@pytest.mark.asyncio
+async def test_search_nodes_by_name_filters_by_resource_type(
+    graph: KnowledgeGraph,
+    patient_id: str,
+    sample_patient,
+    sample_condition,
+    sample_medication,
+):
+    """Test search respects resource_types filter."""
+    await graph.build_from_fhir(
+        patient_id, [sample_patient, sample_condition, sample_medication]
+    )
+
+    # Search with a broad term but filter to only MedicationRequest
+    med_display = sample_medication["medicationCodeableConcept"]["coding"][0]["display"]
+    term = med_display.split()[0].lower()
+    results = await graph.search_nodes_by_name(
+        patient_id, [term], resource_types=["MedicationRequest"]
+    )
+
+    resource_types = {r["resource_type"] for r in results}
+    assert resource_types <= {"MedicationRequest"}
+
+
+@pytest.mark.asyncio
+async def test_search_nodes_by_name_returns_empty_for_no_match(
+    graph: KnowledgeGraph,
+    patient_id: str,
+    sample_patient,
+    sample_condition,
+):
+    """Test search returns empty list when no nodes match."""
+    await graph.build_from_fhir(patient_id, [sample_patient, sample_condition])
+
+    results = await graph.search_nodes_by_name(patient_id, ["zzzznonexistent"])
+    assert results == []
+
+
+@pytest.mark.asyncio
+async def test_search_nodes_by_name_empty_terms(
+    graph: KnowledgeGraph,
+    patient_id: str,
+    sample_patient,
+    sample_condition,
+):
+    """Test search returns empty list for empty query terms."""
+    await graph.build_from_fhir(patient_id, [sample_patient, sample_condition])
+
+    results = await graph.search_nodes_by_name(patient_id, [])
+    assert results == []
+
+
+@pytest.mark.asyncio
+async def test_search_nodes_by_name_multiple_terms(
+    graph: KnowledgeGraph,
+    patient_id: str,
+    sample_patient,
+    sample_condition,
+    sample_medication,
+):
+    """Test search with multiple terms finds nodes matching any term."""
+    await graph.build_from_fhir(
+        patient_id, [sample_patient, sample_condition, sample_medication]
+    )
+
+    cond_display = sample_condition["code"]["coding"][0]["display"]
+    med_display = sample_medication["medicationCodeableConcept"]["coding"][0]["display"]
+    results = await graph.search_nodes_by_name(
+        patient_id, [cond_display, med_display]
+    )
+
+    fhir_ids = {r["fhir_id"] for r in results}
+    assert sample_condition["id"] in fhir_ids
+    assert sample_medication["id"] in fhir_ids
