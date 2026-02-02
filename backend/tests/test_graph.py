@@ -1560,3 +1560,194 @@ async def test_search_nodes_by_name_multiple_terms(
     fhir_ids = {r["fhir_id"] for r in results}
     assert sample_condition["id"] in fhir_ids
     assert sample_medication["id"] in fhir_ids
+
+
+# =============================================================================
+# Tests for expanded node properties (category, reasonCode, abatement)
+# =============================================================================
+
+
+@pytest.mark.asyncio
+async def test_observation_stores_category(
+    graph: KnowledgeGraph,
+    patient_id: str,
+    neo4j_driver,
+    sample_patient,
+    sample_observation_with_category,
+):
+    """Test that Observation node stores category from FHIR category[0].coding[0].code."""
+    await graph.build_from_fhir(
+        patient_id, [sample_patient, sample_observation_with_category]
+    )
+
+    async with neo4j_driver.session() as session:
+        result = await session.run(
+            """
+            MATCH (o:Observation {fhir_id: $fhir_id})
+            RETURN o.category as category
+            """,
+            fhir_id=sample_observation_with_category["id"],
+        )
+        record = await result.single()
+
+    assert record is not None
+    assert record["category"] == "vital-signs"
+
+
+@pytest.mark.asyncio
+async def test_observation_category_null_when_absent(
+    graph: KnowledgeGraph,
+    patient_id: str,
+    neo4j_driver,
+    sample_patient,
+    sample_observation,
+):
+    """Test that Observation.category is NULL when category field is absent."""
+    await graph.build_from_fhir(patient_id, [sample_patient, sample_observation])
+
+    async with neo4j_driver.session() as session:
+        result = await session.run(
+            """
+            MATCH (o:Observation {fhir_id: $fhir_id})
+            RETURN o.category as category
+            """,
+            fhir_id=sample_observation["id"],
+        )
+        record = await result.single()
+
+    assert record is not None
+    assert record["category"] is None
+
+
+@pytest.mark.asyncio
+async def test_encounter_stores_reason(
+    graph: KnowledgeGraph,
+    patient_id: str,
+    neo4j_driver,
+    sample_patient,
+    sample_encounter_with_reason,
+):
+    """Test that Encounter node stores reason_display and reason_code from reasonCode."""
+    await graph.build_from_fhir(
+        patient_id, [sample_patient, sample_encounter_with_reason]
+    )
+
+    async with neo4j_driver.session() as session:
+        result = await session.run(
+            """
+            MATCH (e:Encounter {fhir_id: $fhir_id})
+            RETURN e.reason_display as reason_display, e.reason_code as reason_code
+            """,
+            fhir_id=sample_encounter_with_reason["id"],
+        )
+        record = await result.single()
+
+    assert record is not None
+    assert record["reason_display"] == "Hypertension"
+    assert record["reason_code"] == "38341003"
+
+
+@pytest.mark.asyncio
+async def test_encounter_reason_null_when_absent(
+    graph: KnowledgeGraph,
+    patient_id: str,
+    neo4j_driver,
+    sample_patient,
+    sample_encounter,
+):
+    """Test that Encounter reason fields are NULL when reasonCode is absent."""
+    await graph.build_from_fhir(patient_id, [sample_patient, sample_encounter])
+
+    async with neo4j_driver.session() as session:
+        result = await session.run(
+            """
+            MATCH (e:Encounter {fhir_id: $fhir_id})
+            RETURN e.reason_display as reason_display, e.reason_code as reason_code
+            """,
+            fhir_id=sample_encounter["id"],
+        )
+        record = await result.single()
+
+    assert record is not None
+    assert record["reason_display"] is None
+    assert record["reason_code"] is None
+
+
+@pytest.mark.asyncio
+async def test_condition_stores_abatement_date(
+    graph: KnowledgeGraph,
+    patient_id: str,
+    neo4j_driver,
+    sample_patient,
+    sample_condition_with_abatement,
+):
+    """Test that Condition node stores abatement_date from abatementDateTime."""
+    await graph.build_from_fhir(
+        patient_id, [sample_patient, sample_condition_with_abatement]
+    )
+
+    async with neo4j_driver.session() as session:
+        result = await session.run(
+            """
+            MATCH (c:Condition {fhir_id: $fhir_id})
+            RETURN c.abatement_date as abatement_date
+            """,
+            fhir_id=sample_condition_with_abatement["id"],
+        )
+        record = await result.single()
+
+    assert record is not None
+    assert record["abatement_date"] == "2024-01-24T00:00:00Z"
+
+
+@pytest.mark.asyncio
+async def test_condition_abatement_date_null_when_absent(
+    graph: KnowledgeGraph,
+    patient_id: str,
+    neo4j_driver,
+    sample_patient,
+    sample_condition,
+):
+    """Test that Condition.abatement_date is NULL when abatementDateTime is absent."""
+    await graph.build_from_fhir(patient_id, [sample_patient, sample_condition])
+
+    async with neo4j_driver.session() as session:
+        result = await session.run(
+            """
+            MATCH (c:Condition {fhir_id: $fhir_id})
+            RETURN c.abatement_date as abatement_date
+            """,
+            fhir_id=sample_condition["id"],
+        )
+        record = await result.single()
+
+    assert record is not None
+    assert record["abatement_date"] is None
+
+
+@pytest.mark.asyncio
+async def test_encounter_stores_fhir_resource(
+    graph: KnowledgeGraph,
+    patient_id: str,
+    neo4j_driver,
+    sample_patient,
+    sample_encounter,
+):
+    """Test that Encounter node stores fhir_resource (bug fix verification)."""
+    await graph.build_from_fhir(patient_id, [sample_patient, sample_encounter])
+
+    async with neo4j_driver.session() as session:
+        result = await session.run(
+            """
+            MATCH (e:Encounter {fhir_id: $fhir_id})
+            RETURN e.fhir_resource as fhir_resource
+            """,
+            fhir_id=sample_encounter["id"],
+        )
+        record = await result.single()
+
+    assert record is not None
+    assert record["fhir_resource"] is not None
+    stored = json.loads(record["fhir_resource"])
+    assert stored["resourceType"] == "Encounter"
+    assert stored["id"] == sample_encounter["id"]

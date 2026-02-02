@@ -71,6 +71,10 @@ class VerifiedLayer(BaseModel):
         default_factory=list,
         description="Active FHIR AllergyIntolerance resources (clinical_status='active')",
     )
+    immunizations: list[dict[str, Any]] = Field(
+        default_factory=list,
+        description="Completed FHIR Immunization resources (status='completed')",
+    )
 
     def token_estimate(self) -> int:
         """Estimate token count for verified layer.
@@ -84,11 +88,13 @@ class VerifiedLayer(BaseModel):
             total_chars += len(json.dumps(medication))
         for allergy in self.allergies:
             total_chars += len(json.dumps(allergy))
+        for immunization in self.immunizations:
+            total_chars += len(json.dumps(immunization))
         return total_chars // 4
 
     def total_count(self) -> int:
         """Return total number of verified resources."""
-        return len(self.conditions) + len(self.medications) + len(self.allergies)
+        return len(self.conditions) + len(self.medications) + len(self.allergies) + len(self.immunizations)
 
 
 class RetrievedResource(BaseModel):
