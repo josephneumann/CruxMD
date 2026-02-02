@@ -34,7 +34,7 @@ logger = logging.getLogger(__name__)
 DEFAULT_TOKEN_BUDGET = 12000
 
 # Default similarity threshold for vector search
-DEFAULT_SIMILARITY_THRESHOLD = 0.7
+DEFAULT_SIMILARITY_THRESHOLD = 0.4
 
 # Maximum resources to retrieve from vector search
 DEFAULT_RETRIEVAL_LIMIT = 20
