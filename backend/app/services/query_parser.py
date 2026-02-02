@@ -90,9 +90,10 @@ def extract_concepts(
 ) -> list[ConceptMatch]:
     """Extract concepts from a query by matching against graph node names.
 
-    Performs case-insensitive substring matching of query tokens and bigrams
-    against node display names. Bigrams are checked first so multi-word
-    clinical terms (e.g. "blood pressure") match before individual words.
+    Performs case-insensitive matching: checks whether query tokens and bigrams
+    appear as substrings within node display names. Bigrams are checked first
+    so multi-word clinical terms (e.g. "blood pressure") match before
+    individual words.
 
     Args:
         query: The user's clinical query.
@@ -124,7 +125,7 @@ def extract_concepts(
     # Check bigrams first (higher specificity)
     for bigram in bigrams:
         for lower_display, (original, rtype) in display_lookup.items():
-            if bigram in lower_display or lower_display in bigram:
+            if bigram in lower_display:
                 if lower_display not in matched:
                     matched[lower_display] = ConceptMatch(
                         term=original, resource_type_hint=rtype
@@ -133,7 +134,7 @@ def extract_concepts(
     # Check individual tokens
     for token in filtered:
         for lower_display, (original, rtype) in display_lookup.items():
-            if token in lower_display or lower_display in token:
+            if token in lower_display:
                 if lower_display not in matched:
                     matched[lower_display] = ConceptMatch(
                         term=original, resource_type_hint=rtype
