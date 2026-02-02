@@ -195,15 +195,37 @@ def _format_allergy(resource: dict[str, Any], display: str) -> str:
     return f"- {display} (criticality: {criticality}, category: {category})"
 
 
+def _get_observation_category(resource: dict[str, Any]) -> str:
+    """Extract the category code from a FHIR Observation resource."""
+    categories = resource.get("category", [])
+    if categories:
+        codings = categories[0].get("coding", [])
+        if codings:
+            return codings[0].get("code", "unknown")
+    return "unknown"
+
+
+def _get_effective_date(resource: dict[str, Any]) -> str:
+    """Extract effective date from a FHIR resource, truncated to date only."""
+    date = resource.get("effectiveDateTime", "")
+    if not date:
+        period = resource.get("effectivePeriod", {})
+        date = period.get("start", "")
+    return date[:10] if date else ""
+
+
 def _format_retrieved_resource_line(resource: dict[str, Any]) -> str:
     """Format a single retrieved FHIR resource as a compact one-liner."""
     resource_type = resource.get("resourceType", "Unknown")
     display = _get_display_name(resource) or resource_type
 
     if resource_type == "Observation":
+        date = _get_effective_date(resource)
+        date_suffix = f" ({date})" if date else ""
+
         value = resource.get("valueQuantity", {})
         if value:
-            return f"- {display}: {value.get('value')} {value.get('unit', '')}"
+            return f"- {display}: {value.get('value')} {value.get('unit', '')}{date_suffix}"
         # Check for valueCodeableConcept
         value_cc = resource.get("valueCodeableConcept", {})
         if value_cc:
@@ -211,7 +233,7 @@ def _format_retrieved_resource_line(resource: dict[str, Any]) -> str:
                 value_cc.get("coding", [{}])[0].get("display", "")
             )
             if cc_display:
-                return f"- {display}: {cc_display}"
+                return f"- {display}: {cc_display}{date_suffix}"
         # Check for component observations (e.g., blood pressure)
         components = resource.get("component", [])
         if components:
@@ -222,8 +244,8 @@ def _format_retrieved_resource_line(resource: dict[str, Any]) -> str:
                 if comp_val:
                     parts.append(f"{comp_display}: {comp_val.get('value')} {comp_val.get('unit', '')}")
             if parts:
-                return f"- {display} ({', '.join(parts)})"
-        return f"- {display}"
+                return f"- {display} ({', '.join(parts)}){date_suffix}"
+        return f"- {display}{date_suffix}"
     elif resource_type == "Condition":
         clinical_status = resource.get("clinicalStatus", {})
         status_codings = clinical_status.get("coding", [])
@@ -258,8 +280,35 @@ def _format_retrieved_context(retrieved_resources: list[dict[str, Any]]) -> str:
     type_order = sorted(grouped.keys(), key=lambda t: (0 if t == "Observation" else 1, t))
     for rtype in type_order:
         resources = grouped[rtype]
-        lines = [_format_retrieved_resource_line(r) for r in resources]
-        sections.append(f"**{rtype}s ({len(resources)}):**\n" + "\n".join(lines))
+        if rtype == "Observation":
+            # Sub-group observations by category for clarity
+            by_category: dict[str, list[dict[str, Any]]] = {}
+            for r in resources:
+                cat = _get_observation_category(r)
+                by_category.setdefault(cat, []).append(r)
+            cat_order = ["laboratory", "vital-signs", "survey", "procedure", "unknown"]
+            cat_labels = {
+                "laboratory": "Lab Results",
+                "vital-signs": "Vital Signs",
+                "survey": "Surveys",
+                "procedure": "Procedure Results",
+                "unknown": "Other Observations",
+            }
+            for cat in cat_order:
+                if cat not in by_category:
+                    continue
+                cat_resources = by_category[cat]
+                label = cat_labels.get(cat, cat.title())
+                lines = [_format_retrieved_resource_line(r) for r in cat_resources]
+                sections.append(f"**{label} ({len(cat_resources)}):**\n" + "\n".join(lines))
+            # Any categories not in cat_order
+            for cat, cat_resources in by_category.items():
+                if cat not in cat_order:
+                    lines = [_format_retrieved_resource_line(r) for r in cat_resources]
+                    sections.append(f"**{cat.title()} Observations ({len(cat_resources)}):**\n" + "\n".join(lines))
+        else:
+            lines = [_format_retrieved_resource_line(r) for r in resources]
+            sections.append(f"**{rtype}s ({len(resources)}):**\n" + "\n".join(lines))
 
     return "\n\n".join(sections)
 
