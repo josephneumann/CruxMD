@@ -650,11 +650,17 @@ class AgentService:
             response = await self._run_tool_rounds(
                 kwargs, context.meta.patient_id, graph, db
             )
-            # If no tool calls occurred on final round, response is already complete
             has_text = any(
                 item.type != "function_call" for item in response.output
             )
             if has_text:
+                # Emit reasoning summary from the non-streaming response
+                for item in response.output:
+                    if item.type == "reasoning" and hasattr(item, "summary"):
+                        for part in item.summary or []:
+                            if hasattr(part, "text") and part.text:
+                                yield ("reasoning", json.dumps({"delta": part.text}))
+
                 agent_response = response.output_parsed
                 if agent_response is None:
                     raw_output = getattr(response, "output_text", None)
