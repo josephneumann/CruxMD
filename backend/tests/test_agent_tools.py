@@ -4,25 +4,9 @@ Uses mocked KnowledgeGraph and AsyncSession to test tool formatting
 and logic without requiring Neo4j or Postgres.
 """
 
-from unittest.mock import AsyncMock, MagicMock, patch
+from unittest.mock import AsyncMock, MagicMock
 
 import pytest
-
-
-class AsyncIterator:
-    """Helper to create an async iterator from a list."""
-
-    def __init__(self, items):
-        self._items = iter(items)
-
-    def __aiter__(self):
-        return self
-
-    async def __anext__(self):
-        try:
-            return next(self._items)
-        except StopIteration:
-            raise StopAsyncIteration
 
 from app.services.agent_tools import (
     _format_resource_summary,
@@ -164,6 +148,14 @@ class TestSearchPatientData:
         result = await search_patient_data("patient-1", "nonexistent", graph, db)
         assert "No resources found" in result
 
+    @pytest.mark.asyncio
+    async def test_error_handling(self):
+        graph = AsyncMock()
+        graph.search_nodes_by_name.side_effect = Exception("connection failed")
+        db = AsyncMock()
+        result = await search_patient_data("patient-1", "diabetes", graph, db)
+        assert "Error" in result
+
 
 # =============================================================================
 # get_encounter_details tests
@@ -213,6 +205,13 @@ class TestGetEncounterDetails:
         result = await get_encounter_details("missing", graph)
         assert "No encounter found" in result
 
+    @pytest.mark.asyncio
+    async def test_error_handling(self):
+        graph = AsyncMock()
+        graph.get_encounter_events.side_effect = Exception("neo4j down")
+        result = await get_encounter_details("enc-1", graph)
+        assert "Error" in result
+
 
 # =============================================================================
 # get_lab_history tests
@@ -221,15 +220,15 @@ class TestGetEncounterDetails:
 
 class TestGetLabHistory:
     @pytest.mark.asyncio
-    async def test_returns_sorted_results(self):
+    async def test_returns_results(self):
         rows = []
-        for i, date in enumerate(["2024-01-10", "2024-03-15", "2024-02-20"]):
+        for date in ["2024-03-15", "2024-02-20", "2024-01-10"]:
             row = MagicMock()
             row.data = {
                 "resourceType": "Observation",
                 "code": {"coding": [{"display": "Hemoglobin A1c"}]},
                 "effectiveDateTime": f"{date}T09:00:00Z",
-                "valueQuantity": {"value": 6.5 + i * 0.1, "unit": "%"},
+                "valueQuantity": {"value": 6.5, "unit": "%"},
             }
             rows.append(row)
 
@@ -240,10 +239,7 @@ class TestGetLabHistory:
 
         result = await get_lab_history("patient-1", "hemoglobin", db)
         assert "3 results" in result
-        # Should be sorted descending by date
-        lines = result.split("\n")
-        dates = [l.strip().split(":")[0] for l in lines if l.strip().startswith("- 2024")]
-        assert dates == sorted(dates, reverse=True)
+        assert "Hemoglobin A1c" in result
 
     @pytest.mark.asyncio
     async def test_no_results(self):
@@ -254,6 +250,13 @@ class TestGetLabHistory:
 
         result = await get_lab_history("patient-1", "nonexistent", db)
         assert "No lab results found" in result
+
+    @pytest.mark.asyncio
+    async def test_error_handling(self):
+        db = AsyncMock()
+        db.execute.side_effect = Exception("db error")
+        result = await get_lab_history("patient-1", "hemoglobin", db)
+        assert "Error" in result
 
 
 # =============================================================================
@@ -308,43 +311,31 @@ class TestFindRelatedResources:
         result = await find_related_resources("obs-1", "Observation", graph)
         assert "No related resources found" in result
 
+    @pytest.mark.asyncio
+    async def test_error_handling(self):
+        graph = AsyncMock()
+        graph.get_medications_treating_condition.side_effect = Exception("graph error")
+        result = await find_related_resources("cond-1", "Condition", graph)
+        assert "Error" in result
+
 
 # =============================================================================
 # get_patient_timeline tests
 # =============================================================================
 
 
-def _make_graph_with_session(mock_session):
-    """Create a mock graph whose _driver.session() returns an async context manager."""
-    graph = AsyncMock()
-    cm = AsyncMock()
-    cm.__aenter__ = AsyncMock(return_value=mock_session)
-    cm.__aexit__ = AsyncMock(return_value=False)
-    # _driver must be a regular MagicMock so .session() doesn't return a coroutine
-    mock_driver = MagicMock()
-    mock_driver.session.return_value = cm
-    graph._driver = mock_driver
-    return graph
-
-
 class TestGetPatientTimeline:
     @pytest.mark.asyncio
     async def test_returns_timeline(self):
-        mock_record_1 = MagicMock()
-        mock_record_1.data.return_value = {
-            "fhir_id": "enc-1",
-            "type_display": "Outpatient visit",
-            "period_start": "2024-01-15T09:00:00Z",
-            "period_end": "2024-01-15T09:30:00Z",
-        }
-
-        mock_run_result = AsyncMock()
-        mock_run_result.__aiter__ = lambda self: AsyncIterator([mock_record_1])
-
-        mock_session = AsyncMock()
-        mock_session.run.return_value = mock_run_result
-
-        graph = _make_graph_with_session(mock_session)
+        graph = AsyncMock()
+        graph.get_patient_encounters.return_value = [
+            {
+                "fhir_id": "enc-1",
+                "type_display": "Outpatient visit",
+                "period_start": "2024-01-15T09:00:00Z",
+                "period_end": "2024-01-15T09:30:00Z",
+            },
+        ]
         graph.get_encounter_events.return_value = {
             "conditions": [
                 {
@@ -366,29 +357,26 @@ class TestGetPatientTimeline:
 
     @pytest.mark.asyncio
     async def test_no_encounters(self):
-        mock_run_result = AsyncMock()
-        mock_run_result.__aiter__ = lambda self: AsyncIterator([])
-
-        mock_session = AsyncMock()
-        mock_session.run.return_value = mock_run_result
-
-        graph = _make_graph_with_session(mock_session)
+        graph = AsyncMock()
+        graph.get_patient_encounters.return_value = []
 
         result = await get_patient_timeline("patient-1", graph)
         assert "No encounters found" in result
 
     @pytest.mark.asyncio
     async def test_with_date_range(self):
-        mock_run_result = AsyncMock()
-        mock_run_result.__aiter__ = lambda self: AsyncIterator([])
-
-        mock_session = AsyncMock()
-        mock_session.run.return_value = mock_run_result
-
-        graph = _make_graph_with_session(mock_session)
+        graph = AsyncMock()
+        graph.get_patient_encounters.return_value = []
 
         result = await get_patient_timeline(
             "patient-1", graph, start_date="2024-01-01", end_date="2024-12-31"
         )
         assert "2024-01-01" in result
         assert "2024-12-31" in result
+
+    @pytest.mark.asyncio
+    async def test_error_handling(self):
+        graph = AsyncMock()
+        graph.get_patient_encounters.side_effect = Exception("neo4j down")
+        result = await get_patient_timeline("patient-1", graph)
+        assert "Error" in result

@@ -6,10 +6,9 @@ agent mid-reasoning to fetch additional patient data.
 """
 
 import logging
-from datetime import datetime
 from typing import Any
 
-from sqlalchemy import select, and_
+from sqlalchemy import select, and_, func, cast, String
 from sqlalchemy.ext.asyncio import AsyncSession
 
 from app.models import FhirResource
@@ -82,7 +81,7 @@ async def search_patient_data(
     graph: KnowledgeGraph,
     db: AsyncSession,
 ) -> str:
-    """Search patient data by concept name using graph + vector search.
+    """Search patient data by concept name using graph node matching.
 
     Performs graph node search by display name matching. Returns formatted
     summaries of matching resources.
@@ -96,43 +95,44 @@ async def search_patient_data(
     Returns:
         Formatted text describing matching resources.
     """
-    terms = [t.strip() for t in query.split() if t.strip()]
-    if not terms:
-        return "No search terms provided."
+    try:
+        terms = [t.strip() for t in query.split() if t.strip()]
+        if not terms:
+            return "No search terms provided."
 
-    # Search graph nodes by display name
-    matches = await graph.search_nodes_by_name(patient_id, terms)
+        matches = await graph.search_nodes_by_name(patient_id, terms)
 
-    if not matches:
-        return f"No resources found matching '{query}' for this patient."
+        if not matches:
+            return f"No resources found matching '{query}' for this patient."
 
-    # Fetch full FHIR resources from Postgres for matched fhir_ids
-    fhir_ids = [m["fhir_id"] for m in matches]
-    stmt = select(FhirResource).where(
-        and_(
-            FhirResource.patient_id == patient_id,
-            FhirResource.fhir_id.in_(fhir_ids),
+        fhir_ids = [m["fhir_id"] for m in matches]
+        stmt = select(FhirResource).where(
+            and_(
+                FhirResource.patient_id == patient_id,
+                FhirResource.fhir_id.in_(fhir_ids),
+            )
         )
-    )
-    result = await db.execute(stmt)
-    rows = result.scalars().all()
+        result = await db.execute(stmt)
+        rows = result.scalars().all()
 
-    # Build lookup by fhir_id
-    resource_map: dict[str, dict[str, Any]] = {
-        r.fhir_id: r.data for r in rows
-    }
+        resource_map: dict[str, dict[str, Any]] = {
+            r.fhir_id: r.data for r in rows
+        }
 
-    lines = [f"Search results for '{query}' ({len(matches)} found):"]
-    for match in matches:
-        fhir_id = match["fhir_id"]
-        rtype = match["resource_type"]
-        data = resource_map.get(fhir_id)
-        if data:
-            lines.append(f"  - {_format_resource_summary(data)}")
-        else:
-            lines.append(f"  - {rtype} (id: {fhir_id})")
+        lines = [f"Search results for '{query}' ({len(matches)} found):"]
+        for match in matches:
+            fhir_id = match["fhir_id"]
+            rtype = match["resource_type"]
+            data = resource_map.get(fhir_id)
+            if data:
+                lines.append(f"  - {_format_resource_summary(data)}")
+            else:
+                lines.append(f"  - {rtype} (id: {fhir_id})")
 
-    return "\n".join(lines)
+        return "\n".join(lines)
+    except Exception as e:
+        logger.error(f"Failed to search patient data for {patient_id}: {e}")
+        return f"Error searching patient data: {e}"
 
 
 async def get_encounter_details(
@@ -151,24 +151,27 @@ async def get_encounter_details(
     Returns:
         Formatted text describing the encounter and its events.
     """
-    events = await graph.get_encounter_events(encounter_fhir_id)
+    try:
+        events = await graph.get_encounter_events(encounter_fhir_id)
 
-    # Check if encounter was found (all lists empty means no encounter or no events)
-    total = sum(len(v) for v in events.values())
-    if total == 0:
-        return f"No encounter found with ID '{encounter_fhir_id}', or encounter has no associated events."
+        total = sum(len(v) for v in events.values())
+        if total == 0:
+            return f"No encounter found with ID '{encounter_fhir_id}', or encounter has no associated events."
 
-    lines = [f"Encounter {encounter_fhir_id}:"]
+        lines = [f"Encounter {encounter_fhir_id}:"]
 
-    for category, resources in events.items():
-        if not resources:
-            continue
-        label = category.replace("_", " ").title()
-        lines.append(f"\n  {label}:")
-        for r in resources:
-            lines.append(f"    - {_format_resource_summary(r)}")
+        for category, resources in events.items():
+            if not resources:
+                continue
+            label = category.replace("_", " ").title()
+            lines.append(f"\n  {label}:")
+            for r in resources:
+                lines.append(f"    - {_format_resource_summary(r)}")
 
-    return "\n".join(lines)
+        return "\n".join(lines)
+    except Exception as e:
+        logger.error(f"Failed to get encounter details for {encounter_fhir_id}: {e}")
+        return f"Error retrieving encounter details: {e}"
 
 
 async def get_lab_history(
@@ -179,8 +182,8 @@ async def get_lab_history(
 ) -> str:
     """Get history of a specific lab/observation by name, ordered by date.
 
-    Queries Postgres for Observation resources matching the lab name,
-    ordered by effective date descending.
+    Queries Postgres for Observation resources matching the lab name
+    using JSONB filtering, ordered by effective date descending.
 
     Args:
         patient_id: Canonical patient UUID.
@@ -191,49 +194,42 @@ async def get_lab_history(
     Returns:
         Formatted text with lab values over time.
     """
-    # Use JSONB containment to find observations by display name (case-insensitive via ilike on embedding_text or JSONB)
-    # More reliable: query all observations for patient, filter by display name in Python
-    # For performance at scale, a JSONB index path query would be better, but this is sufficient for demo
-    stmt = (
-        select(FhirResource)
-        .where(
-            and_(
-                FhirResource.patient_id == patient_id,
-                FhirResource.resource_type == "Observation",
+    try:
+        stmt = (
+            select(FhirResource)
+            .where(
+                and_(
+                    FhirResource.patient_id == patient_id,
+                    FhirResource.resource_type == "Observation",
+                    func.lower(
+                        FhirResource.data["code"]["coding"][0]["display"].astext
+                    ).contains(lab_name.lower()),
+                )
             )
+            .order_by(
+                FhirResource.data["effectiveDateTime"].astext.desc()
+            )
+            .limit(limit)
         )
-        .order_by(FhirResource.created_at.desc())
-    )
-    result = await db.execute(stmt)
-    rows = result.scalars().all()
+        result = await db.execute(stmt)
+        rows = result.scalars().all()
 
-    lab_lower = lab_name.lower()
-    matching = []
-    for row in rows:
-        display = extract_display_name(row.data)
-        if display and lab_lower in display.lower():
-            matching.append(row.data)
-        if len(matching) >= limit:
-            break
+        if not rows:
+            return f"No lab results found matching '{lab_name}' for this patient."
 
-    if not matching:
-        return f"No lab results found matching '{lab_name}' for this patient."
+        lines = [f"Lab history for '{lab_name}' ({len(rows)} results):"]
+        for row in rows:
+            obs = row.data
+            value, unit = extract_observation_value(obs)
+            date = (obs.get("effectiveDateTime") or "")[:10]
+            val_str = f"{value} {unit}" if unit else str(value) if value is not None else "no value"
+            display = extract_display_name(obs) or lab_name
+            lines.append(f"  - {date}: {display} = {val_str}")
 
-    # Sort by effectiveDateTime descending
-    matching.sort(
-        key=lambda r: r.get("effectiveDateTime", ""),
-        reverse=True,
-    )
-
-    lines = [f"Lab history for '{lab_name}' ({len(matching)} results):"]
-    for obs in matching:
-        value, unit = extract_observation_value(obs)
-        date = (obs.get("effectiveDateTime") or "")[:10]
-        val_str = f"{value} {unit}" if unit else str(value) if value is not None else "no value"
-        display = extract_display_name(obs) or lab_name
-        lines.append(f"  - {date}: {display} = {val_str}")
-
-    return "\n".join(lines)
+        return "\n".join(lines)
+    except Exception as e:
+        logger.error(f"Failed to get lab history for {patient_id}: {e}")
+        return f"Error retrieving lab history: {e}"
 
 
 async def find_related_resources(
@@ -255,46 +251,50 @@ async def find_related_resources(
     Returns:
         Formatted text describing related resources.
     """
-    lines = [f"Resources related to {resource_type} {resource_fhir_id}:"]
-    found_any = False
+    try:
+        lines = [f"Resources related to {resource_type} {resource_fhir_id}:"]
+        found_any = False
 
-    if resource_type == "Condition":
-        meds = await graph.get_medications_treating_condition(resource_fhir_id)
-        if meds:
-            found_any = True
-            lines.append("\n  Medications treating this condition:")
-            for m in meds:
-                lines.append(f"    - {_format_resource_summary(m)}")
-
-        procs = await graph.get_procedures_for_condition(resource_fhir_id)
-        if procs:
-            found_any = True
-            lines.append("\n  Procedures for this condition:")
-            for p in procs:
-                lines.append(f"    - {_format_resource_summary(p)}")
-
-    elif resource_type == "DiagnosticReport":
-        obs = await graph.get_diagnostic_report_results(resource_fhir_id)
-        if obs:
-            found_any = True
-            lines.append("\n  Observations in this report:")
-            for o in obs:
-                lines.append(f"    - {_format_resource_summary(o)}")
-
-    elif resource_type == "Encounter":
-        events = await graph.get_encounter_events(resource_fhir_id)
-        for category, resources in events.items():
-            if resources:
+        if resource_type == "Condition":
+            meds = await graph.get_medications_treating_condition(resource_fhir_id)
+            if meds:
                 found_any = True
-                label = category.replace("_", " ").title()
-                lines.append(f"\n  {label}:")
-                for r in resources:
-                    lines.append(f"    - {_format_resource_summary(r)}")
+                lines.append("\n  Medications treating this condition:")
+                for m in meds:
+                    lines.append(f"    - {_format_resource_summary(m)}")
 
-    if not found_any:
-        return f"No related resources found for {resource_type} {resource_fhir_id}."
+            procs = await graph.get_procedures_for_condition(resource_fhir_id)
+            if procs:
+                found_any = True
+                lines.append("\n  Procedures for this condition:")
+                for p in procs:
+                    lines.append(f"    - {_format_resource_summary(p)}")
 
-    return "\n".join(lines)
+        elif resource_type == "DiagnosticReport":
+            obs = await graph.get_diagnostic_report_results(resource_fhir_id)
+            if obs:
+                found_any = True
+                lines.append("\n  Observations in this report:")
+                for o in obs:
+                    lines.append(f"    - {_format_resource_summary(o)}")
+
+        elif resource_type == "Encounter":
+            events = await graph.get_encounter_events(resource_fhir_id)
+            for category, resources in events.items():
+                if resources:
+                    found_any = True
+                    label = category.replace("_", " ").title()
+                    lines.append(f"\n  {label}:")
+                    for r in resources:
+                        lines.append(f"    - {_format_resource_summary(r)}")
+
+        if not found_any:
+            return f"No related resources found for {resource_type} {resource_fhir_id}."
+
+        return "\n".join(lines)
+    except Exception as e:
+        logger.error(f"Failed to find related resources for {resource_type} {resource_fhir_id}: {e}")
+        return f"Error finding related resources: {e}"
 
 
 async def get_patient_timeline(
@@ -317,57 +317,30 @@ async def get_patient_timeline(
     Returns:
         Formatted timeline of encounters and their events.
     """
-    # Get all encounters for patient via graph search
-    # Encounters are searched by type_display, but for timeline we want all
-    # Use a broad search or direct Cypher query
-    async with graph._driver.session() as session:
-        # Build date filter
-        where_clauses = ["TRUE"]
-        params: dict[str, Any] = {"patient_id": patient_id}
+    try:
+        encounters = await graph.get_patient_encounters(patient_id, start_date, end_date)
 
-        if start_date:
-            where_clauses.append("e.period_start >= $start_date")
-            params["start_date"] = start_date
-        if end_date:
-            where_clauses.append("e.period_start <= $end_date")
-            params["end_date"] = end_date
-
-        where = " AND ".join(where_clauses)
-        result = await session.run(
-            f"""
-            MATCH (p:Patient {{id: $patient_id}})-[:HAS_ENCOUNTER]->(e:Encounter)
-            WHERE {where}
-            RETURN e.fhir_id as fhir_id, e.type_display as type_display,
-                   e.period_start as period_start, e.period_end as period_end
-            ORDER BY e.period_start DESC
-            """,
-            **params,
-        )
-        encounters = [record.data() async for record in result]
-
-    if not encounters:
         date_range = ""
         if start_date or end_date:
-            date_range = f" between {start_date or '...'} and {end_date or '...'}"
-        return f"No encounters found for this patient{date_range}."
+            date_range = f" ({start_date or '...'} to {end_date or '...'})"
 
-    lines = []
-    date_range = ""
-    if start_date or end_date:
-        date_range = f" ({start_date or '...'} to {end_date or '...'})"
-    lines.append(f"Patient timeline{date_range} — {len(encounters)} encounters:")
+        if not encounters:
+            return f"No encounters found for this patient{date_range}."
 
-    for enc in encounters:
-        date = (enc.get("period_start") or "")[:10]
-        etype = enc.get("type_display") or "Unknown type"
-        lines.append(f"\n  [{date}] {etype}")
+        lines = [f"Patient timeline{date_range} — {len(encounters)} encounters:"]
 
-        # Get events for this encounter
-        events = await graph.get_encounter_events(enc["fhir_id"])
-        for category, resources in events.items():
-            if resources:
-                label = category.replace("_", " ").title()
-                for r in resources:
-                    lines.append(f"    - {_format_resource_summary(r)}")
+        for enc in encounters:
+            date = (enc.get("period_start") or "")[:10]
+            etype = enc.get("type_display") or "Unknown type"
+            lines.append(f"\n  [{date}] {etype}")
 
-    return "\n".join(lines)
+            events = await graph.get_encounter_events(enc["fhir_id"])
+            for category, resources in events.items():
+                if resources:
+                    for r in resources:
+                        lines.append(f"    - {_format_resource_summary(r)}")
+
+        return "\n".join(lines)
+    except Exception as e:
+        logger.error(f"Failed to get patient timeline for {patient_id}: {e}")
+        return f"Error retrieving patient timeline: {e}"
