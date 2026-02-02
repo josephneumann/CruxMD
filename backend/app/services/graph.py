@@ -129,6 +129,7 @@ class VerifiedFacts(TypedDict):
     conditions: list[dict[str, Any]]
     medications: list[dict[str, Any]]
     allergies: list[dict[str, Any]]
+    immunizations: list[dict[str, Any]]
 
 
 class EncounterEvents(TypedDict):
@@ -182,6 +183,7 @@ class KnowledgeGraph:
         ("Observation", "HAS_OBSERVATION", "RECORDED", "o"),
         ("Procedure", "HAS_PROCEDURE", "PERFORMED", "pr"),
         ("DiagnosticReport", "HAS_DIAGNOSTIC_REPORT", "REPORTED", "dr"),
+        ("Immunization", "HAS_IMMUNIZATION", "ADMINISTERED", "im"),
     ]
 
     def __init__(self, driver: AsyncDriver | None = None):
@@ -484,6 +486,7 @@ class KnowledgeGraph:
                 e.class_code = $class_code,
                 e.period_start = $period_start,
                 e.period_end = $period_end,
+                e.fhir_resource = $fhir_resource,
                 e.updated_at = datetime()
             MERGE (p)-[:HAS_ENCOUNTER]->(e)
             """,
@@ -495,6 +498,7 @@ class KnowledgeGraph:
             class_code=resource.get("class", {}).get("code"),
             period_start=period.get("start"),
             period_end=period.get("end"),
+            fhir_resource=json.dumps(resource),
         )
 
     async def _upsert_procedure(

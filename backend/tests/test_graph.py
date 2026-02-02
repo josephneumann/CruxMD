@@ -801,6 +801,34 @@ async def test_fhir_resource_stored_on_medication_node(
 
 
 @pytest.mark.asyncio
+async def test_fhir_resource_stored_on_encounter_node(
+    graph: KnowledgeGraph,
+    patient_id: str,
+    neo4j_driver,
+    sample_patient,
+    sample_encounter,
+):
+    """Test that the full FHIR resource is stored on Encounter nodes."""
+    await graph.build_from_fhir(patient_id, [sample_patient, sample_encounter])
+
+    async with neo4j_driver.session() as session:
+        result = await session.run(
+            """
+            MATCH (p:Patient {id: $id})-[:HAS_ENCOUNTER]->(e:Encounter)
+            RETURN e.fhir_resource as fhir_resource
+            """,
+            id=patient_id,
+        )
+        record = await result.single()
+
+    assert record is not None
+    assert record["fhir_resource"] is not None
+    stored_resource = json.loads(record["fhir_resource"])
+    assert stored_resource["resourceType"] == "Encounter"
+    assert stored_resource["id"] == sample_encounter["id"]
+
+
+@pytest.mark.asyncio
 async def test_fhir_resource_stored_on_allergy_node(
     graph: KnowledgeGraph, patient_id: str, neo4j_driver, sample_patient, sample_allergy
 ):
