@@ -337,6 +337,57 @@ class AgentService:
         """Close the OpenAI client connection."""
         await self._client.close()
 
+    async def _run_tool_rounds(
+        self,
+        kwargs: dict[str, Any],
+        patient_id: str,
+        graph: KnowledgeGraph,
+        db: AsyncSession,
+    ) -> Any:
+        """Execute tool-calling rounds until the LLM stops requesting tools.
+
+        Mutates kwargs["input"] by appending tool calls and results.
+
+        Args:
+            kwargs: API call kwargs (must include "input" key).
+            patient_id: Current patient ID for tool execution.
+            graph: KnowledgeGraph instance.
+            db: AsyncSession instance.
+
+        Returns:
+            The final API response (after all tool rounds complete).
+        """
+        response = await self._client.responses.parse(**kwargs)
+
+        for _round in range(MAX_TOOL_ROUNDS):
+            tool_calls = [
+                item for item in response.output
+                if item.type == "function_call"
+            ]
+            if not tool_calls:
+                break
+
+            logger.debug(f"Tool round {_round + 1}: {len(tool_calls)} tool call(s)")
+
+            kwargs["input"].extend(response.output)
+            for tool_call in tool_calls:
+                result = await execute_tool(
+                    name=tool_call.name,
+                    arguments=tool_call.arguments,
+                    patient_id=patient_id,
+                    graph=graph,
+                    db=db,
+                )
+                kwargs["input"].append({
+                    "type": "function_call_output",
+                    "call_id": tool_call.call_id,
+                    "output": result,
+                })
+
+            response = await self._client.responses.parse(**kwargs)
+
+        return response
+
     def _build_input_messages(
         self,
         context: PatientContext,
@@ -418,39 +469,11 @@ class AgentService:
         if tools_available:
             kwargs["tools"] = TOOL_SCHEMAS
 
-        response = await self._client.responses.parse(**kwargs)
-
-        # Tool-use loop: execute tool calls and feed results back
-        patient_id = context.meta.patient_id
-        for _round in range(MAX_TOOL_ROUNDS):
-            tool_calls = [
-                item for item in response.output
-                if item.type == "function_call"
-            ]
-            if not tool_calls or not tools_available:
-                break
-
-            logger.debug(f"Tool round {_round + 1}: {len(tool_calls)} tool call(s)")
-
-            # Append model output + tool results to input
-            input_messages = kwargs["input"]
-            input_messages.extend(response.output)
-
-            for tool_call in tool_calls:
-                result = await execute_tool(
-                    name=tool_call.name,
-                    arguments=tool_call.arguments,
-                    patient_id=patient_id,
-                    graph=graph,
-                    db=db,
-                )
-                input_messages.append({
-                    "type": "function_call_output",
-                    "call_id": tool_call.call_id,
-                    "output": result,
-                })
-
-            kwargs["input"] = input_messages
+        if tools_available:
+            response = await self._run_tool_rounds(
+                kwargs, context.meta.patient_id, graph, db
+            )
+        else:
             response = await self._client.responses.parse(**kwargs)
 
         agent_response = response.output_parsed
@@ -528,21 +551,16 @@ class AgentService:
         if tools_available:
             kwargs["tools"] = TOOL_SCHEMAS
 
-        patient_id = context.meta.patient_id
-
-        # Tool execution rounds (non-streaming): use .parse() to handle tool calls
-        for _round in range(MAX_TOOL_ROUNDS):
-            if not tools_available:
-                break
-
-            response = await self._client.responses.parse(**kwargs)
-            tool_calls = [
-                item for item in response.output
-                if item.type == "function_call"
-            ]
-            if not tool_calls:
-                # No tool calls — break out and stream this round instead
-                # But we already consumed the response non-streaming, so parse it
+        # Run tool rounds (non-streaming), then stream the final text response
+        if tools_available:
+            response = await self._run_tool_rounds(
+                kwargs, context.meta.patient_id, graph, db
+            )
+            # If no tool calls occurred on final round, response is already complete
+            has_text = any(
+                item.type != "function_call" for item in response.output
+            )
+            if has_text:
                 agent_response = response.output_parsed
                 if agent_response is None:
                     raw_output = getattr(response, "output_text", None)
@@ -556,29 +574,7 @@ class AgentService:
                 yield ("done", agent_response.model_dump_json())
                 return
 
-            logger.debug(f"Stream tool round {_round + 1}: {len(tool_calls)} tool call(s)")
-
-            input_messages = kwargs["input"]
-            input_messages.extend(response.output)
-
-            for tool_call in tool_calls:
-                result = await execute_tool(
-                    name=tool_call.name,
-                    arguments=tool_call.arguments,
-                    patient_id=patient_id,
-                    graph=graph,
-                    db=db,
-                )
-                input_messages.append({
-                    "type": "function_call_output",
-                    "call_id": tool_call.call_id,
-                    "output": result,
-                })
-
-            kwargs["input"] = input_messages
-            # Loop continues — next round may produce more tool calls or final text
-
-        # Final streaming round (no more tool calls expected, or tools not available)
+        # Final streaming round (no tool calls, or tools not available)
         async with self._client.responses.stream(**kwargs) as stream:
             async for event in stream:
                 if event.type == "response.reasoning_summary_text.delta":

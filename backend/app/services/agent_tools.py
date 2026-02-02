@@ -159,22 +159,22 @@ async def execute_tool(
     """
     args = json.loads(arguments)
 
-    if name == "search_patient_data":
-        return await search_patient_data(patient_id, args["query"], graph, db)
-    elif name == "get_encounter_details":
-        return await get_encounter_details(args["encounter_fhir_id"], graph)
-    elif name == "get_lab_history":
-        return await get_lab_history(patient_id, args["lab_name"], db)
-    elif name == "find_related_resources":
-        return await find_related_resources(
+    handlers = {
+        "search_patient_data": lambda: search_patient_data(patient_id, args["query"], graph, db),
+        "get_encounter_details": lambda: get_encounter_details(args["encounter_fhir_id"], graph),
+        "get_lab_history": lambda: get_lab_history(patient_id, args["lab_name"], db),
+        "find_related_resources": lambda: find_related_resources(
             args["resource_fhir_id"], args["resource_type"], graph
-        )
-    elif name == "get_patient_timeline":
-        return await get_patient_timeline(
+        ),
+        "get_patient_timeline": lambda: get_patient_timeline(
             patient_id, graph, args.get("start_date"), args.get("end_date")
-        )
-    else:
+        ),
+    }
+
+    handler = handlers.get(name)
+    if handler is None:
         return f"Unknown tool: {name}"
+    return await handler()
 
 
 def _format_resource_summary(resource: dict[str, Any]) -> str:
