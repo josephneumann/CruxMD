@@ -370,11 +370,11 @@ class ContextEngine:
         resources: list[RetrievedResource] = []
 
         # Gather unique encounter fhir_ids for traversal
-        encounter_fhir_ids: set[str] = set()
-        for node in matched_nodes:
-            enc_id = node.get("encounter_fhir_id")
-            if enc_id:
-                encounter_fhir_ids.add(enc_id)
+        encounter_fhir_ids = {
+            node["encounter_fhir_id"]
+            for node in matched_nodes
+            if node.get("encounter_fhir_id")
+        }
 
         # Traverse encounters to get visit context (1-2 hop)
         for enc_fhir_id in encounter_fhir_ids:
@@ -403,16 +403,6 @@ class ContextEngine:
                                 reason="graph_traversal",
                             )
                         )
-
-        # Also include matched nodes that weren't part of any encounter
-        # (e.g., Encounter nodes themselves, or resources without encounter_fhir_id)
-        for node in matched_nodes:
-            fhir_id = node["fhir_id"]
-            if fhir_id not in seen_fhir_ids:
-                seen_fhir_ids.add(fhir_id)
-                # We don't have the full FHIR resource from search_nodes_by_name,
-                # so these are already covered by encounter traversal in most cases.
-                # Skip nodes we can't hydrate.
 
         return resources
 

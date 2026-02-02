@@ -916,8 +916,8 @@ class KnowledgeGraph:
         Fuzzy search graph nodes by display name for a patient.
 
         Performs case-insensitive substring matching of query terms against
-        node display properties. Returns matched fhir_id + resource_type pairs
-        for downstream traversal.
+        node display properties. Returns matched nodes with their encounter
+        context for downstream traversal.
 
         Args:
             patient_id: The canonical patient UUID.
@@ -926,7 +926,9 @@ class KnowledgeGraph:
                 (e.g. ["Condition", "MedicationRequest"]). If None, searches all.
 
         Returns:
-            List of dicts with 'fhir_id' and 'resource_type' keys.
+            List of dicts with 'fhir_id', 'resource_type', and
+            'encounter_fhir_id' keys. For Encounter nodes,
+            encounter_fhir_id equals the node's own fhir_id.
         """
         # All searchable node types with their patient relationship and display property
         searchable = [
