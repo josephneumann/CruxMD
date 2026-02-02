@@ -5,6 +5,7 @@ suitable for LLM consumption. Tools are designed to be called by the
 agent mid-reasoning to fetch additional patient data.
 """
 
+import json
 import logging
 from typing import Any
 
@@ -16,6 +17,164 @@ from app.services.graph import KnowledgeGraph
 from app.utils.fhir_helpers import extract_display_name, extract_observation_value
 
 logger = logging.getLogger(__name__)
+
+
+# =============================================================================
+# Tool Schemas (OpenAI function calling format)
+# =============================================================================
+
+TOOL_SCHEMAS: list[dict[str, Any]] = [
+    {
+        "type": "function",
+        "name": "search_patient_data",
+        "description": (
+            "Search patient data by concept name (e.g. 'diabetes', 'blood pressure', 'metformin'). "
+            "Returns matching conditions, medications, observations, and other resources."
+        ),
+        "parameters": {
+            "type": "object",
+            "properties": {
+                "query": {
+                    "type": "string",
+                    "description": "Search terms to match against resource names.",
+                },
+            },
+            "required": ["query"],
+            "additionalProperties": False,
+        },
+        "strict": True,
+    },
+    {
+        "type": "function",
+        "name": "get_encounter_details",
+        "description": (
+            "Get all events from a specific encounter: conditions diagnosed, medications prescribed, "
+            "observations recorded, procedures performed, and diagnostic reports. "
+            "Use encounter FHIR IDs from search results or the patient timeline."
+        ),
+        "parameters": {
+            "type": "object",
+            "properties": {
+                "encounter_fhir_id": {
+                    "type": "string",
+                    "description": "The FHIR ID of the encounter.",
+                },
+            },
+            "required": ["encounter_fhir_id"],
+            "additionalProperties": False,
+        },
+        "strict": True,
+    },
+    {
+        "type": "function",
+        "name": "get_lab_history",
+        "description": (
+            "Get the history of a specific lab or observation over time, ordered by date. "
+            "Use for trending lab values like 'Hemoglobin A1c', 'Glucose', 'Creatinine'."
+        ),
+        "parameters": {
+            "type": "object",
+            "properties": {
+                "lab_name": {
+                    "type": "string",
+                    "description": "Name of the lab or observation to look up.",
+                },
+            },
+            "required": ["lab_name"],
+            "additionalProperties": False,
+        },
+        "strict": True,
+    },
+    {
+        "type": "function",
+        "name": "find_related_resources",
+        "description": (
+            "Find resources related to a given resource via clinical relationships. "
+            "For a Condition: finds treating medications and procedures. "
+            "For a DiagnosticReport: finds component observations. "
+            "For an Encounter: finds all associated events."
+        ),
+        "parameters": {
+            "type": "object",
+            "properties": {
+                "resource_fhir_id": {
+                    "type": "string",
+                    "description": "FHIR ID of the source resource.",
+                },
+                "resource_type": {
+                    "type": "string",
+                    "description": "FHIR resource type (e.g. 'Condition', 'DiagnosticReport', 'Encounter').",
+                },
+            },
+            "required": ["resource_fhir_id", "resource_type"],
+            "additionalProperties": False,
+        },
+        "strict": True,
+    },
+    {
+        "type": "function",
+        "name": "get_patient_timeline",
+        "description": (
+            "Get the patient's encounter timeline, optionally filtered by date range. "
+            "Shows encounters with their associated events (conditions, meds, observations, etc.)."
+        ),
+        "parameters": {
+            "type": "object",
+            "properties": {
+                "start_date": {
+                    "type": ["string", "null"],
+                    "description": "Optional ISO date for range start (e.g. '2023-01-01').",
+                },
+                "end_date": {
+                    "type": ["string", "null"],
+                    "description": "Optional ISO date for range end (e.g. '2024-01-01').",
+                },
+            },
+            "required": ["start_date", "end_date"],
+            "additionalProperties": False,
+        },
+        "strict": True,
+    },
+]
+
+
+async def execute_tool(
+    name: str,
+    arguments: str,
+    patient_id: str,
+    graph: KnowledgeGraph,
+    db: AsyncSession,
+) -> str:
+    """Execute a tool by name with JSON-encoded arguments.
+
+    Args:
+        name: Tool function name.
+        arguments: JSON-encoded arguments from the LLM.
+        patient_id: Current patient ID (injected, not from LLM).
+        graph: KnowledgeGraph instance.
+        db: AsyncSession for Postgres queries.
+
+    Returns:
+        Tool result as a plain text string.
+    """
+    args = json.loads(arguments)
+
+    handlers = {
+        "search_patient_data": lambda: search_patient_data(patient_id, args["query"], graph, db),
+        "get_encounter_details": lambda: get_encounter_details(args["encounter_fhir_id"], graph),
+        "get_lab_history": lambda: get_lab_history(patient_id, args["lab_name"], db),
+        "find_related_resources": lambda: find_related_resources(
+            args["resource_fhir_id"], args["resource_type"], graph
+        ),
+        "get_patient_timeline": lambda: get_patient_timeline(
+            patient_id, graph, args.get("start_date"), args.get("end_date")
+        ),
+    }
+
+    handler = handlers.get(name)
+    if handler is None:
+        return f"Unknown tool: {name}"
+    return await handler()
 
 
 def _format_resource_summary(resource: dict[str, Any]) -> str:

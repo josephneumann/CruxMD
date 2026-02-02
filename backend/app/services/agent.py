@@ -15,9 +15,12 @@ from typing import Any, Literal
 
 from openai import AsyncOpenAI
 from openai.types.shared_params import Reasoning
+from sqlalchemy.ext.asyncio import AsyncSession
 
 from app.config import settings
 from app.schemas import AgentResponse, PatientContext
+from app.services.agent_tools import TOOL_SCHEMAS, execute_tool
+from app.services.graph import KnowledgeGraph
 
 logger = logging.getLogger(__name__)
 
@@ -30,6 +33,9 @@ DEFAULT_REASONING_EFFORT: Literal["low", "medium", "high"] = "medium"
 # Maximum tokens for response generation
 DEFAULT_MAX_OUTPUT_TOKENS = 16384
 
+# Maximum tool-calling rounds before forcing a final response
+MAX_TOOL_ROUNDS = 10
+
 # System prompt template for clinical reasoning
 SYSTEM_PROMPT_TEMPLATE = """You are a clinical reasoning assistant helping healthcare providers understand patient data.
 
@@ -38,6 +44,12 @@ SYSTEM_PROMPT_TEMPLATE = """You are a clinical reasoning assistant helping healt
 - Answer questions about patient history, conditions, medications, and test results
 - Highlight important clinical findings and potential concerns
 - Suggest relevant follow-up questions to deepen understanding
+
+## Tools
+You have access to tools that let you search and retrieve additional patient data on demand.
+Use tools when the provided context doesn't contain enough detail to fully answer the question.
+You can call multiple tools and make multiple rounds of calls to gather all needed information.
+Do NOT guess or fabricate clinical data — if you need it, call a tool.
 
 ## Response Guidelines
 1. Be accurate and evidence-based - cite specific data from the patient's records
@@ -325,6 +337,57 @@ class AgentService:
         """Close the OpenAI client connection."""
         await self._client.close()
 
+    async def _run_tool_rounds(
+        self,
+        kwargs: dict[str, Any],
+        patient_id: str,
+        graph: KnowledgeGraph,
+        db: AsyncSession,
+    ) -> Any:
+        """Execute tool-calling rounds until the LLM stops requesting tools.
+
+        Mutates kwargs["input"] by appending tool calls and results.
+
+        Args:
+            kwargs: API call kwargs (must include "input" key).
+            patient_id: Current patient ID for tool execution.
+            graph: KnowledgeGraph instance.
+            db: AsyncSession instance.
+
+        Returns:
+            The final API response (after all tool rounds complete).
+        """
+        response = await self._client.responses.parse(**kwargs)
+
+        for _round in range(MAX_TOOL_ROUNDS):
+            tool_calls = [
+                item for item in response.output
+                if item.type == "function_call"
+            ]
+            if not tool_calls:
+                break
+
+            logger.debug(f"Tool round {_round + 1}: {len(tool_calls)} tool call(s)")
+
+            kwargs["input"].extend(response.output)
+            for tool_call in tool_calls:
+                result = await execute_tool(
+                    name=tool_call.name,
+                    arguments=tool_call.arguments,
+                    patient_id=patient_id,
+                    graph=graph,
+                    db=db,
+                )
+                kwargs["input"].append({
+                    "type": "function_call_output",
+                    "call_id": tool_call.call_id,
+                    "output": result,
+                })
+
+            response = await self._client.responses.parse(**kwargs)
+
+        return response
+
     def _build_input_messages(
         self,
         context: PatientContext,
@@ -362,6 +425,8 @@ class AgentService:
         message: str,
         history: list[dict[str, str]] | None = None,
         reasoning_effort: Literal["low", "medium", "high"] | None = None,
+        graph: KnowledgeGraph | None = None,
+        db: AsyncSession | None = None,
     ) -> AgentResponse:
         """Generate a structured response for a clinical question.
 
@@ -371,6 +436,8 @@ class AgentService:
             history: Optional list of previous messages in the conversation.
                     Each message should have 'role' and 'content' keys.
             reasoning_effort: Override default reasoning effort for this call
+            graph: KnowledgeGraph instance for tool execution
+            db: AsyncSession for tool execution
 
         Returns:
             AgentResponse with narrative, insights, visualizations, and follow-ups
@@ -384,10 +451,12 @@ class AgentService:
 
         input_messages = self._build_input_messages(context, message, history)
         effort = reasoning_effort or self._reasoning_effort
+        tools_available = graph is not None and db is not None
 
         logger.debug(
             f"Generating response with model={self._model}, "
-            f"{len(input_messages)} messages, reasoning_effort={effort}"
+            f"{len(input_messages)} messages, reasoning_effort={effort}, "
+            f"tools={'enabled' if tools_available else 'disabled'}"
         )
 
         kwargs: dict[str, Any] = {
@@ -397,8 +466,15 @@ class AgentService:
             "max_output_tokens": self._max_output_tokens,
             "reasoning": Reasoning(effort=effort, summary="concise"),
         }
+        if tools_available:
+            kwargs["tools"] = TOOL_SCHEMAS
 
-        response = await self._client.responses.parse(**kwargs)
+        if tools_available:
+            response = await self._run_tool_rounds(
+                kwargs, context.meta.patient_id, graph, db
+            )
+        else:
+            response = await self._client.responses.parse(**kwargs)
 
         agent_response = response.output_parsed
 
@@ -427,6 +503,8 @@ class AgentService:
         message: str,
         history: list[dict[str, str]] | None = None,
         reasoning_effort: Literal["low", "medium", "high"] | None = None,
+        graph: KnowledgeGraph | None = None,
+        db: AsyncSession | None = None,
     ) -> AsyncGenerator[tuple[str, str], None]:
         """Stream a structured response, yielding deltas as they arrive.
 
@@ -436,11 +514,16 @@ class AgentService:
 
         After all deltas, yields ("done", json) with the final parsed AgentResponse.
 
+        Tool execution rounds happen silently (no events emitted) between
+        streaming rounds. Only the final text response is streamed.
+
         Args:
             context: PatientContext with verified facts and retrieved resources
             message: The user's question or message
             history: Optional conversation history
             reasoning_effort: Override default reasoning effort for this call
+            graph: KnowledgeGraph instance for tool execution
+            db: AsyncSession for tool execution
 
         Raises:
             ValueError: If message is empty
@@ -450,10 +533,12 @@ class AgentService:
 
         input_messages = self._build_input_messages(context, message, history)
         effort = reasoning_effort or self._reasoning_effort
+        tools_available = graph is not None and db is not None
 
         logger.debug(
             f"Streaming response with model={self._model}, "
-            f"{len(input_messages)} messages, reasoning_effort={effort}"
+            f"{len(input_messages)} messages, reasoning_effort={effort}, "
+            f"tools={'enabled' if tools_available else 'disabled'}"
         )
 
         kwargs: dict[str, Any] = {
@@ -463,7 +548,33 @@ class AgentService:
             "max_output_tokens": self._max_output_tokens,
             "reasoning": Reasoning(effort=effort, summary="concise"),
         }
+        if tools_available:
+            kwargs["tools"] = TOOL_SCHEMAS
 
+        # Run tool rounds (non-streaming), then stream the final text response
+        if tools_available:
+            response = await self._run_tool_rounds(
+                kwargs, context.meta.patient_id, graph, db
+            )
+            # If no tool calls occurred on final round, response is already complete
+            has_text = any(
+                item.type != "function_call" for item in response.output
+            )
+            if has_text:
+                agent_response = response.output_parsed
+                if agent_response is None:
+                    raw_output = getattr(response, "output_text", None)
+                    if raw_output:
+                        agent_response = AgentResponse.model_validate_json(raw_output)
+                    else:
+                        raise RuntimeError(
+                            "LLM response could not be parsed. "
+                            "Neither structured output nor raw text was available."
+                        )
+                yield ("done", agent_response.model_dump_json())
+                return
+
+        # Final streaming round (no tool calls, or tools not available)
         async with self._client.responses.stream(**kwargs) as stream:
             async for event in stream:
                 if event.type == "response.reasoning_summary_text.delta":
