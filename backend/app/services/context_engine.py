@@ -23,7 +23,7 @@ from app.schemas.quick_actions import QuickAction
 from app.schemas.task import TaskType
 from app.services.embeddings import EmbeddingService
 from app.services.graph import KnowledgeGraph
-from app.services.query_parser import remove_stop_words, tokenize
+from app.services.query_parser import expand_synonyms, remove_stop_words, tokenize
 from app.services.quick_actions import surface_quick_actions
 from app.services.vector_search import VectorSearchService
 from app.utils.fhir_helpers import extract_display_name
@@ -353,15 +353,39 @@ class ContextEngine:
         if not terms:
             return []
 
-        # Search graph nodes by name
+        # Expand synonyms to resource type / category filters
+        expansion = expand_synonyms(terms)
+
+        # Determine search terms and filters
+        search_terms = expansion.remaining_terms
+        resource_types = expansion.resource_types or None
+
+        # Search graph nodes by name (with optional resource_types filter)
         try:
             matched_nodes = await self._graph.search_nodes_by_name(
                 patient_id=patient_id,
-                query_terms=terms,
+                query_terms=search_terms,
+                resource_types=resource_types,
             )
         except Exception as e:
             logger.warning(f"Graph node search failed for patient {patient_id}: {e}")
-            return []
+            matched_nodes = []
+
+        # Search observations by category if category synonyms matched
+        if expansion.categories:
+            try:
+                category_nodes = await self._graph.search_observations_by_category(
+                    patient_id=patient_id,
+                    categories=expansion.categories,
+                )
+                # Merge, avoiding duplicates
+                existing_ids = {n["fhir_id"] for n in matched_nodes}
+                for node in category_nodes:
+                    if node["fhir_id"] not in existing_ids:
+                        matched_nodes.append(node)
+                        existing_ids.add(node["fhir_id"])
+            except Exception as e:
+                logger.warning(f"Category search failed for patient {patient_id}: {e}")
 
         if not matched_nodes:
             return []
@@ -392,6 +416,8 @@ class ContextEngine:
                 ("observations", "Observation"),
                 ("procedures", "Procedure"),
                 ("diagnostic_reports", "DiagnosticReport"),
+                ("immunizations", "Immunization"),
+                ("care_plans", "CarePlan"),
             ]:
                 for resource in events[resource_type_key]:
                     fhir_id = resource.get("id")
@@ -405,6 +431,31 @@ class ContextEngine:
                                 reason="graph_traversal",
                             )
                         )
+
+        # Traverse ADDRESSES edge: matched Conditions → CarePlans
+        condition_fhir_ids = [
+            node["fhir_id"]
+            for node in matched_nodes
+            if node.get("resource_type") == "Condition"
+        ]
+        for cond_fhir_id in condition_fhir_ids:
+            try:
+                care_plans = await self._graph.get_care_plans_for_condition(cond_fhir_id)
+            except Exception as e:
+                logger.warning(f"CarePlan traversal failed for condition {cond_fhir_id}: {e}")
+                continue
+            for resource in care_plans:
+                fhir_id = resource.get("id")
+                if fhir_id and fhir_id not in seen_fhir_ids:
+                    seen_fhir_ids.add(fhir_id)
+                    resources.append(
+                        RetrievedResource(
+                            resource=resource,
+                            resource_type="CarePlan",
+                            score=1.0,
+                            reason="graph_traversal",
+                        )
+                    )
 
         return resources
 

@@ -131,13 +131,18 @@ def mock_graph():
     graph.get_verified_conditions = AsyncMock(return_value=[])
     graph.get_verified_medications = AsyncMock(return_value=[])
     graph.get_verified_allergies = AsyncMock(return_value=[])
+    graph.get_verified_immunizations = AsyncMock(return_value=[])
     graph.search_nodes_by_name = AsyncMock(return_value=[])
+    graph.search_observations_by_category = AsyncMock(return_value=[])
+    graph.get_care_plans_for_condition = AsyncMock(return_value=[])
     graph.get_encounter_events = AsyncMock(return_value={
         "conditions": [],
         "medications": [],
         "observations": [],
         "procedures": [],
         "diagnostic_reports": [],
+        "immunizations": [],
+        "care_plans": [],
     })
     return graph
 
@@ -459,6 +464,8 @@ class TestBuildGraphTraversalLayer:
             "observations": [sample_observation],
             "procedures": [],
             "diagnostic_reports": [],
+            "immunizations": [],
+            "care_plans": [],
         }
 
         result = await context_engine._build_graph_traversal_layer(
@@ -486,6 +493,8 @@ class TestBuildGraphTraversalLayer:
             "observations": [sample_observation],
             "procedures": [],
             "diagnostic_reports": [],
+            "immunizations": [],
+            "care_plans": [],
         }
 
         result = await context_engine._build_graph_traversal_layer(
@@ -511,6 +520,8 @@ class TestBuildGraphTraversalLayer:
             "observations": [],
             "procedures": [],
             "diagnostic_reports": [],
+            "immunizations": [],
+            "care_plans": [],
         }
 
         result = await context_engine._build_graph_traversal_layer(
@@ -548,6 +559,67 @@ class TestBuildGraphTraversalLayer:
         )
 
         assert result == []
+
+    @pytest.mark.asyncio
+    async def test_synonym_triggers_resource_type_filter(
+        self, context_engine, mock_graph, patient_id
+    ):
+        """Test 'meds' synonym passes resource_types filter to search_nodes_by_name."""
+        mock_graph.search_nodes_by_name.return_value = [
+            {"fhir_id": "med-1", "resource_type": "MedicationRequest", "encounter_fhir_id": "enc-1"},
+        ]
+        mock_graph.get_encounter_events.return_value = {
+            "conditions": [], "medications": [], "observations": [],
+            "procedures": [], "diagnostic_reports": [], "immunizations": [], "care_plans": [],
+        }
+
+        await context_engine._build_graph_traversal_layer(patient_id, "show me meds")
+
+        # "meds" is consumed by synonym; remaining_terms is empty
+        # search_nodes_by_name called with empty query_terms + resource_types
+        mock_graph.search_nodes_by_name.assert_called_once_with(
+            patient_id=patient_id,
+            query_terms=[],
+            resource_types=["MedicationRequest"],
+        )
+
+    @pytest.mark.asyncio
+    async def test_category_synonym_triggers_observation_search(
+        self, context_engine, mock_graph, patient_id, sample_observation
+    ):
+        """Test 'labs' synonym calls search_observations_by_category."""
+        mock_graph.search_nodes_by_name.return_value = []
+        mock_graph.search_observations_by_category.return_value = [
+            {"fhir_id": "obs-test-abc", "resource_type": "Observation", "encounter_fhir_id": "enc-1"},
+        ]
+        mock_graph.get_encounter_events.return_value = {
+            "conditions": [], "medications": [],
+            "observations": [sample_observation],
+            "procedures": [], "diagnostic_reports": [], "immunizations": [], "care_plans": [],
+        }
+
+        result = await context_engine._build_graph_traversal_layer(patient_id, "show me labs")
+
+        mock_graph.search_observations_by_category.assert_called_once_with(
+            patient_id=patient_id,
+            categories=["laboratory"],
+        )
+        assert len(result) >= 1
+
+    @pytest.mark.asyncio
+    async def test_mixed_synonym_and_terms(
+        self, context_engine, mock_graph, patient_id
+    ):
+        """Test query with both synonym and regular terms."""
+        mock_graph.search_nodes_by_name.return_value = []
+
+        await context_engine._build_graph_traversal_layer(patient_id, "meds diabetes")
+
+        mock_graph.search_nodes_by_name.assert_called_once_with(
+            patient_id=patient_id,
+            query_terms=["diabetes"],
+            resource_types=["MedicationRequest"],
+        )
 
 
 class TestBuildContext:
@@ -697,6 +769,8 @@ class TestBuildContext:
             "observations": [sample_observation],
             "procedures": [],
             "diagnostic_reports": [],
+            "immunizations": [],
+            "care_plans": [],
         }
 
         context = await context_engine.build_context(
@@ -730,6 +804,8 @@ class TestBuildContext:
             "observations": [sample_observation],
             "procedures": [],
             "diagnostic_reports": [],
+            "immunizations": [],
+            "care_plans": [],
         }
         # Vector search returns the same observation
         mock_vector_search.search_by_text.return_value = [

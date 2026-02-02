@@ -2,6 +2,8 @@
 
 from app.services.query_parser import (
     ConceptMatch,
+    SynonymExpansion,
+    expand_synonyms,
     extract_concepts,
     generate_bigrams,
     remove_stop_words,
@@ -144,3 +146,73 @@ class TestExtractConcepts:
         match = ConceptMatch(term="Test", resource_type_hint="Condition")
         assert match.term == "Test"
         assert match.resource_type_hint == "Condition"
+
+
+# ── Synonym expansion ──────────────────────────────────────────────────
+
+
+class TestExpandSynonyms:
+    def test_single_category_synonym(self):
+        result = expand_synonyms(["labs"])
+        assert result.categories == ["laboratory"]
+        assert result.resource_types == []
+        assert result.remaining_terms == []
+
+    def test_single_resource_type_synonym(self):
+        result = expand_synonyms(["meds"])
+        assert result.resource_types == ["MedicationRequest"]
+        assert result.categories == []
+        assert result.remaining_terms == []
+
+    def test_mixed_query(self):
+        result = expand_synonyms(["labs", "vitals"])
+        assert "laboratory" in result.categories
+        assert "vital-signs" in result.categories
+        assert result.remaining_terms == []
+
+    def test_non_synonym_passthrough(self):
+        result = expand_synonyms(["diabetes", "management"])
+        assert result.resource_types == []
+        assert result.categories == []
+        assert result.remaining_terms == ["diabetes", "management"]
+
+    def test_bigram_synonym(self):
+        result = expand_synonyms(["blood", "work"])
+        assert result.categories == ["laboratory"]
+        assert result.remaining_terms == []
+
+    def test_bigram_vital_signs(self):
+        result = expand_synonyms(["vital", "signs"])
+        assert result.categories == ["vital-signs"]
+        assert result.remaining_terms == []
+
+    def test_bigram_care_plans(self):
+        result = expand_synonyms(["care", "plans"])
+        assert result.resource_types == ["CarePlan"]
+        assert result.remaining_terms == []
+
+    def test_mixed_synonym_and_terms(self):
+        result = expand_synonyms(["meds", "diabetes"])
+        assert result.resource_types == ["MedicationRequest"]
+        assert result.remaining_terms == ["diabetes"]
+
+    def test_multiple_resource_types(self):
+        result = expand_synonyms(["allergies", "meds"])
+        assert "AllergyIntolerance" in result.resource_types
+        assert "MedicationRequest" in result.resource_types
+
+    def test_empty_input(self):
+        result = expand_synonyms([])
+        assert result == SynonymExpansion()
+
+    def test_immunization_synonyms(self):
+        result = expand_synonyms(["shots"])
+        assert result.resource_types == ["Immunization"]
+
+    def test_procedures_synonym(self):
+        result = expand_synonyms(["surgeries"])
+        assert result.resource_types == ["Procedure"]
+
+    def test_diagnoses_synonym(self):
+        result = expand_synonyms(["diagnoses"])
+        assert result.resource_types == ["Condition"]

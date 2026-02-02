@@ -6,7 +6,22 @@ against graph node display names to identify relevant concepts.
 Used by the ContextEngine to determine which graph nodes to traverse.
 """
 
-from dataclasses import dataclass
+from dataclasses import dataclass, field
+
+
+@dataclass(frozen=True)
+class SynonymExpansion:
+    """Result of expanding query terms against synonym maps.
+
+    Attributes:
+        resource_types: FHIR resource types matched by synonyms.
+        categories: Observation category codes matched by synonyms.
+        remaining_terms: Terms not consumed by synonym matching.
+    """
+
+    resource_types: list[str] = field(default_factory=list)
+    categories: list[str] = field(default_factory=list)
+    remaining_terms: list[str] = field(default_factory=list)
 
 
 @dataclass(frozen=True)
@@ -141,3 +156,87 @@ def extract_concepts(
                     )
 
     return list(matched.values())
+
+
+# =============================================================================
+# Synonym Expansion
+# =============================================================================
+
+# Maps FHIR resource types to common English synonyms
+RESOURCE_TYPE_SYNONYMS: dict[str, list[str]] = {
+    "MedicationRequest": ["meds", "medications", "medicines", "prescriptions", "drugs", "rx"],
+    "AllergyIntolerance": ["allergies", "allergy", "allergic"],
+    "Immunization": ["shots", "vaccines", "vaccinations", "immunizations"],
+    "Procedure": ["procedures", "surgeries", "operations"],
+    "Condition": ["conditions", "diagnoses", "problems", "diagnosis"],
+    "Encounter": ["encounters", "visits", "appointments"],
+    "DiagnosticReport": ["reports", "diagnostic reports"],
+    "CarePlan": ["care plans", "treatment plans"],
+}
+
+# Maps Observation.category codes to common English synonyms
+OBSERVATION_CATEGORY_SYNONYMS: dict[str, list[str]] = {
+    "laboratory": ["labs", "lab results", "bloodwork", "blood tests", "blood work", "panel"],
+    "vital-signs": ["vitals", "vital signs"],
+    "survey": ["surveys", "questionnaires", "assessments", "screening"],
+}
+
+# Pre-built reverse lookups: synonym -> value
+_RESOURCE_TYPE_LOOKUP: dict[str, str] = {}
+for _rtype, _synonyms in RESOURCE_TYPE_SYNONYMS.items():
+    for _syn in _synonyms:
+        _RESOURCE_TYPE_LOOKUP[_syn] = _rtype
+
+_CATEGORY_LOOKUP: dict[str, str] = {}
+for _cat, _synonyms in OBSERVATION_CATEGORY_SYNONYMS.items():
+    for _syn in _synonyms:
+        _CATEGORY_LOOKUP[_syn] = _cat
+
+
+def expand_synonyms(terms: list[str]) -> SynonymExpansion:
+    """Check terms and bigrams against synonym maps.
+
+    Matches bigrams first (higher specificity), then individual terms.
+    Consumed terms are removed from remaining_terms.
+
+    Args:
+        terms: List of lowercase tokens (stop words already removed).
+
+    Returns:
+        SynonymExpansion with resource_types, categories, and remaining_terms.
+    """
+    resource_types: set[str] = set()
+    categories: set[str] = set()
+    consumed_indices: set[int] = set()
+
+    bigrams = generate_bigrams(terms)
+
+    # Check bigrams first
+    for i, bigram in enumerate(bigrams):
+        if bigram in _RESOURCE_TYPE_LOOKUP:
+            resource_types.add(_RESOURCE_TYPE_LOOKUP[bigram])
+            consumed_indices.add(i)
+            consumed_indices.add(i + 1)
+        if bigram in _CATEGORY_LOOKUP:
+            categories.add(_CATEGORY_LOOKUP[bigram])
+            consumed_indices.add(i)
+            consumed_indices.add(i + 1)
+
+    # Check individual terms
+    for i, term in enumerate(terms):
+        if i in consumed_indices:
+            continue
+        if term in _RESOURCE_TYPE_LOOKUP:
+            resource_types.add(_RESOURCE_TYPE_LOOKUP[term])
+            consumed_indices.add(i)
+        if term in _CATEGORY_LOOKUP:
+            categories.add(_CATEGORY_LOOKUP[term])
+            consumed_indices.add(i)
+
+    remaining = [t for i, t in enumerate(terms) if i not in consumed_indices]
+
+    return SynonymExpansion(
+        resource_types=sorted(resource_types),
+        categories=sorted(categories),
+        remaining_terms=remaining,
+    )

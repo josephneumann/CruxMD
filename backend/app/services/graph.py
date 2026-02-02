@@ -140,6 +140,8 @@ class EncounterEvents(TypedDict):
     observations: list[dict[str, Any]]
     procedures: list[dict[str, Any]]
     diagnostic_reports: list[dict[str, Any]]
+    immunizations: list[dict[str, Any]]
+    care_plans: list[dict[str, Any]]
 
 
 # =============================================================================
@@ -927,11 +929,15 @@ class KnowledgeGraph:
                 OPTIONAL MATCH (e)-[:RECORDED]->(o:Observation)
                 OPTIONAL MATCH (e)-[:PERFORMED]->(pr:Procedure)
                 OPTIONAL MATCH (e)-[:REPORTED]->(dr:DiagnosticReport)
+                OPTIONAL MATCH (e)-[:ADMINISTERED]->(im:Immunization)
+                OPTIONAL MATCH (e)-[:CREATED_DURING]->(cp:CarePlan)
                 RETURN e, collect(DISTINCT c) as conditions,
                        collect(DISTINCT m) as medications,
                        collect(DISTINCT o) as observations,
                        collect(DISTINCT pr) as procedures,
-                       collect(DISTINCT dr) as diagnostic_reports
+                       collect(DISTINCT dr) as diagnostic_reports,
+                       collect(DISTINCT im) as immunizations,
+                       collect(DISTINCT cp) as care_plans
                 """,
                 encounter_id=encounter_fhir_id,
             )
@@ -944,6 +950,8 @@ class KnowledgeGraph:
                     "observations": [],
                     "procedures": [],
                     "diagnostic_reports": [],
+                    "immunizations": [],
+                    "care_plans": [],
                 }
 
             def _parse_fhir_nodes(nodes: list) -> list[dict[str, Any]]:
@@ -959,6 +967,8 @@ class KnowledgeGraph:
                 "observations": _parse_fhir_nodes(record["observations"]),
                 "procedures": _parse_fhir_nodes(record["procedures"]),
                 "diagnostic_reports": _parse_fhir_nodes(record["diagnostic_reports"]),
+                "immunizations": _parse_fhir_nodes(record["immunizations"]),
+                "care_plans": _parse_fhir_nodes(record["care_plans"]),
             }
 
     async def get_medications_treating_condition(
@@ -1012,6 +1022,32 @@ class KnowledgeGraph:
                 if record["resource"]:
                     procedures.append(json.loads(record["resource"]))
             return procedures
+
+    async def get_care_plans_for_condition(
+        self, condition_fhir_id: str
+    ) -> list[dict[str, Any]]:
+        """
+        Get care plans that address a specific condition.
+
+        Args:
+            condition_fhir_id: The FHIR ID of the condition.
+
+        Returns:
+            List of parsed FHIR CarePlan resources.
+        """
+        async with self._driver.session() as session:
+            result = await session.run(
+                """
+                MATCH (c:Condition {fhir_id: $condition_id})<-[:ADDRESSES]-(cp:CarePlan)
+                RETURN cp.fhir_resource as resource
+                """,
+                condition_id=condition_fhir_id,
+            )
+            care_plans = []
+            async for record in result:
+                if record["resource"]:
+                    care_plans.append(json.loads(record["resource"]))
+            return care_plans
 
     async def get_diagnostic_report_results(
         self, report_fhir_id: str
@@ -1073,26 +1109,33 @@ class KnowledgeGraph:
             ("DiagnosticReport", "HAS_DIAGNOSTIC_REPORT", "display"),
             ("Encounter", "HAS_ENCOUNTER", "type_display"),
             ("Immunization", "HAS_IMMUNIZATION", "display"),
+            ("CarePlan", "HAS_CARE_PLAN", "display"),
         ]
 
         if resource_types:
             searchable = [s for s in searchable if s[0] in resource_types]
 
         lower_terms = [t.lower() for t in query_terms if t]
-        if not lower_terms:
+        if not lower_terms and not resource_types:
             return []
 
         results: list[dict[str, str]] = []
         async with self._driver.session() as session:
             for label, rel, display_prop in searchable:
-                # Build WHERE clause: any term matches the display property
-                conditions = " OR ".join(
-                    f"toLower(n.{display_prop}) CONTAINS $term_{i}"
-                    for i in range(len(lower_terms))
-                )
                 params: dict[str, Any] = {"patient_id": patient_id}
-                for i, term in enumerate(lower_terms):
-                    params[f"term_{i}"] = term
+
+                # Build WHERE clause: if terms present, filter by display name
+                if lower_terms:
+                    conditions = " OR ".join(
+                        f"toLower(n.{display_prop}) CONTAINS $term_{i}"
+                        for i in range(len(lower_terms))
+                    )
+                    for i, term in enumerate(lower_terms):
+                        params[f"term_{i}"] = term
+                    where_clause = f"WHERE {conditions}"
+                else:
+                    # No terms but resource_types filter — return all of type
+                    where_clause = ""
 
                 # Encounter nodes don't have encounter_fhir_id (they ARE encounters)
                 encounter_return = (
@@ -1104,7 +1147,7 @@ class KnowledgeGraph:
                 result = await session.run(
                     f"""
                     MATCH (p:Patient {{id: $patient_id}})-[:{rel}]->(n:{label})
-                    WHERE {conditions}
+                    {where_clause}
                     RETURN n.fhir_id as fhir_id, {encounter_return}
                     """,
                     **params,
@@ -1116,6 +1159,42 @@ class KnowledgeGraph:
                             "resource_type": label,
                             "encounter_fhir_id": record["encounter_fhir_id"],
                         })
+
+        return results
+
+    async def search_observations_by_category(
+        self, patient_id: str, categories: list[str]
+    ) -> list[dict[str, str]]:
+        """Return Observation nodes matching given category codes.
+
+        Args:
+            patient_id: The canonical patient UUID.
+            categories: List of Observation category codes (e.g. "laboratory", "vital-signs").
+
+        Returns:
+            List of dicts with 'fhir_id', 'resource_type', and 'encounter_fhir_id' keys.
+        """
+        if not categories:
+            return []
+
+        results: list[dict[str, str]] = []
+        async with self._driver.session() as session:
+            result = await session.run(
+                """
+                MATCH (p:Patient {id: $patient_id})-[:HAS_OBSERVATION]->(o:Observation)
+                WHERE o.category IN $categories
+                RETURN o.fhir_id as fhir_id, o.encounter_fhir_id as encounter_fhir_id
+                """,
+                patient_id=patient_id,
+                categories=categories,
+            )
+            async for record in result:
+                if record["fhir_id"]:
+                    results.append({
+                        "fhir_id": record["fhir_id"],
+                        "resource_type": "Observation",
+                        "encounter_fhir_id": record["encounter_fhir_id"],
+                    })
 
         return results
 
