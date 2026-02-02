@@ -176,7 +176,7 @@ RESOURCE_TYPE_SYNONYMS: dict[str, list[str]] = {
 
 # Maps Observation.category codes to common English synonyms
 OBSERVATION_CATEGORY_SYNONYMS: dict[str, list[str]] = {
-    "laboratory": ["labs", "lab results", "bloodwork", "blood tests", "blood work", "panel"],
+    "laboratory": ["labs", "lab results", "laboratory", "laboratory results", "bloodwork", "blood tests", "blood work", "panel"],
     "vital-signs": ["vitals", "vital signs"],
     "survey": ["surveys", "questionnaires", "assessments", "screening"],
 }
