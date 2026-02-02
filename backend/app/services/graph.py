@@ -971,6 +971,49 @@ class KnowledgeGraph:
 
         return results
 
+    async def get_patient_encounters(
+        self,
+        patient_id: str,
+        start_date: str | None = None,
+        end_date: str | None = None,
+    ) -> list[dict[str, Any]]:
+        """
+        Get encounters for a patient, optionally filtered by date range.
+
+        Args:
+            patient_id: The canonical patient UUID.
+            start_date: Optional ISO date string for range start (inclusive).
+            end_date: Optional ISO date string for range end (inclusive).
+
+        Returns:
+            List of dicts with fhir_id, type_display, period_start, period_end.
+            Ordered by period_start descending.
+        """
+        where_clauses = []
+        params: dict[str, Any] = {"patient_id": patient_id}
+
+        if start_date:
+            where_clauses.append("e.period_start >= $start_date")
+            params["start_date"] = start_date
+        if end_date:
+            where_clauses.append("e.period_start <= $end_date")
+            params["end_date"] = end_date
+
+        where = f"WHERE {' AND '.join(where_clauses)}" if where_clauses else ""
+
+        async with self._driver.session() as session:
+            result = await session.run(
+                f"""
+                MATCH (p:Patient {{id: $patient_id}})-[:HAS_ENCOUNTER]->(e:Encounter)
+                {where}
+                RETURN e.fhir_id as fhir_id, e.type_display as type_display,
+                       e.period_start as period_start, e.period_end as period_end
+                ORDER BY e.period_start DESC
+                """,
+                **params,
+            )
+            return [record.data() async for record in result]
+
     # =========================================================================
     # Main Entry Points
     # =========================================================================
