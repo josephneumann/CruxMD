@@ -1251,9 +1251,13 @@ class KnowledgeGraph:
         """
         Build graph nodes and relationships from FHIR resources.
 
-        Uses two-pass approach with single session for efficiency:
+        Uses two-pass approach within an explicit write transaction for atomicity:
         1. First pass: Create all nodes with Patient relationships
         2. Second pass: Build inter-resource relationships (Encounter-centric, TREATS, etc.)
+
+        The explicit transaction ensures all-or-nothing semantics — if any write
+        fails, the entire patient's graph changes are rolled back. This prevents
+        partially-seeded graphs that cause missing data in queries.
 
         All operations are scoped to the specific patient for correctness
         and performance (avoids global graph scans).
@@ -1262,44 +1266,50 @@ class KnowledgeGraph:
             patient_id: The canonical patient UUID (PostgreSQL-generated).
             resources: List of FHIR resources belonging to this patient.
         """
-        # Use single session for all operations (efficient batching)
         async with self._driver.session() as session:
-            # First pass: find and create Patient node
-            patient_resource = None
-            for resource in resources:
-                if resource.get("resourceType") == "Patient":
-                    patient_resource = resource
-                    break
+            tx = await session.begin_transaction()
+            try:
+                # First pass: find and create Patient node
+                patient_resource = None
+                for resource in resources:
+                    if resource.get("resourceType") == "Patient":
+                        patient_resource = resource
+                        break
 
-            if patient_resource:
-                await self._upsert_patient(session, patient_id, patient_resource)
+                if patient_resource:
+                    await self._upsert_patient(tx, patient_id, patient_resource)
 
-            # First pass: create all resource nodes with Patient relationships
-            for resource in resources:
-                resource_type = resource.get("resourceType")
+                # First pass: create all resource nodes with Patient relationships
+                for resource in resources:
+                    resource_type = resource.get("resourceType")
 
-                if resource_type == "Condition":
-                    await self._upsert_condition(session, patient_id, resource)
-                elif resource_type == "MedicationRequest":
-                    await self._upsert_medication_request(session, patient_id, resource)
-                elif resource_type == "AllergyIntolerance":
-                    await self._upsert_allergy_intolerance(session, patient_id, resource)
-                elif resource_type == "Observation":
-                    await self._upsert_observation(session, patient_id, resource)
-                elif resource_type == "Encounter":
-                    await self._upsert_encounter(session, patient_id, resource)
-                elif resource_type == "Procedure":
-                    await self._upsert_procedure(session, patient_id, resource)
-                elif resource_type == "DiagnosticReport":
-                    await self._upsert_diagnostic_report(session, patient_id, resource)
-                elif resource_type == "Immunization":
-                    await self._upsert_immunization(session, patient_id, resource)
-                elif resource_type == "CarePlan":
-                    await self._upsert_careplan(session, patient_id, resource)
+                    if resource_type == "Condition":
+                        await self._upsert_condition(tx, patient_id, resource)
+                    elif resource_type == "MedicationRequest":
+                        await self._upsert_medication_request(tx, patient_id, resource)
+                    elif resource_type == "AllergyIntolerance":
+                        await self._upsert_allergy_intolerance(tx, patient_id, resource)
+                    elif resource_type == "Observation":
+                        await self._upsert_observation(tx, patient_id, resource)
+                    elif resource_type == "Encounter":
+                        await self._upsert_encounter(tx, patient_id, resource)
+                    elif resource_type == "Procedure":
+                        await self._upsert_procedure(tx, patient_id, resource)
+                    elif resource_type == "DiagnosticReport":
+                        await self._upsert_diagnostic_report(tx, patient_id, resource)
+                    elif resource_type == "Immunization":
+                        await self._upsert_immunization(tx, patient_id, resource)
+                    elif resource_type == "CarePlan":
+                        await self._upsert_careplan(tx, patient_id, resource)
 
-            # Second pass: build inter-resource relationships (patient-scoped)
-            await self._build_encounter_relationships(session, patient_id)
-            await self._build_clinical_reasoning_relationships(session, patient_id)
+                # Second pass: build inter-resource relationships (patient-scoped)
+                await self._build_encounter_relationships(tx, patient_id)
+                await self._build_clinical_reasoning_relationships(tx, patient_id)
+
+                await tx.commit()
+            except Exception:
+                await tx.rollback()
+                raise
 
     async def clear_patient_graph(self, patient_id: str) -> None:
         """
