@@ -958,11 +958,18 @@ class KnowledgeGraph:
                 for i, term in enumerate(lower_terms):
                     params[f"term_{i}"] = term
 
+                # Encounter nodes don't have encounter_fhir_id (they ARE encounters)
+                encounter_return = (
+                    "n.fhir_id as encounter_fhir_id"
+                    if label == "Encounter"
+                    else "n.encounter_fhir_id as encounter_fhir_id"
+                )
+
                 result = await session.run(
                     f"""
                     MATCH (p:Patient {{id: $patient_id}})-[:{rel}]->(n:{label})
                     WHERE {conditions}
-                    RETURN n.fhir_id as fhir_id
+                    RETURN n.fhir_id as fhir_id, {encounter_return}
                     """,
                     **params,
                 )
@@ -971,6 +978,7 @@ class KnowledgeGraph:
                         results.append({
                             "fhir_id": record["fhir_id"],
                             "resource_type": label,
+                            "encounter_fhir_id": record["encounter_fhir_id"],
                         })
 
         return results

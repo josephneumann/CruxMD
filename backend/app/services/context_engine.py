@@ -23,6 +23,7 @@ from app.schemas.quick_actions import QuickAction
 from app.schemas.task import TaskType
 from app.services.embeddings import EmbeddingService
 from app.services.graph import KnowledgeGraph
+from app.services.query_parser import remove_stop_words, tokenize
 from app.services.quick_actions import surface_quick_actions
 from app.services.vector_search import VectorSearchService
 from app.utils.fhir_helpers import extract_display_name
@@ -325,6 +326,96 @@ class ContextEngine:
 
         return context
 
+    async def _build_graph_traversal_layer(
+        self,
+        patient_id: str,
+        query: str,
+    ) -> list[RetrievedResource]:
+        """Build retrieved resources via graph node search and traversal.
+
+        Tokenizes the query, searches graph nodes by name, then traverses
+        to parent encounters to gather visit context.
+
+        Args:
+            patient_id: The canonical patient UUID
+            query: The clinical question to search for
+
+        Returns:
+            List of RetrievedResource with reason="graph_traversal"
+        """
+        if not query or not query.strip():
+            return []
+
+        # Tokenize and remove stop words
+        terms = remove_stop_words(tokenize(query))
+        if not terms:
+            return []
+
+        # Search graph nodes by name
+        try:
+            matched_nodes = await self._graph.search_nodes_by_name(
+                patient_id=patient_id,
+                query_terms=terms,
+            )
+        except Exception as e:
+            logger.warning(f"Graph node search failed for patient {patient_id}: {e}")
+            return []
+
+        if not matched_nodes:
+            return []
+
+        # Collect FHIR resources: matched nodes + encounter context
+        # Track fhir_ids to avoid duplicates
+        seen_fhir_ids: set[str] = set()
+        resources: list[RetrievedResource] = []
+
+        # Gather unique encounter fhir_ids for traversal
+        encounter_fhir_ids: set[str] = set()
+        for node in matched_nodes:
+            enc_id = node.get("encounter_fhir_id")
+            if enc_id:
+                encounter_fhir_ids.add(enc_id)
+
+        # Traverse encounters to get visit context (1-2 hop)
+        for enc_fhir_id in encounter_fhir_ids:
+            try:
+                events = await self._graph.get_encounter_events(enc_fhir_id)
+            except Exception as e:
+                logger.warning(f"Encounter traversal failed for {enc_fhir_id}: {e}")
+                continue
+
+            for resource_type_key, fhir_resource_type in [
+                ("conditions", "Condition"),
+                ("medications", "MedicationRequest"),
+                ("observations", "Observation"),
+                ("procedures", "Procedure"),
+                ("diagnostic_reports", "DiagnosticReport"),
+            ]:
+                for resource in events[resource_type_key]:
+                    fhir_id = resource.get("id")
+                    if fhir_id and fhir_id not in seen_fhir_ids:
+                        seen_fhir_ids.add(fhir_id)
+                        resources.append(
+                            RetrievedResource(
+                                resource=resource,
+                                resource_type=fhir_resource_type,
+                                score=1.0,
+                                reason="graph_traversal",
+                            )
+                        )
+
+        # Also include matched nodes that weren't part of any encounter
+        # (e.g., Encounter nodes themselves, or resources without encounter_fhir_id)
+        for node in matched_nodes:
+            fhir_id = node["fhir_id"]
+            if fhir_id not in seen_fhir_ids:
+                seen_fhir_ids.add(fhir_id)
+                # We don't have the full FHIR resource from search_nodes_by_name,
+                # so these are already covered by encounter traversal in most cases.
+                # Skip nodes we can't hydrate.
+
+        return resources
+
     async def build_context(
         self,
         patient_id: str,
@@ -335,11 +426,12 @@ class ContextEngine:
     ) -> PatientContext:
         """Build comprehensive patient context for LLM consumption.
 
-        Assembles context from two sources:
+        Assembles context from three sources:
         1. Verified Layer: Graph-verified facts (HIGH confidence)
-        2. Retrieved Layer: Semantic search results (MEDIUM confidence)
+        2. Graph Traversal: Resources found via node search + encounter traversal
+        3. Vector Search: Semantic search for supplemental discovery
 
-        Also generates safety constraints from verified clinical facts.
+        Graph traversal is the primary retrieval path. Vector search fills gaps.
 
         Args:
             patient_id: The canonical patient UUID
@@ -354,13 +446,30 @@ class ContextEngine:
         # Build verified layer (HIGH confidence)
         verified = await self._build_verified_layer(patient_id)
 
-        # Build retrieved layer (MEDIUM confidence)
-        retrieved = await self._build_retrieved_layer(
+        # Graph traversal: primary retrieval path
+        graph_resources = await self._build_graph_traversal_layer(
+            patient_id=patient_id,
+            query=query,
+        )
+        graph_fhir_ids = {r.resource.get("id") for r in graph_resources if r.resource.get("id")}
+
+        # Vector search: supplemental discovery
+        vector_layer = await self._build_retrieved_layer(
             patient_id=patient_id,
             query=query,
             limit=retrieval_limit,
             threshold=similarity_threshold,
         )
+
+        # Deduplicate: graph traversal wins over vector search
+        vector_resources = [
+            r for r in vector_layer.resources
+            if r.resource.get("id") not in graph_fhir_ids
+        ]
+
+        # Merge: graph traversal first, then vector results
+        all_resources = graph_resources + vector_resources
+        retrieved = RetrievedLayer(resources=all_resources)
 
         # Generate safety constraints from verified facts
         constraints = self._generate_constraints(verified)
@@ -369,6 +478,7 @@ class ContextEngine:
         stats = RetrievalStats(
             verified_count=verified.total_count(),
             retrieved_count=retrieved.total_count(),
+            graph_traversal_count=len(graph_resources),
             tokens_used=0,  # Will be updated after assembly
         )
 

@@ -131,6 +131,14 @@ def mock_graph():
     graph.get_verified_conditions = AsyncMock(return_value=[])
     graph.get_verified_medications = AsyncMock(return_value=[])
     graph.get_verified_allergies = AsyncMock(return_value=[])
+    graph.search_nodes_by_name = AsyncMock(return_value=[])
+    graph.get_encounter_events = AsyncMock(return_value={
+        "conditions": [],
+        "medications": [],
+        "observations": [],
+        "procedures": [],
+        "diagnostic_reports": [],
+    })
     return graph
 
 
@@ -416,6 +424,132 @@ class TestBuildRetrievedLayer:
         assert layer.resources == []
 
 
+class TestBuildGraphTraversalLayer:
+    """Tests for ContextEngine._build_graph_traversal_layer method."""
+
+    @pytest.mark.asyncio
+    async def test_returns_empty_for_empty_query(
+        self, context_engine, patient_id
+    ):
+        """Test returns empty list when query is empty."""
+        result = await context_engine._build_graph_traversal_layer(patient_id, "")
+        assert result == []
+
+    @pytest.mark.asyncio
+    async def test_returns_empty_for_stop_words_only(
+        self, context_engine, patient_id
+    ):
+        """Test returns empty list when query has only stop words."""
+        result = await context_engine._build_graph_traversal_layer(
+            patient_id, "what is the patient"
+        )
+        assert result == []
+
+    @pytest.mark.asyncio
+    async def test_traverses_encounter_for_matched_nodes(
+        self, context_engine, mock_graph, patient_id, sample_observation
+    ):
+        """Test traverses to parent encounter and returns encounter events."""
+        mock_graph.search_nodes_by_name.return_value = [
+            {"fhir_id": "obs-test-abc", "resource_type": "Observation", "encounter_fhir_id": "enc-1"},
+        ]
+        mock_graph.get_encounter_events.return_value = {
+            "conditions": [],
+            "medications": [],
+            "observations": [sample_observation],
+            "procedures": [],
+            "diagnostic_reports": [],
+        }
+
+        result = await context_engine._build_graph_traversal_layer(
+            patient_id, "blood glucose"
+        )
+
+        assert len(result) == 1
+        assert result[0].reason == "graph_traversal"
+        assert result[0].resource_type == "Observation"
+        assert result[0].score == 1.0
+        mock_graph.get_encounter_events.assert_called_once_with("enc-1")
+
+    @pytest.mark.asyncio
+    async def test_deduplicates_across_encounters(
+        self, context_engine, mock_graph, patient_id, sample_observation
+    ):
+        """Test same resource from multiple encounters is not duplicated."""
+        mock_graph.search_nodes_by_name.return_value = [
+            {"fhir_id": "obs-1", "resource_type": "Observation", "encounter_fhir_id": "enc-1"},
+            {"fhir_id": "obs-2", "resource_type": "Observation", "encounter_fhir_id": "enc-1"},
+        ]
+        mock_graph.get_encounter_events.return_value = {
+            "conditions": [],
+            "medications": [],
+            "observations": [sample_observation],
+            "procedures": [],
+            "diagnostic_reports": [],
+        }
+
+        result = await context_engine._build_graph_traversal_layer(
+            patient_id, "blood glucose"
+        )
+
+        # Only one encounter traversed (both nodes share enc-1)
+        mock_graph.get_encounter_events.assert_called_once_with("enc-1")
+        # sample_observation has id "obs-test-abc" — appears once
+        assert len(result) == 1
+
+    @pytest.mark.asyncio
+    async def test_handles_nodes_without_encounter(
+        self, context_engine, mock_graph, patient_id
+    ):
+        """Test nodes without encounter_fhir_id don't cause errors."""
+        mock_graph.search_nodes_by_name.return_value = [
+            {"fhir_id": "enc-1", "resource_type": "Encounter", "encounter_fhir_id": "enc-1"},
+        ]
+        mock_graph.get_encounter_events.return_value = {
+            "conditions": [],
+            "medications": [],
+            "observations": [],
+            "procedures": [],
+            "diagnostic_reports": [],
+        }
+
+        result = await context_engine._build_graph_traversal_layer(
+            patient_id, "office visit"
+        )
+
+        # Encounter node's encounter_fhir_id is itself, so traversal happens
+        mock_graph.get_encounter_events.assert_called_once_with("enc-1")
+
+    @pytest.mark.asyncio
+    async def test_handles_graph_search_error(
+        self, context_engine, mock_graph, patient_id
+    ):
+        """Test handles graph search errors gracefully."""
+        mock_graph.search_nodes_by_name.side_effect = Exception("Neo4j down")
+
+        result = await context_engine._build_graph_traversal_layer(
+            patient_id, "diabetes"
+        )
+
+        assert result == []
+
+    @pytest.mark.asyncio
+    async def test_handles_encounter_traversal_error(
+        self, context_engine, mock_graph, patient_id
+    ):
+        """Test handles encounter traversal errors gracefully."""
+        mock_graph.search_nodes_by_name.return_value = [
+            {"fhir_id": "obs-1", "resource_type": "Observation", "encounter_fhir_id": "enc-1"},
+        ]
+        mock_graph.get_encounter_events.side_effect = Exception("Traversal failed")
+
+        result = await context_engine._build_graph_traversal_layer(
+            patient_id, "glucose"
+        )
+
+        assert result == []
+
+
 class TestBuildContext:
     """Tests for ContextEngine.build_context method."""
 
@@ -544,6 +678,78 @@ class TestBuildContext:
         assert context.meta.retrieval_stats.verified_count == 1
         assert context.meta.retrieval_stats.retrieved_count == 1
         assert context.meta.retrieval_stats.tokens_used > 0
+
+    @pytest.mark.asyncio
+    async def test_graph_traversal_populates_retrieved_layer(
+        self,
+        context_engine,
+        mock_graph,
+        patient_id,
+        sample_observation,
+    ):
+        """Test graph traversal results appear in retrieved layer."""
+        mock_graph.search_nodes_by_name.return_value = [
+            {"fhir_id": "obs-test-abc", "resource_type": "Observation", "encounter_fhir_id": "enc-1"},
+        ]
+        mock_graph.get_encounter_events.return_value = {
+            "conditions": [],
+            "medications": [],
+            "observations": [sample_observation],
+            "procedures": [],
+            "diagnostic_reports": [],
+        }
+
+        context = await context_engine.build_context(
+            patient_id=patient_id,
+            query="blood glucose",
+        )
+
+        assert context.meta.retrieval_stats.graph_traversal_count == 1
+        graph_resources = [
+            r for r in context.retrieved.resources if r.reason == "graph_traversal"
+        ]
+        assert len(graph_resources) == 1
+        assert graph_resources[0].resource["id"] == "obs-test-abc"
+
+    @pytest.mark.asyncio
+    async def test_deduplicates_graph_and_vector_results(
+        self,
+        context_engine,
+        mock_graph,
+        mock_vector_search,
+        patient_id,
+        sample_observation,
+    ):
+        """Test vector results duplicating graph results are removed."""
+        mock_graph.search_nodes_by_name.return_value = [
+            {"fhir_id": "obs-test-abc", "resource_type": "Observation", "encounter_fhir_id": "enc-1"},
+        ]
+        mock_graph.get_encounter_events.return_value = {
+            "conditions": [],
+            "medications": [],
+            "observations": [sample_observation],
+            "procedures": [],
+            "diagnostic_reports": [],
+        }
+        # Vector search returns the same observation
+        mock_vector_search.search_by_text.return_value = [
+            SearchResult(
+                resource=sample_observation,
+                score=0.85,
+                resource_type="Observation",
+                fhir_id="obs-test-abc",
+            ),
+        ]
+
+        context = await context_engine.build_context(
+            patient_id=patient_id,
+            query="blood glucose",
+        )
+
+        # Should have 1 resource (graph wins), not 2
+        assert len(context.retrieved.resources) == 1
+        assert context.retrieved.resources[0].reason == "graph_traversal"
+        assert context.meta.retrieval_stats.graph_traversal_count == 1
 
 
 class TestTrimToBudget:
