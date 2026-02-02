@@ -737,6 +737,75 @@ def sample_condition_with_abatement() -> dict:
     }
 
 
+@pytest.fixture
+def sample_careplan() -> dict:
+    """Sample FHIR CarePlan resource for testing."""
+    return {
+        "resourceType": "CarePlan",
+        "id": "careplan-test-001",
+        "subject": {"reference": "Patient/patient-test-123"},
+        "status": "active",
+        "category": [
+            {
+                "coding": [
+                    {
+                        "system": "http://hl7.org/fhir/us/core/CodeSystem/careplan-category",
+                        "code": "assess-plan",
+                        "display": "Assessment and Plan of Treatment",
+                    }
+                ]
+            }
+        ],
+        "period": {
+            "start": "2024-01-15T09:00:00Z",
+        },
+    }
+
+
+@pytest.fixture
+def sample_careplan_with_title() -> dict:
+    """Sample FHIR CarePlan with title field."""
+    return {
+        "resourceType": "CarePlan",
+        "id": "careplan-test-titled",
+        "subject": {"reference": "Patient/patient-test-123"},
+        "title": "Diabetes self-management plan",
+        "status": "active",
+        "period": {
+            "start": "2024-01-15T09:00:00Z",
+            "end": "2024-07-15T09:00:00Z",
+        },
+    }
+
+
+@pytest.fixture
+def sample_careplan_with_addresses() -> dict:
+    """Sample FHIR CarePlan that addresses a Condition."""
+    return {
+        "resourceType": "CarePlan",
+        "id": "careplan-with-addresses",
+        "subject": {"reference": "Patient/patient-test-123"},
+        "status": "active",
+        "category": [
+            {
+                "coding": [
+                    {
+                        "system": "http://hl7.org/fhir/us/core/CodeSystem/careplan-category",
+                        "code": "assess-plan",
+                        "display": "Assessment and Plan of Treatment",
+                    }
+                ]
+            }
+        ],
+        "addresses": [
+            {"reference": "Condition/condition-with-encounter"},
+        ],
+        "period": {
+            "start": "2024-01-15T09:00:00Z",
+        },
+    }
+
+
 # =============================================================================
 # Helper Functions (available to tests)
 # =============================================================================

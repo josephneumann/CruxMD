@@ -173,6 +173,7 @@ class KnowledgeGraph:
     - MedicationRequest TREATS Condition
     - Procedure TREATS Condition
     - DiagnosticReport CONTAINS_RESULT Observation
+    - CarePlan ADDRESSES Condition
     """
 
     # Relationship configuration for encounter-centric edges
@@ -241,6 +242,7 @@ class KnowledgeGraph:
                 ("procedure_fhir_id_unique", "Procedure", "fhir_id"),
                 ("diagnostic_report_fhir_id_unique", "DiagnosticReport", "fhir_id"),
                 ("immunization_fhir_id_unique", "Immunization", "fhir_id"),
+                ("careplan_fhir_id_unique", "CarePlan", "fhir_id"),
             ]
 
             for name, label, prop in constraints:
@@ -622,6 +624,43 @@ class KnowledgeGraph:
             fhir_resource=json.dumps(resource),
         )
 
+    async def _upsert_careplan(
+        self, session: AsyncSession, patient_id: str, resource: dict[str, Any]
+    ) -> None:
+        """Create or update CarePlan node and HAS_CARE_PLAN relationship."""
+        display = resource.get("title")
+        if not display:
+            categories = resource.get("category", [])
+            if categories:
+                first_coding = _extract_first_coding(categories[0])
+                display = first_coding.get("display")
+
+        period = resource.get("period", {})
+        addresses_fhir_ids = _extract_reference_ids(resource.get("addresses", []))
+
+        await session.run(
+            """
+            MATCH (p:Patient {id: $patient_id})
+            MERGE (cp:CarePlan {fhir_id: $fhir_id})
+            SET cp.display = $display,
+                cp.status = $status,
+                cp.period_start = $period_start,
+                cp.period_end = $period_end,
+                cp.addresses_fhir_ids = $addresses_fhir_ids,
+                cp.fhir_resource = $fhir_resource,
+                cp.updated_at = datetime()
+            MERGE (p)-[:HAS_CARE_PLAN]->(cp)
+            """,
+            patient_id=patient_id,
+            fhir_id=resource.get("id"),
+            display=display,
+            status=resource.get("status"),
+            period_start=period.get("start"),
+            period_end=period.get("end"),
+            addresses_fhir_ids=addresses_fhir_ids,
+            fhir_resource=json.dumps(resource),
+        )
+
     # =========================================================================
     # Relationship Building (patient-scoped, optimized queries)
     # =========================================================================
@@ -700,6 +739,18 @@ class KnowledgeGraph:
             UNWIND dr.result_fhir_ids AS obs_id
             MATCH (p)-[:HAS_OBSERVATION]->(o:Observation {fhir_id: obs_id})
             MERGE (dr)-[:CONTAINS_RESULT]->(o)
+            """,
+            patient_id=patient_id,
+        )
+
+        # CarePlan -> Condition (ADDRESSES)
+        await session.run(
+            """
+            MATCH (p:Patient {id: $patient_id})-[:HAS_CARE_PLAN]->(cp:CarePlan)
+            WHERE cp.addresses_fhir_ids IS NOT NULL AND size(cp.addresses_fhir_ids) > 0
+            UNWIND cp.addresses_fhir_ids AS condition_id
+            MATCH (p)-[:HAS_CONDITION]->(c:Condition {fhir_id: condition_id})
+            MERGE (cp)-[:ADDRESSES]->(c)
             """,
             patient_id=patient_id,
         )
@@ -1158,6 +1209,8 @@ class KnowledgeGraph:
                     await self._upsert_diagnostic_report(session, patient_id, resource)
                 elif resource_type == "Immunization":
                     await self._upsert_immunization(session, patient_id, resource)
+                elif resource_type == "CarePlan":
+                    await self._upsert_careplan(session, patient_id, resource)
 
             # Second pass: build inter-resource relationships (patient-scoped)
             await self._build_encounter_relationships(session, patient_id)

@@ -1875,3 +1875,147 @@ async def test_encounter_stores_fhir_resource(
     stored = json.loads(record["fhir_resource"])
     assert stored["resourceType"] == "Encounter"
     assert stored["id"] == sample_encounter["id"]
+
+
+# =============================================================================
+# Tests for CarePlan node type
+# =============================================================================
+
+
+@pytest.mark.asyncio
+async def test_build_from_fhir_creates_careplan_with_relationship(
+    graph: KnowledgeGraph,
+    patient_id: str,
+    neo4j_driver,
+    sample_patient,
+    sample_careplan,
+):
+    """Test that build_from_fhir creates CarePlan node with HAS_CARE_PLAN relationship."""
+    await graph.build_from_fhir(patient_id, [sample_patient, sample_careplan])
+
+    async with neo4j_driver.session() as session:
+        result = await session.run(
+            """
+            MATCH (p:Patient {id: $id})-[:HAS_CARE_PLAN]->(cp:CarePlan)
+            RETURN cp
+            """,
+            id=patient_id,
+        )
+        record = await result.single()
+
+    assert record is not None
+    cp_node = record["cp"]
+    assert cp_node["fhir_id"] == sample_careplan["id"]
+    assert cp_node["display"] == "Assessment and Plan of Treatment"
+    assert cp_node["status"] == "active"
+    assert cp_node["period_start"] == "2024-01-15T09:00:00Z"
+
+
+@pytest.mark.asyncio
+async def test_careplan_uses_title_over_category(
+    graph: KnowledgeGraph,
+    patient_id: str,
+    neo4j_driver,
+    sample_patient,
+    sample_careplan_with_title,
+):
+    """Test that CarePlan prefers title over category display."""
+    await graph.build_from_fhir(patient_id, [sample_patient, sample_careplan_with_title])
+
+    async with neo4j_driver.session() as session:
+        result = await session.run(
+            """
+            MATCH (cp:CarePlan {fhir_id: $fhir_id})
+            RETURN cp.display as display
+            """,
+            fhir_id=sample_careplan_with_title["id"],
+        )
+        record = await result.single()
+
+    assert record is not None
+    assert record["display"] == "Diabetes self-management plan"
+
+
+@pytest.mark.asyncio
+async def test_careplan_stores_fhir_resource(
+    graph: KnowledgeGraph,
+    patient_id: str,
+    neo4j_driver,
+    sample_patient,
+    sample_careplan,
+):
+    """Test that the full FHIR resource is stored on CarePlan nodes."""
+    await graph.build_from_fhir(patient_id, [sample_patient, sample_careplan])
+
+    async with neo4j_driver.session() as session:
+        result = await session.run(
+            """
+            MATCH (cp:CarePlan {fhir_id: $fhir_id})
+            RETURN cp.fhir_resource as fhir_resource
+            """,
+            fhir_id=sample_careplan["id"],
+        )
+        record = await result.single()
+
+    assert record is not None
+    stored = json.loads(record["fhir_resource"])
+    assert stored["resourceType"] == "CarePlan"
+    assert stored["id"] == sample_careplan["id"]
+
+
+@pytest.mark.asyncio
+async def test_careplan_addresses_condition_relationship(
+    graph: KnowledgeGraph,
+    patient_id: str,
+    neo4j_driver,
+    sample_patient,
+    sample_condition_with_encounter,
+    sample_careplan_with_addresses,
+):
+    """Test CarePlan -[:ADDRESSES]-> Condition relationship is created."""
+    await graph.build_from_fhir(
+        patient_id,
+        [sample_patient, sample_condition_with_encounter, sample_careplan_with_addresses],
+    )
+
+    async with neo4j_driver.session() as session:
+        result = await session.run(
+            """
+            MATCH (cp:CarePlan {fhir_id: $cp_id})-[:ADDRESSES]->(c:Condition)
+            RETURN c.fhir_id as condition_id
+            """,
+            cp_id=sample_careplan_with_addresses["id"],
+        )
+        record = await result.single()
+
+    assert record is not None
+    assert record["condition_id"] == sample_condition_with_encounter["id"]
+
+
+@pytest.mark.asyncio
+async def test_careplan_stores_addresses_fhir_ids(
+    graph: KnowledgeGraph,
+    patient_id: str,
+    neo4j_driver,
+    sample_patient,
+    sample_condition_with_encounter,
+    sample_careplan_with_addresses,
+):
+    """Test that CarePlan node stores addresses_fhir_ids for ADDRESSES relationship."""
+    await graph.build_from_fhir(
+        patient_id,
+        [sample_patient, sample_condition_with_encounter, sample_careplan_with_addresses],
+    )
+
+    async with neo4j_driver.session() as session:
+        result = await session.run(
+            """
+            MATCH (cp:CarePlan {fhir_id: $cp_id})
+            RETURN cp.addresses_fhir_ids as addresses_ids
+            """,
+            cp_id=sample_careplan_with_addresses["id"],
+        )
+        record = await result.single()
+
+    assert record is not None
+    assert sample_condition_with_encounter["id"] in record["addresses_ids"]
