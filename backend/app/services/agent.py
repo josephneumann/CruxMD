@@ -482,6 +482,59 @@ class AgentService:
 
         return response
 
+    async def _execute_tool_calls(
+        self,
+        kwargs: dict[str, Any],
+        patient_id: str,
+        graph: KnowledgeGraph,
+        db: AsyncSession,
+    ) -> None:
+        """Execute tool-calling rounds, leaving kwargs ready for a final call.
+
+        Like _run_tool_rounds but does NOT make the final text-generation call.
+        After this returns, kwargs["input"] contains the full conversation
+        including all tool calls and results, ready for a streaming final call.
+
+        Args:
+            kwargs: API call kwargs (mutated in place).
+            patient_id: Current patient ID for tool execution.
+            graph: KnowledgeGraph instance.
+            db: AsyncSession instance.
+        """
+        for _round in range(MAX_TOOL_ROUNDS):
+            response = await self._client.responses.parse(**kwargs)
+
+            tool_calls = [
+                item for item in response.output
+                if item.type == "function_call"
+            ]
+            if not tool_calls:
+                # No tool calls — model wants to generate text.
+                # Don't consume that response; let the caller stream it.
+                # Remove the tool schemas so the streaming call produces text.
+                kwargs.pop("tools", None)
+                return
+
+            logger.debug(f"Tool round {_round + 1}: {len(tool_calls)} tool call(s)")
+
+            kwargs["input"].extend(response.output)
+            for tool_call in tool_calls:
+                result = await execute_tool(
+                    name=tool_call.name,
+                    arguments=tool_call.arguments,
+                    patient_id=patient_id,
+                    graph=graph,
+                    db=db,
+                )
+                kwargs["input"].append({
+                    "type": "function_call_output",
+                    "call_id": tool_call.call_id,
+                    "output": result,
+                })
+
+        # Max rounds reached — remove tools to force text generation
+        kwargs.pop("tools", None)
+
     def _build_input_messages(
         self,
         context: PatientContext,
@@ -645,36 +698,14 @@ class AgentService:
         if tools_available:
             kwargs["tools"] = TOOL_SCHEMAS
 
-        # Run tool rounds (non-streaming), then stream the final text response
+        # Execute tool rounds (non-streaming), then stream the final response.
+        # _execute_tool_calls leaves kwargs ready for the final streaming call.
         if tools_available:
-            response = await self._run_tool_rounds(
+            await self._execute_tool_calls(
                 kwargs, context.meta.patient_id, graph, db
             )
-            has_text = any(
-                item.type != "function_call" for item in response.output
-            )
-            if has_text:
-                # Emit reasoning summary from the non-streaming response
-                for item in response.output:
-                    if item.type == "reasoning" and hasattr(item, "summary"):
-                        for part in item.summary or []:
-                            if hasattr(part, "text") and part.text:
-                                yield ("reasoning", json.dumps({"delta": part.text}))
 
-                agent_response = response.output_parsed
-                if agent_response is None:
-                    raw_output = getattr(response, "output_text", None)
-                    if raw_output:
-                        agent_response = AgentResponse.model_validate_json(raw_output)
-                    else:
-                        raise RuntimeError(
-                            "LLM response could not be parsed. "
-                            "Neither structured output nor raw text was available."
-                        )
-                yield ("done", agent_response.model_dump_json())
-                return
-
-        # Final streaming round (no tool calls, or tools not available)
+        # Stream the final response (reasoning summaries + narrative deltas)
         async with self._client.responses.stream(**kwargs) as stream:
             async for event in stream:
                 if event.type == "response.reasoning_summary_text.delta":

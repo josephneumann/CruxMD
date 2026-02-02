@@ -1095,19 +1095,22 @@ class TestToolUseStreamLoop:
             "search_patient_data", '{"query": "diabetes"}'
         )
 
-        # First .parse() returns tool call, second returns final text (no tool calls)
+        # First .parse() returns tool call, second returns no tool calls (text ready)
         tool_round_resp = MagicMock()
         tool_round_resp.output = [tool_call]
         tool_round_resp.output_parsed = None
 
-        final_response = create_mock_agent_response()
-        final_resp = MagicMock()
-        final_resp.output = [_make_text_item()]
-        final_resp.output_parsed = final_response
-        final_resp.output_text = final_response.model_dump_json()
+        # Second .parse() returns no tool calls — _execute_tool_calls stops
+        no_tool_resp = MagicMock()
+        no_tool_resp.output = [_make_text_item()]
+        no_tool_resp.output_parsed = None
 
         mock_client = AsyncMock()
-        mock_client.responses.parse = AsyncMock(side_effect=[tool_round_resp, final_resp])
+        mock_client.responses.parse = AsyncMock(side_effect=[tool_round_resp, no_tool_resp])
+
+        # Final streaming call returns the response
+        final_response = create_mock_agent_response()
+        mock_client.responses.stream = MagicMock(return_value=create_mock_stream(final_response))
 
         service = AgentService(client=mock_client)
 
@@ -1120,11 +1123,15 @@ class TestToolUseStreamLoop:
         ):
             events.append((et, data))
 
-        # Should get a done event with the final response
+        # Should get reasoning, narrative, and done events (streamed)
+        assert any(e[0] == "reasoning" for e in events)
+        assert any(e[0] == "narrative" for e in events)
         done_events = [e for e in events if e[0] == "done"]
         assert len(done_events) == 1
         parsed = AgentResponse.model_validate_json(done_events[0][1])
         assert parsed.narrative == final_response.narrative
 
         mock_execute.assert_called_once()
+        # .parse() called for tool rounds, .stream() for final
         assert mock_client.responses.parse.call_count == 2
+        mock_client.responses.stream.assert_called_once()
