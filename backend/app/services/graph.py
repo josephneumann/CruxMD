@@ -185,6 +185,7 @@ class KnowledgeGraph:
         ("Procedure", "HAS_PROCEDURE", "PERFORMED", "pr"),
         ("DiagnosticReport", "HAS_DIAGNOSTIC_REPORT", "REPORTED", "dr"),
         ("Immunization", "HAS_IMMUNIZATION", "ADMINISTERED", "im"),
+        ("CarePlan", "HAS_CARE_PLAN", "CREATED_DURING", "cp"),
     ]
 
     def __init__(self, driver: AsyncDriver | None = None):
@@ -261,6 +262,7 @@ class KnowledgeGraph:
                 ("procedure_encounter", "Procedure", "encounter_fhir_id"),
                 ("diagnostic_report_encounter", "DiagnosticReport", "encounter_fhir_id"),
                 ("immunization_encounter", "Immunization", "encounter_fhir_id"),
+                ("careplan_encounter", "CarePlan", "encounter_fhir_id"),
             ]
 
             for name, label, prop in relationship_indexes:
@@ -630,11 +632,13 @@ class KnowledgeGraph:
         """Create or update CarePlan node and HAS_CARE_PLAN relationship."""
         display = resource.get("title")
         if not display:
-            categories = resource.get("category", [])
-            if categories:
-                first_coding = _extract_first_coding(categories[0])
-                display = first_coding.get("display")
+            for cat in resource.get("category", []):
+                coding = _extract_first_coding(cat)
+                if coding.get("display"):
+                    display = coding["display"]
+                    break
 
+        encounter_fhir_id = _extract_encounter_fhir_id(resource)
         period = resource.get("period", {})
         addresses_fhir_ids = _extract_reference_ids(resource.get("addresses", []))
 
@@ -646,6 +650,7 @@ class KnowledgeGraph:
                 cp.status = $status,
                 cp.period_start = $period_start,
                 cp.period_end = $period_end,
+                cp.encounter_fhir_id = $encounter_fhir_id,
                 cp.addresses_fhir_ids = $addresses_fhir_ids,
                 cp.fhir_resource = $fhir_resource,
                 cp.updated_at = datetime()
@@ -657,6 +662,7 @@ class KnowledgeGraph:
             status=resource.get("status"),
             period_start=period.get("start"),
             period_end=period.get("end"),
+            encounter_fhir_id=encounter_fhir_id,
             addresses_fhir_ids=addresses_fhir_ids,
             fhir_resource=json.dumps(resource),
         )
