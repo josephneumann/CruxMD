@@ -1538,6 +1538,130 @@ async def test_search_nodes_by_name_empty_terms(
     assert results == []
 
 
+# =============================================================================
+# Tests for Immunization nodes
+# =============================================================================
+
+
+@pytest.mark.asyncio
+async def test_build_from_fhir_creates_immunization_with_relationship(
+    graph: KnowledgeGraph,
+    patient_id: str,
+    neo4j_driver,
+    sample_patient,
+    sample_immunization,
+):
+    """Test that build_from_fhir creates Immunization node with HAS_IMMUNIZATION relationship."""
+    await graph.build_from_fhir(patient_id, [sample_patient, sample_immunization])
+
+    async with neo4j_driver.session() as session:
+        result = await session.run(
+            """
+            MATCH (p:Patient {id: $id})-[:HAS_IMMUNIZATION]->(im:Immunization)
+            RETURN im
+            """,
+            id=patient_id,
+        )
+        record = await result.single()
+
+    assert record is not None
+    imm_node = record["im"]
+    assert imm_node["fhir_id"] == sample_immunization["id"]
+    assert imm_node["code"] == sample_immunization["vaccineCode"]["coding"][0]["code"]
+    assert imm_node["display"] == sample_immunization["vaccineCode"]["coding"][0]["display"]
+    assert imm_node["status"] == sample_immunization["status"]
+
+
+@pytest.mark.asyncio
+async def test_get_verified_immunizations_returns_completed(
+    graph: KnowledgeGraph, patient_id: str, sample_patient, sample_immunization
+):
+    """Test that get_verified_immunizations returns only completed immunizations."""
+    await graph.build_from_fhir(patient_id, [sample_patient, sample_immunization])
+
+    immunizations = await graph.get_verified_immunizations(patient_id)
+
+    assert len(immunizations) == 1
+    assert immunizations[0]["resourceType"] == "Immunization"
+    assert immunizations[0]["id"] == sample_immunization["id"]
+
+
+@pytest.mark.asyncio
+async def test_get_verified_immunizations_excludes_not_done(
+    graph: KnowledgeGraph,
+    patient_id: str,
+    sample_patient,
+    sample_immunization,
+    sample_immunization_not_done,
+):
+    """Test that get_verified_immunizations excludes not-done immunizations."""
+    await graph.build_from_fhir(
+        patient_id, [sample_patient, sample_immunization, sample_immunization_not_done]
+    )
+
+    immunizations = await graph.get_verified_immunizations(patient_id)
+
+    assert len(immunizations) == 1
+    assert immunizations[0]["id"] == sample_immunization["id"]
+
+
+@pytest.mark.asyncio
+async def test_get_verified_immunizations_returns_empty_for_nonexistent_patient(
+    graph: KnowledgeGraph,
+):
+    """Test that get_verified_immunizations returns empty list for nonexistent patient."""
+    immunizations = await graph.get_verified_immunizations("nonexistent-patient-id")
+    assert immunizations == []
+
+
+@pytest.mark.asyncio
+async def test_encounter_administered_immunization_relationship(
+    graph: KnowledgeGraph,
+    patient_id: str,
+    neo4j_driver,
+    sample_patient,
+    sample_encounter,
+    sample_immunization_with_encounter,
+):
+    """Test Encounter -[:ADMINISTERED]-> Immunization relationship is created."""
+    await graph.build_from_fhir(
+        patient_id, [sample_patient, sample_encounter, sample_immunization_with_encounter]
+    )
+
+    async with neo4j_driver.session() as session:
+        result = await session.run(
+            """
+            MATCH (e:Encounter {fhir_id: $encounter_id})-[:ADMINISTERED]->(im:Immunization)
+            RETURN im.fhir_id as imm_id
+            """,
+            encounter_id=sample_encounter["id"],
+        )
+        record = await result.single()
+
+    assert record is not None
+    assert record["imm_id"] == sample_immunization_with_encounter["id"]
+
+
+@pytest.mark.asyncio
+async def test_verified_facts_includes_immunizations(
+    graph: KnowledgeGraph,
+    patient_id: str,
+    sample_patient,
+    sample_immunization,
+    sample_immunization_not_done,
+):
+    """Test that get_verified_facts includes immunizations."""
+    await graph.build_from_fhir(
+        patient_id, [sample_patient, sample_immunization, sample_immunization_not_done]
+    )
+
+    facts = await graph.get_verified_facts(patient_id)
+
+    assert "immunizations" in facts
+    assert len(facts["immunizations"]) == 1
+    assert facts["immunizations"][0]["id"] == sample_immunization["id"]
+
+
 @pytest.mark.asyncio
 async def test_search_nodes_by_name_multiple_terms(
     graph: KnowledgeGraph,

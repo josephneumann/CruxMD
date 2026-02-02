@@ -556,6 +556,70 @@ def sample_diagnostic_report_with_encounter_and_results() -> dict:
 
 
 @pytest.fixture
+def sample_immunization() -> dict:
+    """Sample FHIR Immunization resource for testing."""
+    return {
+        "resourceType": "Immunization",
+        "id": "immunization-test-001",
+        "subject": {"reference": "Patient/patient-test-123"},
+        "vaccineCode": {
+            "coding": [
+                {
+                    "system": "http://hl7.org/fhir/sid/cvx",
+                    "code": "140",
+                    "display": "Influenza, seasonal, injectable, preservative free",
+                }
+            ]
+        },
+        "status": "completed",
+        "occurrenceDateTime": "2024-01-15T09:30:00Z",
+    }
+
+
+@pytest.fixture
+def sample_immunization_with_encounter() -> dict:
+    """Sample FHIR Immunization with encounter reference."""
+    return {
+        "resourceType": "Immunization",
+        "id": "immunization-with-encounter",
+        "subject": {"reference": "Patient/patient-test-123"},
+        "encounter": {"reference": "Encounter/encounter-test-ghi"},
+        "vaccineCode": {
+            "coding": [
+                {
+                    "system": "http://hl7.org/fhir/sid/cvx",
+                    "code": "140",
+                    "display": "Influenza, seasonal, injectable, preservative free",
+                }
+            ]
+        },
+        "status": "completed",
+        "occurrenceDateTime": "2024-01-15T09:30:00Z",
+    }
+
+
+@pytest.fixture
+def sample_immunization_not_done() -> dict:
+    """Sample FHIR Immunization with not-done status for testing filtering."""
+    return {
+        "resourceType": "Immunization",
+        "id": "immunization-test-not-done",
+        "subject": {"reference": "Patient/patient-test-123"},
+        "vaccineCode": {
+            "coding": [
+                {
+                    "system": "http://hl7.org/fhir/sid/cvx",
+                    "code": "08",
+                    "display": "Hepatitis B vaccine",
+                }
+            ]
+        },
+        "status": "not-done",
+        "occurrenceDateTime": "2024-02-01T10:00:00Z",
+    }
+
+
+@pytest.fixture
 def sample_condition_with_urn_uuid_encounter() -> dict:
     """Sample FHIR Condition with urn:uuid encounter reference (Synthea style)."""
     return {

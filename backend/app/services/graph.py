@@ -240,6 +240,7 @@ class KnowledgeGraph:
                 ("encounter_fhir_id_unique", "Encounter", "fhir_id"),
                 ("procedure_fhir_id_unique", "Procedure", "fhir_id"),
                 ("diagnostic_report_fhir_id_unique", "DiagnosticReport", "fhir_id"),
+                ("immunization_fhir_id_unique", "Immunization", "fhir_id"),
             ]
 
             for name, label, prop in constraints:
@@ -257,6 +258,7 @@ class KnowledgeGraph:
                 ("observation_encounter", "Observation", "encounter_fhir_id"),
                 ("procedure_encounter", "Procedure", "encounter_fhir_id"),
                 ("diagnostic_report_encounter", "DiagnosticReport", "encounter_fhir_id"),
+                ("immunization_encounter", "Immunization", "encounter_fhir_id"),
             ]
 
             for name, label, prop in relationship_indexes:
@@ -588,6 +590,38 @@ class KnowledgeGraph:
             fhir_resource=json.dumps(resource),
         )
 
+    async def _upsert_immunization(
+        self, session: AsyncSession, patient_id: str, resource: dict[str, Any]
+    ) -> None:
+        """Create or update Immunization node and HAS_IMMUNIZATION relationship."""
+        first_coding = _extract_first_coding(resource.get("vaccineCode", {}))
+        encounter_fhir_id = _extract_encounter_fhir_id(resource)
+
+        await session.run(
+            """
+            MATCH (p:Patient {id: $patient_id})
+            MERGE (im:Immunization {fhir_id: $fhir_id})
+            SET im.code = $code,
+                im.display = $display,
+                im.system = $system,
+                im.status = $status,
+                im.occurrence_date = $occurrence_date,
+                im.encounter_fhir_id = $encounter_fhir_id,
+                im.fhir_resource = $fhir_resource,
+                im.updated_at = datetime()
+            MERGE (p)-[:HAS_IMMUNIZATION]->(im)
+            """,
+            patient_id=patient_id,
+            fhir_id=resource.get("id"),
+            code=first_coding.get("code"),
+            display=first_coding.get("display"),
+            system=first_coding.get("system"),
+            status=resource.get("status"),
+            occurrence_date=resource.get("occurrenceDateTime"),
+            encounter_fhir_id=encounter_fhir_id,
+            fhir_resource=json.dumps(resource),
+        )
+
     # =========================================================================
     # Relationship Building (patient-scoped, optimized queries)
     # =========================================================================
@@ -758,27 +792,55 @@ class KnowledgeGraph:
                     resources.append(json.loads(resource_json))
             return resources
 
-    async def get_verified_facts(self, patient_id: str) -> VerifiedFacts:
+    async def get_verified_immunizations(self, patient_id: str) -> list[dict[str, Any]]:
         """
-        Get all verified clinical facts from graph for a patient.
-
-        Aggregates conditions, medications, and allergies into a single response.
+        Get FHIR Immunization resources for completed immunizations.
 
         Args:
             patient_id: The canonical patient UUID.
 
         Returns:
-            TypedDict with 'conditions', 'medications', and 'allergies' keys,
-            each containing a list of FHIR resources.
+            List of FHIR Immunization resources with status = 'completed'.
+        """
+        async with self._driver.session() as session:
+            result = await session.run(
+                """
+                MATCH (p:Patient {id: $patient_id})-[:HAS_IMMUNIZATION]->(im:Immunization)
+                WHERE im.status = 'completed'
+                RETURN im.fhir_resource as resource
+                """,
+                patient_id=patient_id,
+            )
+            resources = []
+            async for record in result:
+                resource_json = record["resource"]
+                if resource_json:
+                    resources.append(json.loads(resource_json))
+            return resources
+
+    async def get_verified_facts(self, patient_id: str) -> VerifiedFacts:
+        """
+        Get all verified clinical facts from graph for a patient.
+
+        Aggregates conditions, medications, allergies, and immunizations.
+
+        Args:
+            patient_id: The canonical patient UUID.
+
+        Returns:
+            TypedDict with 'conditions', 'medications', 'allergies', and
+            'immunizations' keys, each containing a list of FHIR resources.
         """
         conditions = await self.get_verified_conditions(patient_id)
         medications = await self.get_verified_medications(patient_id)
         allergies = await self.get_verified_allergies(patient_id)
+        immunizations = await self.get_verified_immunizations(patient_id)
 
         return {
             "conditions": conditions,
             "medications": medications,
             "allergies": allergies,
+            "immunizations": immunizations,
         }
 
     async def get_encounter_events(self, encounter_fhir_id: str) -> EncounterEvents:
@@ -953,6 +1015,7 @@ class KnowledgeGraph:
             ("Procedure", "HAS_PROCEDURE", "display"),
             ("DiagnosticReport", "HAS_DIAGNOSTIC_REPORT", "display"),
             ("Encounter", "HAS_ENCOUNTER", "type_display"),
+            ("Immunization", "HAS_IMMUNIZATION", "display"),
         ]
 
         if resource_types:
@@ -1093,6 +1156,8 @@ class KnowledgeGraph:
                     await self._upsert_procedure(session, patient_id, resource)
                 elif resource_type == "DiagnosticReport":
                     await self._upsert_diagnostic_report(session, patient_id, resource)
+                elif resource_type == "Immunization":
+                    await self._upsert_immunization(session, patient_id, resource)
 
             # Second pass: build inter-resource relationships (patient-scoped)
             await self._build_encounter_relationships(session, patient_id)
