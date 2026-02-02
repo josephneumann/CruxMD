@@ -195,28 +195,73 @@ def _format_allergy(resource: dict[str, Any], display: str) -> str:
     return f"- {display} (criticality: {criticality}, category: {category})"
 
 
+def _format_retrieved_resource_line(resource: dict[str, Any]) -> str:
+    """Format a single retrieved FHIR resource as a compact one-liner."""
+    resource_type = resource.get("resourceType", "Unknown")
+    display = _get_display_name(resource) or resource_type
+
+    if resource_type == "Observation":
+        value = resource.get("valueQuantity", {})
+        if value:
+            return f"- {display}: {value.get('value')} {value.get('unit', '')}"
+        # Check for valueCodeableConcept
+        value_cc = resource.get("valueCodeableConcept", {})
+        if value_cc:
+            cc_display = value_cc.get("text") or (
+                value_cc.get("coding", [{}])[0].get("display", "")
+            )
+            if cc_display:
+                return f"- {display}: {cc_display}"
+        # Check for component observations (e.g., blood pressure)
+        components = resource.get("component", [])
+        if components:
+            parts = []
+            for comp in components:
+                comp_display = _get_display_name(comp) or "?"
+                comp_val = comp.get("valueQuantity", {})
+                if comp_val:
+                    parts.append(f"{comp_display}: {comp_val.get('value')} {comp_val.get('unit', '')}")
+            if parts:
+                return f"- {display} ({', '.join(parts)})"
+        return f"- {display}"
+    elif resource_type == "Condition":
+        clinical_status = resource.get("clinicalStatus", {})
+        status_codings = clinical_status.get("coding", [])
+        status = status_codings[0].get("code") if status_codings else None
+        return f"- {display}" + (f" (status: {status})" if status else "")
+    elif resource_type == "MedicationRequest":
+        status = resource.get("status")
+        med_display = _get_display_name(resource, "medicationCodeableConcept") or display
+        return f"- {med_display}" + (f" [{status}]" if status else "")
+    elif resource_type == "Procedure":
+        date = resource.get("performedDateTime", resource.get("performedPeriod", {}).get("start", ""))
+        return f"- {display}" + (f" ({date[:10]})" if date else "")
+    else:
+        return f"- [{resource_type}] {display}"
+
+
 def _format_retrieved_context(retrieved_resources: list[dict[str, Any]]) -> str:
-    """Format retrieved resources for the prompt."""
+    """Format retrieved resources grouped by type for the prompt."""
     if not retrieved_resources:
         return "No additional context retrieved"
 
-    lines = []
+    # Group by resource type
+    grouped: dict[str, list[dict[str, Any]]] = {}
     for item in retrieved_resources:
         resource = item.get("resource", item)
         resource_type = resource.get("resourceType", "Unknown")
-        score = item.get("score", 0.0)
-        display = _get_display_name(resource) or resource_type
+        grouped.setdefault(resource_type, []).append(resource)
 
-        if resource_type == "Observation":
-            value = resource.get("valueQuantity", {})
-            if value:
-                lines.append(f"- {display}: {value.get('value')} {value.get('unit', '')} (score: {score:.2f})")
-            else:
-                lines.append(f"- {display} (score: {score:.2f})")
-        else:
-            lines.append(f"- [{resource_type}] {display} (score: {score:.2f})")
+    # Render groups with headers
+    sections = []
+    # Show Observations first (most commonly queried), then alphabetical
+    type_order = sorted(grouped.keys(), key=lambda t: (0 if t == "Observation" else 1, t))
+    for rtype in type_order:
+        resources = grouped[rtype]
+        lines = [_format_retrieved_resource_line(r) for r in resources]
+        sections.append(f"**{rtype}s ({len(resources)}):**\n" + "\n".join(lines))
 
-    return "\n".join(lines) if lines else "No additional context retrieved"
+    return "\n\n".join(sections)
 
 
 def _format_constraints(constraints: list[str]) -> str:

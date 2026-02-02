@@ -343,7 +343,7 @@ class TestFormatRetrievedContext:
 
         assert "Hemoglobin A1c" in result
         assert "7.2" in result
-        assert "0.95" in result
+        assert "Observations (1)" in result
 
     def test_format_empty_retrieved(self):
         """Test formatting empty retrieved context."""
@@ -355,8 +355,8 @@ class TestFormatRetrievedContext:
         items = [{"resource": sample_condition, "score": 0.88}]
         result = _format_retrieved_context(items)
 
-        assert "[Condition]" in result
-        assert "0.88" in result
+        assert "Conditions (1)" in result
+        assert "Type 2 diabetes mellitus" in result
 
 
 class TestFormatConstraints:

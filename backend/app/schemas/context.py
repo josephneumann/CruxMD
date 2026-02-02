@@ -79,18 +79,10 @@ class VerifiedLayer(BaseModel):
     def token_estimate(self) -> int:
         """Estimate token count for verified layer.
 
-        Uses rough approximation of 4 characters per token.
+        The system prompt formats each resource as a compact one-liner
+        (~100-200 chars), not raw JSON. Use a fixed per-resource estimate.
         """
-        total_chars = 0
-        for condition in self.conditions:
-            total_chars += len(json.dumps(condition))
-        for medication in self.medications:
-            total_chars += len(json.dumps(medication))
-        for allergy in self.allergies:
-            total_chars += len(json.dumps(allergy))
-        for immunization in self.immunizations:
-            total_chars += len(json.dumps(immunization))
-        return total_chars // 4
+        return self.total_count() * 50
 
     def total_count(self) -> int:
         """Return total number of verified resources."""
@@ -117,8 +109,12 @@ class RetrievedResource(BaseModel):
     )
 
     def token_estimate(self) -> int:
-        """Estimate token count for this resource."""
-        return len(json.dumps(self.resource)) // 4
+        """Estimate token count based on formatted representation.
+
+        The system prompt formats each resource as a compact one-liner
+        (~100-200 chars), not raw JSON. Use a fixed per-resource estimate.
+        """
+        return 50
 
 
 class RetrievedLayer(BaseModel):
