@@ -916,8 +916,8 @@ class KnowledgeGraph:
         Fuzzy search graph nodes by display name for a patient.
 
         Performs case-insensitive substring matching of query terms against
-        node display properties. Returns matched fhir_id + resource_type pairs
-        for downstream traversal.
+        node display properties. Returns matched nodes with their encounter
+        context for downstream traversal.
 
         Args:
             patient_id: The canonical patient UUID.
@@ -926,7 +926,9 @@ class KnowledgeGraph:
                 (e.g. ["Condition", "MedicationRequest"]). If None, searches all.
 
         Returns:
-            List of dicts with 'fhir_id' and 'resource_type' keys.
+            List of dicts with 'fhir_id', 'resource_type', and
+            'encounter_fhir_id' keys. For Encounter nodes,
+            encounter_fhir_id equals the node's own fhir_id.
         """
         # All searchable node types with their patient relationship and display property
         searchable = [
@@ -958,11 +960,18 @@ class KnowledgeGraph:
                 for i, term in enumerate(lower_terms):
                     params[f"term_{i}"] = term
 
+                # Encounter nodes don't have encounter_fhir_id (they ARE encounters)
+                encounter_return = (
+                    "n.fhir_id as encounter_fhir_id"
+                    if label == "Encounter"
+                    else "n.encounter_fhir_id as encounter_fhir_id"
+                )
+
                 result = await session.run(
                     f"""
                     MATCH (p:Patient {{id: $patient_id}})-[:{rel}]->(n:{label})
                     WHERE {conditions}
-                    RETURN n.fhir_id as fhir_id
+                    RETURN n.fhir_id as fhir_id, {encounter_return}
                     """,
                     **params,
                 )
@@ -971,6 +980,7 @@ class KnowledgeGraph:
                         results.append({
                             "fhir_id": record["fhir_id"],
                             "resource_type": label,
+                            "encounter_fhir_id": record["encounter_fhir_id"],
                         })
 
         return results
