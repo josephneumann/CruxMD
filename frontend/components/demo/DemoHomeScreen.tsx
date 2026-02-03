@@ -25,7 +25,7 @@ export function DemoHomeScreen({ inputText, submitted }: DemoHomeScreenProps) {
       <div className="flex flex-col items-center mb-8">
         <div className="mb-4 h-24 w-24 rounded-full overflow-hidden">
           <Image
-            src="/brand/doctor-demo.png"
+            src="/brand/demo/demo-doctor-chen.png"
             alt="Dr. Chen"
             width={384}
             height={384}
