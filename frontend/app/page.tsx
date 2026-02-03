@@ -4,15 +4,13 @@ import {
   Sparkles,
   Zap,
   Layers,
-  AlertCircle,
-  MessageSquare,
-  Brain,
   Github,
   Palette,
 } from "lucide-react";
 import { Button } from "@/components/ui/button";
-import { Card, CardHeader, CardTitle, CardContent } from "@/components/ui/card";
+import { Card, CardContent } from "@/components/ui/card";
 import { Header } from "@/components/Header";
+import { DemoSection } from "@/components/demo/DemoSection";
 
 export default function Home() {
   return (
@@ -115,84 +113,8 @@ export default function Home() {
           </div>
         </section>
 
-        {/* Features Grid */}
-        <section className="relative px-8 py-16 md:py-24 overflow-hidden">
-          <Image
-            src="/brand/forest-background-watercolor-2.png"
-            alt=""
-            fill
-            className="object-cover object-center"
-          />
-          <div className="absolute inset-0 bg-background/80 dark:bg-background/85" />
-          <div className="relative z-10 max-w-6xl mx-auto">
-            <h2 className="text-2xl md:text-3xl font-medium text-foreground text-center mb-12">
-              Clinical intelligence, not another dashboard
-            </h2>
-
-            <div className="grid md:grid-cols-2 lg:grid-cols-4 gap-6">
-              {/* Feature 1 */}
-              <Card className="bg-card/90 dark:bg-card/80 backdrop-blur-sm transition-transform duration-150 hover:-translate-y-1 hover:shadow-lg">
-                <CardHeader className="items-center text-center">
-                  <Layers className="h-8 w-8 text-muted-foreground mb-2 mx-auto" />
-                  <CardTitle>Complete patient synthesis</CardTitle>
-                </CardHeader>
-                <CardContent>
-                  <p className="text-muted-foreground text-sm text-center">
-                    Every condition, medication, lab result, and clinical note —
-                    woven into a coherent narrative. Ask any question and receive
-                    a comprehensive, sourced answer.
-                  </p>
-                </CardContent>
-              </Card>
-
-              {/* Feature 2 */}
-              <Card className="bg-card/90 dark:bg-card/80 backdrop-blur-sm transition-transform duration-150 hover:-translate-y-1 hover:shadow-lg">
-                <CardHeader className="items-center text-center">
-                  <AlertCircle className="h-8 w-8 text-muted-foreground mb-2 mx-auto" />
-                  <CardTitle>Insights without alert fatigue</CardTitle>
-                </CardHeader>
-                <CardContent>
-                  <p className="text-muted-foreground text-sm text-center">
-                    Abnormal trends flagged in context. Drug interactions surfaced
-                    with clinical relevance. Critical findings delivered calmly,
-                    clearly, with the information you need to act.
-                  </p>
-                </CardContent>
-              </Card>
-
-              {/* Feature 3 */}
-              <Card className="bg-card/90 dark:bg-card/80 backdrop-blur-sm transition-transform duration-150 hover:-translate-y-1 hover:shadow-lg">
-                <CardHeader className="items-center text-center">
-                  <MessageSquare className="h-8 w-8 text-muted-foreground mb-2 mx-auto" />
-                  <CardTitle>Conversational interface</CardTitle>
-                </CardHeader>
-                <CardContent>
-                  <p className="text-muted-foreground text-sm text-center">
-                    Ask questions the way you think about patients.
-                    &ldquo;What&apos;s driving the renal decline?&rdquo;
-                    &ldquo;Is the A1c trending better?&rdquo;
-                    No clicking through tabs or memorizing workflows.
-                  </p>
-                </CardContent>
-              </Card>
-
-              {/* Feature 4 */}
-              <Card className="bg-card/90 dark:bg-card/80 backdrop-blur-sm transition-transform duration-150 hover:-translate-y-1 hover:shadow-lg">
-                <CardHeader className="items-center text-center">
-                  <Brain className="h-8 w-8 text-muted-foreground mb-2 mx-auto" />
-                  <CardTitle>Temporal reasoning</CardTitle>
-                </CardHeader>
-                <CardContent>
-                  <p className="text-muted-foreground text-sm text-center">
-                    CruxMD understands time. Lab trends over months. Medication
-                    changes and their effects. The clinical story that unfolds
-                    across encounters, synthesized automatically.
-                  </p>
-                </CardContent>
-              </Card>
-            </div>
-          </div>
-        </section>
+        {/* Scroll-Triggered Demo */}
+        <DemoSection />
 
         {/* Testimonials */}
         <section className="px-8 py-16 md:py-24">
