@@ -11,7 +11,7 @@ interface DemoHomeScreenProps {
 export function DemoHomeScreen({ inputText, submitted }: DemoHomeScreenProps) {
   return (
     <div
-      className={`flex flex-col items-center justify-center min-h-full py-12 px-4 transition-all duration-700 ease-out ${
+      className={`flex flex-col items-center justify-center min-h-full py-6 md:py-12 px-4 transition-all duration-700 ease-out ${
         submitted ? "opacity-0 scale-[0.97]" : "opacity-100 scale-100"
       }`}
     >

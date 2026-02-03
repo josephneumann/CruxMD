@@ -178,7 +178,7 @@ export function DemoSection() {
   return (
     <section
       ref={sectionRef}
-      className="relative px-8 h-screen flex flex-col justify-center overflow-hidden"
+      className="relative px-4 md:px-8 min-h-screen md:h-screen flex flex-col justify-start md:justify-center pt-8 md:pt-0 overflow-hidden"
     >
       <div className="max-w-4xl mx-auto w-full">
         {/* Scenario tabs — fade in after intro */}
@@ -203,8 +203,7 @@ export function DemoSection() {
         >
           <div
             ref={scrollRef}
-            className="overflow-y-auto scrollbar-hide"
-            style={{ height: "70vh" }}
+            className="overflow-y-auto scrollbar-hide h-[80vh] md:h-[70vh]"
           >
             {/* Home screen — visible during intro phases */}
             {isIntro && (
