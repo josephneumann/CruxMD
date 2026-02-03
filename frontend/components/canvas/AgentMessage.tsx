@@ -111,7 +111,7 @@ const INSIGHT_STAGGER_MS = 150;
 export function AgentMessage({ message, onFollowUpSelect, onContentGrow, onRetry }: AgentMessageProps) {
   const [thinkingExpanded, setThinkingExpanded] = useState(false);
   const agentResponse = message.agentResponse;
-  const isStreaming = message.streaming && message.streaming.phase !== "done";
+  const isStreaming = message.pending || (message.streaming && message.streaming.phase !== "done");
 
   // Don't render anything while actively streaming — ThinkingIndicator handles that
   if (isStreaming) return null;
@@ -265,7 +265,7 @@ function AgentMessageInner({
       )}
 
       {/* Message actions */}
-      {showExtras && <MessageActions narrativeContent={narrativeContent} onRetry={onRetry} />}
+      {showExtras && narrativeContent && <MessageActions narrativeContent={narrativeContent} onRetry={onRetry} />}
 
       {/* Follow-up suggestions */}
       {showExtras && visibleInsightCount >= insights.length &&
