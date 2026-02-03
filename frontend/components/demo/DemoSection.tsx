@@ -14,8 +14,8 @@ import {
 } from "@/lib/demo-scenarios";
 
 const SCENARIO_TABS = [
-  { id: "heart-failure", label: "Heart Failure", scenario: heartFailureScenario },
-  { id: "qt-prolongation", label: "QT Prolongation", scenario: qtProlongationScenario },
+  { id: "heart-failure", label: "Heart Failure", scenario: heartFailureScenario, avatar: "/brand/demo/avatar-margaret-chen.png" },
+  { id: "qt-prolongation", label: "QT Prolongation", scenario: qtProlongationScenario, avatar: "/brand/demo/avatar-dorothy-williams.png" },
   { id: "hcm", label: "Young Athlete", scenario: hcmScenario },
   { id: "hypoglycemia", label: "Hypoglycemia", scenario: hypoglycemiaScenario },
 ];
