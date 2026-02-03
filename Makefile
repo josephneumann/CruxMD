@@ -1,4 +1,4 @@
-.PHONY: help install dev dev-detached test test-verbose lint format format-check build build-no-cache deploy generate-fixtures seed seed-admin migrate migrate-generate generate-api clean clean-fixtures
+.PHONY: help install dev dev-detached rebuild down stop restart ps status logs logs-backend logs-frontend shell-backend shell-db psql test test-verbose lint format format-check build build-no-cache deploy generate-fixtures seed seed-admin migrate migrate-generate generate-api clean clean-fixtures
 
 # Default target
 .DEFAULT_GOAL := help
@@ -8,7 +8,23 @@ help:
 	@echo ""
 	@echo "Setup:"
 	@echo "  make install          Install all dependencies (backend + frontend)"
-	@echo "  make dev              Start development environment (docker compose)"
+	@echo ""
+	@echo "Development (Docker):"
+	@echo "  make dev              Start dev environment (foreground, rebuilds)"
+	@echo "  make dev-detached     Start dev environment (background, rebuilds)"
+	@echo "  make rebuild          Rebuild and restart all containers"
+	@echo "  make down             Stop and remove containers"
+	@echo "  make stop             Stop containers (keep state)"
+	@echo "  make restart          Restart all containers"
+	@echo "  make ps               Show container status"
+	@echo ""
+	@echo "Logs & Debugging:"
+	@echo "  make logs             Tail all container logs"
+	@echo "  make logs-backend     Tail backend logs"
+	@echo "  make logs-frontend    Tail frontend logs"
+	@echo "  make shell-backend    Shell into backend container"
+	@echo "  make shell-db         Shell into database container"
+	@echo "  make psql             Connect to PostgreSQL"
 	@echo ""
 	@echo "Testing & Quality:"
 	@echo "  make test             Run all tests"
@@ -16,8 +32,8 @@ help:
 	@echo "  make format           Format code (ruff)"
 	@echo ""
 	@echo "Build & Deploy:"
-	@echo "  make build            Build Docker images for production"
-	@echo "  make deploy           Deploy latest code to production (app.cruxmd.ai)"
+	@echo "  make build            Build Docker images"
+	@echo "  make deploy           Deploy to production (app.cruxmd.ai)"
 	@echo ""
 	@echo "Data & Database:"
 	@echo "  make generate-fixtures  Generate Synthea patient fixtures"
@@ -46,10 +62,45 @@ install:
 	@echo "Done! Run 'make dev' to start the development environment."
 
 dev:
-	docker compose up
+	docker compose up --build
 
 dev-detached:
-	docker compose up -d
+	docker compose up -d --build
+
+rebuild:
+	docker compose up -d --build
+
+down:
+	docker compose down
+
+stop:
+	docker compose stop
+
+restart:
+	docker compose restart
+
+ps:
+	docker compose ps
+
+status: ps
+
+logs:
+	docker compose logs -f
+
+logs-backend:
+	docker compose logs -f backend
+
+logs-frontend:
+	docker compose logs -f frontend
+
+shell-backend:
+	docker compose exec backend bash
+
+shell-db:
+	docker compose exec db bash
+
+psql:
+	docker compose exec db psql -U postgres -d cruxmd
 
 # =============================================================================
 # Testing & Quality
@@ -90,7 +141,7 @@ build-no-cache:
 
 deploy:
 	@echo "Deploying to production (app.cruxmd.ai)..."
-	ssh cruxmd "cd CruxMD && git pull && ./deploy.sh"
+	ssh cruxmd "cd CruxMD && ./deploy.sh"
 
 # =============================================================================
 # Data & Database

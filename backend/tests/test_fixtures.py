@@ -1,5 +1,4 @@
 """Tests for Synthea fixture generation."""
-import json
 from pathlib import Path
 
 

@@ -7,8 +7,10 @@ This module provides centralized test fixtures for:
 - Common FHIR test data
 """
 
+import json
 import os
 import uuid
+from pathlib import Path
 
 import pytest
 import pytest_asyncio
@@ -169,6 +171,36 @@ async def graph(neo4j_driver) -> KnowledgeGraph:
 def patient_id() -> str:
     """Generate a unique patient ID for testing."""
     return str(uuid.uuid4())
+
+
+# =============================================================================
+# Synthea Fixture Loading
+# =============================================================================
+
+FIXTURES_DIR = Path(__file__).parent.parent.parent / "fixtures" / "synthea"
+
+
+@pytest.fixture
+def fixtures_dir() -> Path:
+    """Return path to Synthea fixtures directory."""
+    return FIXTURES_DIR
+
+
+@pytest.fixture
+def sample_bundle() -> dict:
+    """Load first patient bundle fixture from Synthea fixtures."""
+    with open(FIXTURES_DIR / "patient_bundle_1.json") as f:
+        return json.load(f)
+
+
+@pytest.fixture
+def all_bundles() -> list[dict]:
+    """Load all patient bundle fixtures from Synthea fixtures."""
+    bundles = []
+    for path in sorted(FIXTURES_DIR.glob("patient_bundle_*.json")):
+        with open(path) as f:
+            bundles.append(json.load(f))
+    return bundles
 
 
 # =============================================================================
