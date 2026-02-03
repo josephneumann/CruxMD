@@ -696,6 +696,9 @@ class AgentService:
             ):
                 yield event
 
+        # Remove internal-only key before calling the API
+        kwargs.pop("_last_response", None)
+
         # Stream the final response (reasoning summaries + narrative deltas)
         async with self._client.responses.stream(**kwargs) as stream:
             async for event in stream:
