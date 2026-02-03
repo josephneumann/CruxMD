@@ -2,12 +2,16 @@
 
 import dynamic from "next/dynamic";
 import { useThinkingAnimation } from "@/lib/hooks/use-thinking-animation";
+import type { ToolCallState } from "@/hooks";
+import { formatToolActive } from "./tool-labels";
 
 const Lottie = dynamic(() => import("lottie-react"), { ssr: false });
 
 interface ThinkingIndicatorProps {
   /** Accumulated reasoning summary text from SSE stream */
   reasoningText?: string;
+  /** Tool calls in progress or completed */
+  toolCalls?: ToolCallState[];
   /** Lottie animation data for the spinning mark */
   lottieData?: object | null;
 }
@@ -34,14 +38,39 @@ function extractHeadline(text: string): string | null {
   return firstLine.length > 80 ? firstLine.slice(0, 77) + "..." : firstLine;
 }
 
-export function ThinkingIndicator({ reasoningText, lottieData }: ThinkingIndicatorProps) {
+/**
+ * Derive the current status label from all available signals.
+ * Priority: in-progress tool > reasoning headline > last completed tool > spinner verb.
+ */
+function getStatusLabel(
+  toolCalls: ToolCallState[] | undefined,
+  reasoningHeadline: string | null,
+  spinnerVerb: string,
+): string {
+  if (toolCalls && toolCalls.length > 0) {
+    const pending = toolCalls.find((tc) => tc.result === undefined);
+    if (pending) return formatToolActive(pending.name, pending.arguments);
+
+    if (!reasoningHeadline) {
+      const last = toolCalls[toolCalls.length - 1];
+      return formatToolActive(last.name, last.arguments);
+    }
+  }
+
+  if (reasoningHeadline) return reasoningHeadline;
+
+  return spinnerVerb;
+}
+
+export function ThinkingIndicator({ reasoningText, toolCalls, lottieData }: ThinkingIndicatorProps) {
   const thinkingVerb = useThinkingAnimation(true);
   const headline = extractHeadline(reasoningText ?? "");
+  const statusLabel = getStatusLabel(toolCalls, headline, thinkingVerb);
 
   return (
-    <div className="mb-4 flex items-start gap-2 text-sm text-muted-foreground">
+    <div className="mb-4 flex items-center gap-2 text-sm text-muted-foreground">
       {lottieData && (
-        <div className="w-5 h-5 shrink-0 mt-0.5">
+        <div className="w-5 h-5 shrink-0">
           <Lottie
             animationData={lottieData}
             loop
@@ -50,7 +79,7 @@ export function ThinkingIndicator({ reasoningText, lottieData }: ThinkingIndicat
         </div>
       )}
       <span className="animate-pulse">
-        {headline ?? thinkingVerb}
+        {statusLabel}
       </span>
     </div>
   );

@@ -16,18 +16,30 @@ import type {
   StreamDeltaEvent,
   StreamDoneEvent,
   StreamErrorEvent,
+  StreamToolCallEvent,
+  StreamToolResultEvent,
   ReasoningEffort,
 } from "@/lib/types";
 import { isChatResponse, DEFAULT_MODEL } from "@/lib/types";
 
 /** Streaming phase for progressive UI updates */
-export type StreamPhase = "reasoning" | "narrative" | "done";
+export type StreamPhase = "tool_calling" | "reasoning" | "narrative" | "done";
+
+/** A tool call with its result (populated when complete) */
+export interface ToolCallState {
+  name: string;
+  callId: string;
+  arguments: string;
+  result?: string;
+}
 
 /** Streaming state attached to an in-flight assistant message */
 export interface StreamingState {
   phase: StreamPhase;
   reasoningText: string;
   narrativeText: string;
+  /** Tool calls made during this response */
+  toolCalls: ToolCallState[];
   /** How long reasoning took in ms (set when phase transitions to done) */
   reasoningDurationMs?: number;
 }
@@ -83,6 +95,117 @@ export interface UseChatReturn {
 /** Generate a unique message ID */
 function generateMessageId(): string {
   return `msg_${Date.now()}_${Math.random().toString(36).substring(2, 9)}`;
+}
+
+// ---------------------------------------------------------------------------
+// Streaming state reducer — pure function for SSE event → state transitions
+// ---------------------------------------------------------------------------
+
+type StreamAction =
+  | { type: "tool_call"; data: StreamToolCallEvent }
+  | { type: "tool_result"; data: StreamToolResultEvent }
+  | { type: "reasoning"; data: StreamDeltaEvent }
+  | { type: "narrative"; data: StreamDeltaEvent }
+  | { type: "done"; data: StreamDoneEvent; reasoningDurationMs?: number }
+  | { type: "error" };
+
+const INITIAL_STREAMING_STATE: StreamingState = {
+  phase: "reasoning",
+  reasoningText: "",
+  narrativeText: "",
+  toolCalls: [],
+};
+
+/**
+ * Apply an SSE event to a message's streaming state.
+ * Returns a new message object (or the same one if no update needed).
+ */
+function applyStreamEvent(
+  msg: DisplayMessage,
+  action: StreamAction,
+): DisplayMessage {
+  const s = msg.streaming ?? { ...INITIAL_STREAMING_STATE };
+
+  switch (action.type) {
+    case "tool_call":
+      return {
+        ...msg,
+        streaming: {
+          ...s,
+          phase: "tool_calling",
+          toolCalls: [
+            ...s.toolCalls,
+            {
+              name: action.data.name,
+              callId: action.data.call_id,
+              arguments: action.data.arguments,
+            },
+          ],
+        },
+      };
+
+    case "tool_result":
+      return {
+        ...msg,
+        streaming: {
+          ...s,
+          toolCalls: s.toolCalls.map((tc) =>
+            tc.callId === action.data.call_id
+              ? { ...tc, result: action.data.output }
+              : tc
+          ),
+        },
+      };
+
+    case "reasoning": {
+      const updated: StreamingState = {
+        ...s,
+        phase: "reasoning",
+        reasoningText: s.reasoningText + action.data.delta,
+      };
+      return { ...msg, streaming: updated, content: updated.narrativeText };
+    }
+
+    case "narrative": {
+      const updated: StreamingState = {
+        ...s,
+        phase: "narrative",
+        narrativeText: s.narrativeText + action.data.delta,
+      };
+      return { ...msg, streaming: updated, content: updated.narrativeText };
+    }
+
+    case "done":
+      return {
+        ...msg,
+        content: action.data.response.narrative,
+        agentResponse: action.data.response,
+        streaming: {
+          phase: "done",
+          reasoningText: s.reasoningText,
+          narrativeText: action.data.response.narrative,
+          toolCalls: s.toolCalls,
+          reasoningDurationMs: action.reasoningDurationMs,
+        },
+        pending: false,
+      };
+
+    case "error":
+      return { ...msg, streaming: undefined, pending: false };
+  }
+}
+
+/** Update a specific message in the messages array by ID using applyStreamEvent. */
+function updateMessage(
+  messages: DisplayMessage[],
+  targetId: string,
+  action: StreamAction,
+): DisplayMessage[] {
+  const idx = messages.findIndex((m) => m.id === targetId);
+  if (idx === -1) return messages;
+  const next = [...messages];
+  next[idx] = applyStreamEvent(messages[idx], action);
+  return next;
 }
 
 /**
@@ -244,83 +367,43 @@ export function useChat(patientId: string | null): UseChatReturn {
               continue; // Skip malformed SSE data
             }
 
-            if (evt.event === "reasoning" || evt.event === "narrative") {
-              const parsed = data as StreamDeltaEvent;
-              const phase = evt.event as StreamPhase;
-
-              // Track when reasoning first starts
-              if (phase === "reasoning" && reasoningStartRef.current === null) {
+            if (evt.event === "tool_call") {
+              setMessages((prev) => updateMessage(prev, assistantMessageId, {
+                type: "tool_call",
+                data: data as StreamToolCallEvent,
+              }));
+            } else if (evt.event === "tool_result") {
+              setMessages((prev) => updateMessage(prev, assistantMessageId, {
+                type: "tool_result",
+                data: data as StreamToolResultEvent,
+              }));
+            } else if (evt.event === "reasoning" || evt.event === "narrative") {
+              if (evt.event === "reasoning" && reasoningStartRef.current === null) {
                 reasoningStartRef.current = Date.now();
               }
-
-              setMessages((prev) => {
-                const idx = prev.findIndex((m) => m.id === assistantMessageId);
-                if (idx === -1) return prev;
-                const msg = prev[idx];
-                const s = msg.streaming ?? {
-                  phase: "reasoning",
-                  reasoningText: "",
-                  narrativeText: "",
-                };
-                const updated: StreamingState = {
-                  ...s,
-                  phase,
-                  ...(phase === "reasoning"
-                    ? { reasoningText: s.reasoningText + parsed.delta }
-                    : { narrativeText: s.narrativeText + parsed.delta }),
-                };
-                const next = [...prev];
-                next[idx] = {
-                  ...msg,
-                  streaming: updated,
-                  content: updated.narrativeText,
-                };
-                return next;
-              });
+              setMessages((prev) => updateMessage(prev, assistantMessageId, {
+                type: evt.event as "reasoning" | "narrative",
+                data: data as StreamDeltaEvent,
+              }));
             } else if (evt.event === "done") {
               const parsed = data as StreamDoneEvent;
               conversationIdRef.current = parsed.conversation_id;
-
               const reasoningDurationMs = reasoningStartRef.current
                 ? Date.now() - reasoningStartRef.current
                 : undefined;
               reasoningStartRef.current = null;
-
-              setMessages((prev) => {
-                const idx = prev.findIndex((m) => m.id === assistantMessageId);
-                if (idx === -1) return prev;
-                const msg = prev[idx];
-                const next = [...prev];
-                next[idx] = {
-                  ...msg,
-                  content: parsed.response.narrative,
-                  agentResponse: parsed.response,
-                  streaming: {
-                    phase: "done" as StreamPhase,
-                    reasoningText: msg.streaming?.reasoningText ?? "",
-                    narrativeText: parsed.response.narrative,
-                    reasoningDurationMs,
-                  },
-                  pending: false,
-                };
-                return next;
-              });
+              setMessages((prev) => updateMessage(prev, assistantMessageId, {
+                type: "done",
+                data: parsed,
+                reasoningDurationMs,
+              }));
               lastFailedMessageRef.current = null;
               return true;
             } else if (evt.event === "error") {
               const parsed = data as StreamErrorEvent;
-              // Clean up streaming state before throwing
-              setMessages((prev) => {
-                const idx = prev.findIndex((m) => m.id === assistantMessageId);
-                if (idx === -1) return prev;
-                const next = [...prev];
-                next[idx] = {
-                  ...prev[idx],
-                  streaming: undefined,
-                  pending: false,
-                };
-                return next;
-              });
+              setMessages((prev) => updateMessage(prev, assistantMessageId, {
+                type: "error",
+              }));
               throw new Error(parsed.detail);
             }
           }
@@ -427,6 +510,7 @@ export function useChat(patientId: string | null): UseChatReturn {
           phase: "reasoning",
           reasoningText: "",
           narrativeText: "",
+          toolCalls: [],
         },
       };
 
