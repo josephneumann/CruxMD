@@ -19,6 +19,8 @@ import {
 } from "lucide-react";
 import { AgentMessage, ThinkingIndicator } from "@/components/canvas";
 import { useTypewriter } from "./useTypewriter";
+import { replaceDatePlaceholders } from "@/lib/utils";
+import { loadLottieData, getLottieData, isLottieLoaded, subscribeLottieCache } from "@/lib/lottie-cache";
 import type { DisplayMessage } from "@/hooks";
 import { INTRO_PHASES, TRIAGE_PHASES } from "./useAutoplay";
 import type { DemoScenario, DemoInteraction, DemoAction, DemoEpilogueCompletion } from "@/lib/demo-scenarios";
@@ -33,28 +35,28 @@ const PHASES_PER_INTERACTION = 5;
 // 3 = insights
 // 4 = follow-ups + actions
 
-// ─── Action icon mapping ────────────────────────────────────────────────────
+// ─── Unified icon lookup ─────────────────────────────────────────────────────
+// Single mapping for action icons - supports both type-based defaults and explicit overrides
 
-const ACTION_ICONS: Record<ActionType, typeof Pill> = {
+type IconComponent = typeof Pill;
+
+const ICON_MAP: Record<string, IconComponent> = {
+  // Action type defaults
   order: Pill,
   refer: Stethoscope,
   document: FileText,
   alert: AlertCircle,
   link: ExternalLink,
-};
-
-const ICON_OVERRIDES: Record<string, typeof Pill> = {
+  // Explicit icon overrides (scenario can specify these)
   heart: Heart,
   pill: Pill,
   stethoscope: Stethoscope,
   file: FileText,
-  alert: AlertCircle,
-  link: ExternalLink,
 };
 
-function getActionIcon(action: DemoAction): typeof Pill {
-  if (action.icon && ICON_OVERRIDES[action.icon]) return ICON_OVERRIDES[action.icon];
-  return ACTION_ICONS[action.type] ?? Send;
+function getActionIcon(action: DemoAction): IconComponent {
+  // Prefer explicit icon override, then fall back to type-based lookup, then Send
+  return (action.icon && ICON_MAP[action.icon]) || ICON_MAP[action.type] || Send;
 }
 
 const ACTION_COLORS: Record<ActionType, string> = {
@@ -105,21 +107,6 @@ function DemoActionButtons({
       </div>
     </div>
   );
-}
-
-// ─── Date formatting helpers ─────────────────────────────────────────────────
-
-function formatFutureDate(daysFromNow: number): string {
-  const date = new Date();
-  date.setDate(date.getDate() + daysFromNow);
-  return date.toLocaleDateString("en-US", { month: "short", day: "numeric" });
-}
-
-function replaceDatePlaceholders(text: string): string {
-  return text
-    .replace("{twoWeeksFromNow}", formatFutureDate(14))
-    .replace("{oneWeekFromNow}", formatFutureDate(7))
-    .replace("{tomorrow}", formatFutureDate(1));
 }
 
 // ─── Epilogue results list ───────────────────────────────────────────────────
@@ -255,21 +242,59 @@ function DemoTriageMessage({
   );
 }
 
-// ─── Message building ───────────────────────────────────────────────────────
+// ─── Discriminated union for rendered items ─────────────────────────────────
+// Each item type has only the properties it needs
 
-interface RenderedItem {
-  type: "user" | "agent" | "actions" | "thinking" | "memory" | "epilogue-results" | "triage";
+interface BaseItem {
   key: string;
-  message?: DisplayMessage;
-  userText?: string;
-  triageText?: string;
-  typing?: boolean;
-  actions?: DemoAction[];
-  selectedLabels?: string[];
-  reasoningText?: string;
-  memoryText?: string;
-  epilogueItems?: EpilogueResultItem[];
 }
+
+interface TriageItem extends BaseItem {
+  type: "triage";
+  triageText: string;
+  typing: boolean;
+}
+
+interface UserItem extends BaseItem {
+  type: "user";
+  userText: string;
+  typing: boolean;
+}
+
+interface ThinkingItem extends BaseItem {
+  type: "thinking";
+  reasoningText?: string;
+}
+
+interface AgentItem extends BaseItem {
+  type: "agent";
+  message: DisplayMessage;
+}
+
+interface ActionsItem extends BaseItem {
+  type: "actions";
+  actions: DemoAction[];
+  selectedLabels?: string[];
+}
+
+interface EpilogueResultsItem extends BaseItem {
+  type: "epilogue-results";
+  epilogueItems: EpilogueResultItem[];
+}
+
+interface MemoryItem extends BaseItem {
+  type: "memory";
+  memoryText: string;
+}
+
+type RenderedItem =
+  | TriageItem
+  | UserItem
+  | ThinkingItem
+  | AgentItem
+  | ActionsItem
+  | EpilogueResultsItem
+  | MemoryItem;
 
 function interactionToItems(
   interaction: DemoInteraction,
@@ -433,14 +458,14 @@ export function DemoCanvas({ scenario, phase: rawPhase, avatar, onContentGrow }:
   // Offset phase by intro phases so canvas interactions start at 0
   const phase = rawPhase - INTRO_PHASES;
   const { resolvedTheme } = useTheme();
-  const [lottieLight, setLottieLight] = useState<object | null>(null);
-  const [lottieDark, setLottieDark] = useState<object | null>(null);
+  const [lottieLoaded, setLottieLoaded] = useState(isLottieLoaded());
   const [completedAgentTasks, setCompletedAgentTasks] = useState<Set<string>>(new Set());
   const timersRef = useRef<Map<string, ReturnType<typeof setTimeout>>>(new Map());
 
+  // Load Lottie data on mount (cached globally)
   useEffect(() => {
-    fetch("/brand/crux-spin.json").then((r) => r.json()).then(setLottieLight).catch(() => {});
-    fetch("/brand/crux-spin-reversed.json").then((r) => r.json()).then(setLottieDark).catch(() => {});
+    loadLottieData();
+    return subscribeLottieCache(() => setLottieLoaded(isLottieLoaded()));
   }, []);
 
   // Reset completed tasks when scenario changes
@@ -479,7 +504,9 @@ export function DemoCanvas({ scenario, phase: rawPhase, avatar, onContentGrow }:
     };
   }, [checkedCount, completions, completedAgentTasks]);
 
-  const lottieData = resolvedTheme === "dark" ? lottieDark : lottieLight;
+  const lottieData = lottieLoaded
+    ? getLottieData(resolvedTheme === "dark" ? "dark" : "light")
+    : null;
 
   const items = useMemo(
     () => buildAllItems(scenario, phase, completedAgentTasks),
@@ -523,59 +550,62 @@ export function DemoCanvas({ scenario, phase: rawPhase, avatar, onContentGrow }:
       </div>
 
       {items.map((item) => {
-        if (item.type === "triage") {
-          return (
-            <DemoTriageMessage
-              key={item.key}
-              text={item.triageText!}
-              typing={item.typing!}
-              onContentGrow={onContentGrow}
-            />
-          );
+        switch (item.type) {
+          case "triage":
+            return (
+              <DemoTriageMessage
+                key={item.key}
+                text={item.triageText}
+                typing={item.typing}
+                onContentGrow={onContentGrow}
+              />
+            );
+          case "user":
+            return (
+              <DemoUserMessage
+                key={item.key}
+                text={item.userText}
+                typing={item.typing}
+                onContentGrow={onContentGrow}
+              />
+            );
+          case "thinking":
+            return (
+              <ThinkingIndicator
+                key={item.key}
+                reasoningText={item.reasoningText}
+                lottieData={lottieData}
+              />
+            );
+          case "actions":
+            return (
+              <DemoActionButtons
+                key={item.key}
+                actions={item.actions}
+                selectedLabels={item.selectedLabels}
+              />
+            );
+          case "epilogue-results":
+            return (
+              <DemoEpilogueResults
+                key={item.key}
+                items={item.epilogueItems}
+                lottieData={lottieData}
+              />
+            );
+          case "memory":
+            return <DemoMemoryNudge key={item.key} text={item.memoryText} />;
+          case "agent":
+            return (
+              <AgentMessage
+                key={item.key}
+                message={item.message}
+                onFollowUpSelect={() => {}}
+                onContentGrow={onContentGrow}
+                onRetry={() => {}}
+              />
+            );
         }
-        if (item.type === "user") {
-          return (
-            <DemoUserMessage
-              key={item.key}
-              text={item.userText!}
-              typing={item.typing!}
-              onContentGrow={onContentGrow}
-            />
-          );
-        }
-        if (item.type === "thinking") {
-          return (
-            <ThinkingIndicator
-              key={item.key}
-              reasoningText={item.reasoningText}
-              lottieData={lottieData}
-            />
-          );
-        }
-        if (item.type === "actions") {
-          return (
-            <DemoActionButtons
-              key={item.key}
-              actions={item.actions!}
-              selectedLabels={item.selectedLabels}
-            />
-          );
-        }
-        if (item.type === "epilogue-results") {
-          return <DemoEpilogueResults key={item.key} items={item.epilogueItems!} lottieData={lottieData} />;
-        }
-        if (item.type === "memory") {
-          return <DemoMemoryNudge key={item.key} text={item.memoryText!} />;
-        }
-        return (
-          <AgentMessage
-            key={item.key}
-            message={item.message!}
-            onFollowUpSelect={() => {}}
-            onContentGrow={onContentGrow}
-            onRetry={() => {}}
-          />
-        );
       })}
     </>
   );

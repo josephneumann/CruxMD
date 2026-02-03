@@ -132,3 +132,25 @@ export function getPatientMRN(patient: FhirPatient): string | null {
   );
   return identifier?.value || null;
 }
+
+// ─── Date formatting helpers ─────────────────────────────────────────────────
+
+/**
+ * Format a future date relative to today.
+ */
+export function formatFutureDate(daysFromNow: number): string {
+  const date = new Date();
+  date.setDate(date.getDate() + daysFromNow);
+  return date.toLocaleDateString("en-US", { month: "short", day: "numeric" });
+}
+
+/**
+ * Replace date placeholders in text with formatted dates.
+ * Supports: {twoWeeksFromNow}, {oneWeekFromNow}, {tomorrow}
+ */
+export function replaceDatePlaceholders(text: string): string {
+  return text
+    .replace("{twoWeeksFromNow}", formatFutureDate(14))
+    .replace("{oneWeekFromNow}", formatFutureDate(7))
+    .replace("{tomorrow}", formatFutureDate(1));
+}
