@@ -2,15 +2,14 @@
 
 import { useRef } from "react";
 import { useScrollPhase } from "./useScrollPhase";
-import { UserMessage } from "@/components/canvas/UserMessage";
-import { AgentMessage } from "@/components/canvas/AgentMessage";
+import { UserMessage, AgentMessage } from "@/components/canvas";
 import type { DisplayMessage } from "@/hooks";
 
 // ---------------------------------------------------------------------------
-// Hardcoded test interaction (Phase 1 — Heart Failure, interaction 1 only)
+// Mock data — Heart Failure interaction 1
 // ---------------------------------------------------------------------------
 
-const TEST_USER: DisplayMessage = {
+const MOCK_USER: DisplayMessage = {
   id: "demo-u1",
   role: "user",
   content:
@@ -18,7 +17,7 @@ const TEST_USER: DisplayMessage = {
   timestamp: new Date("2026-01-30T09:15:00"),
 };
 
-const TEST_AGENT: DisplayMessage = {
+const MOCK_AGENT: DisplayMessage = {
   id: "demo-a1",
   role: "assistant",
   content: "",
@@ -53,60 +52,35 @@ const TEST_AGENT: DisplayMessage = {
 };
 
 // ---------------------------------------------------------------------------
-// Phase → visible content mapping
+// Phase → visible content mapping (interaction 1: phases 0–4)
 // ---------------------------------------------------------------------------
 
-/**
- * Given a phase (0–14), return the messages that should be visible
- * for the first interaction (phases 0–4). Later interactions (5–9, 10–14)
- * will be wired in a subsequent task.
- */
 function buildMessages(phase: number): DisplayMessage[] {
-  const messages: DisplayMessage[] = [];
+  if (phase < 0) return [];
 
-  // Interaction 1: phases 0–4
-  if (phase < 0) return messages;
+  const messages: DisplayMessage[] = [MOCK_USER];
 
-  // Phase 0+: user message
-  messages.push(TEST_USER);
-
-  if (phase >= 1) {
-    // Phase 1: thinking indicator (shown via pending state)
-    // Phase 2+: narrative
-    // Phase 3+: insights
-    // Phase 4+: follow-ups
-    const agentPhase = phase;
-
-    const showNarrative = agentPhase >= 2;
-    const showInsights = agentPhase >= 3;
-    const showFollowUps = agentPhase >= 4;
-
-    if (agentPhase === 1) {
-      // Show thinking-only state
-      messages.push({
-        ...TEST_AGENT,
-        id: "demo-a1-thinking",
-        streaming: {
-          phase: "reasoning",
-          reasoningText: TEST_AGENT.streaming!.reasoningText,
-          narrativeText: "",
-          toolCalls: [],
-        },
-        agentResponse: undefined,
-      });
-    } else {
-      messages.push({
-        ...TEST_AGENT,
-        streaming: { ...TEST_AGENT.streaming!, phase: "done" },
-        agentResponse: showNarrative
-          ? {
-              ...TEST_AGENT.agentResponse!,
-              insights: showInsights ? TEST_AGENT.agentResponse!.insights : [],
-              follow_ups: showFollowUps ? TEST_AGENT.agentResponse!.follow_ups : [],
-            }
-          : undefined,
-      });
-    }
+  if (phase === 1) {
+    messages.push({
+      ...MOCK_AGENT,
+      id: "demo-a1-thinking",
+      streaming: {
+        phase: "reasoning",
+        reasoningText: MOCK_AGENT.streaming!.reasoningText,
+        narrativeText: "",
+        toolCalls: [],
+      },
+      agentResponse: undefined,
+    });
+  } else if (phase >= 2) {
+    messages.push({
+      ...MOCK_AGENT,
+      agentResponse: {
+        ...MOCK_AGENT.agentResponse!,
+        insights: phase >= 3 ? MOCK_AGENT.agentResponse!.insights : [],
+        follow_ups: phase >= 4 ? MOCK_AGENT.agentResponse!.follow_ups : [],
+      },
+    });
   }
 
   return messages;
@@ -131,17 +105,14 @@ export function DemoSection() {
         {/* Scroll-driven layout */}
         <div ref={scrollDriverRef} className="relative flex gap-8" style={{ height: "600vh" }}>
           {/* Scroll driver (invisible — provides scroll height) */}
-          <div className="w-[45%] shrink-0" aria-hidden="true">
-            {/* Phase progress indicator (dev helper — can remove later) */}
-            <div className="sticky top-[80px] text-xs text-muted-foreground/50 font-mono p-2">
-              Phase {phase}/14
-            </div>
-          </div>
+          <div className="w-[45%] shrink-0" aria-hidden="true" />
 
           {/* Sticky canvas */}
           <div
             className="w-[55%] shrink-0 sticky top-[80px] self-start"
             style={{ maxHeight: "calc(100vh - 100px)" }}
+            role="region"
+            aria-label="Interactive demo preview"
           >
             <div className="rounded-xl border border-border bg-background overflow-y-auto" style={{ maxHeight: "calc(100vh - 120px)" }}>
               <div className="max-w-3xl mx-auto px-4 pt-8 pb-8">

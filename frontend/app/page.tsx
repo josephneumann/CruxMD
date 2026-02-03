@@ -10,7 +10,7 @@ import {
 import { Button } from "@/components/ui/button";
 import { Card, CardContent } from "@/components/ui/card";
 import { Header } from "@/components/Header";
-import { DemoSection } from "@/components/demo/DemoSection";
+import { DemoSection } from "@/components/demo";
 
 export default function Home() {
   return (

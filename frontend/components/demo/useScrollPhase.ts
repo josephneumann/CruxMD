@@ -2,7 +2,9 @@
 
 import { useEffect, useState, type RefObject } from "react";
 
-const TOTAL_PHASES = 15; // 3 interactions × 5 phases each
+const PHASES_PER_INTERACTION = 5;
+const TOTAL_INTERACTIONS = 3;
+const TOTAL_PHASES = TOTAL_INTERACTIONS * PHASES_PER_INTERACTION;
 
 /**
  * Maps scroll position within a container to a phase number (0–14).
@@ -13,10 +15,8 @@ const TOTAL_PHASES = 15; // 3 interactions × 5 phases each
  */
 export function useScrollPhase(containerRef: RefObject<HTMLElement | null>): {
   phase: number;
-  progress: number;
 } {
   const [phase, setPhase] = useState(0);
-  const [progress, setProgress] = useState(0);
 
   useEffect(() => {
     const container = containerRef.current;
@@ -36,11 +36,7 @@ export function useScrollPhase(containerRef: RefObject<HTMLElement | null>): {
       const rawProgress = Math.max(0, Math.min(1, scrolled / scrollableHeight));
 
       const exactPhase = rawProgress * TOTAL_PHASES;
-      const currentPhase = Math.min(Math.floor(exactPhase), TOTAL_PHASES - 1);
-      const subProgress = exactPhase - currentPhase;
-
-      setPhase(currentPhase);
-      setProgress(Math.max(0, Math.min(1, subProgress)));
+      setPhase(Math.floor(exactPhase));
     };
 
     // Use IntersectionObserver to know when the container is visible,
@@ -65,5 +61,5 @@ export function useScrollPhase(containerRef: RefObject<HTMLElement | null>): {
     };
   }, [containerRef]);
 
-  return { phase, progress };
+  return { phase };
 }
