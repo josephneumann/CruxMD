@@ -96,7 +96,6 @@ function buildAllMessages(
 
   for (let i = 0; i < scenario.interactions.length; i++) {
     const interactionStart = i * PHASES_PER_INTERACTION;
-    const interactionEnd = interactionStart + PHASES_PER_INTERACTION - 1;
 
     if (phase < interactionStart) break;
 
