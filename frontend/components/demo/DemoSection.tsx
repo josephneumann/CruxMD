@@ -89,7 +89,7 @@ export function DemoSection() {
         >
           <div
             ref={scrollRef}
-            className="overflow-y-auto max-h-[70vh]"
+            className="overflow-y-auto h-[70vh]"
           >
             {/* Home screen — visible during intro phases */}
             {isIntro && (
