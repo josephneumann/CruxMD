@@ -16,20 +16,20 @@ import {
 const SCENARIO_TABS = [
   { id: "heart-failure", label: "Heart Failure", scenario: heartFailureScenario, avatar: "/brand/demo/avatar-margaret-chen.png" },
   { id: "qt-prolongation", label: "QT Prolongation", scenario: qtProlongationScenario, avatar: "/brand/demo/avatar-dorothy-williams.png" },
-  { id: "hcm", label: "Young Athlete", scenario: hcmScenario },
-  { id: "hypoglycemia", label: "Hypoglycemia", scenario: hypoglycemiaScenario },
+  { id: "hcm", label: "Young Athlete", scenario: hcmScenario, avatar: "/brand/demo/avatar-tyler-reeves.png" },
+  { id: "hypoglycemia", label: "Hypoglycemia", scenario: hypoglycemiaScenario, avatar: "/brand/demo/avatar-robert-garcia.png" },
 ];
 
 export function DemoSection() {
   const canvasRef = useRef<HTMLDivElement>(null);
   const [activeTabId, setActiveTabId] = useState(SCENARIO_TABS[0].id);
   const scrollRef = useRef<HTMLDivElement>(null);
-  const activeScenario = useMemo(
-    () => SCENARIO_TABS.find((t) => t.id === activeTabId)!.scenario,
+  const activeTab = useMemo(
+    () => SCENARIO_TABS.find((t) => t.id === activeTabId)!,
     [activeTabId],
   );
 
-  const { phase, reset: resetAutoplay, introMessage } = useAutoplay(canvasRef, activeScenario);
+  const { phase, reset: resetAutoplay, introMessage } = useAutoplay(canvasRef, activeTab.scenario);
 
   const isIntro = phase < INTRO_PHASES;
   const isTyping = phase === 1;
@@ -98,7 +98,7 @@ export function DemoSection() {
             {/* Canvas — visible after intro */}
             {!isIntro && (
               <div className="max-w-3xl mx-auto px-4 pt-8 pb-8 animate-in fade-in slide-in-from-bottom-2 duration-700 ease-out">
-                <DemoCanvas scenario={activeScenario} phase={phase} onContentGrow={scrollToBottom} />
+                <DemoCanvas scenario={activeTab.scenario} phase={phase} avatar={activeTab.avatar} onContentGrow={scrollToBottom} />
               </div>
             )}
           </div>

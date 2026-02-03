@@ -3,7 +3,7 @@ import type { DemoScenario } from "../demo-scenarios";
 export const hcmScenario: DemoScenario = {
   id: "hcm",
   title: "Hidden HCM",
-  subtitle: "Young Athlete",
+  subtitle: "Hypertrophic Cardiomyopathy",
   patient: "Tyler Reeves, 17M",
   interactions: [
     // Interaction 1 — Sports Physical

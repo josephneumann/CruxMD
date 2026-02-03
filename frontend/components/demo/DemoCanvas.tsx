@@ -2,6 +2,7 @@
 
 import { useEffect, useMemo, useState } from "react";
 import { useTheme } from "next-themes";
+import Image from "next/image";
 import {
   Brain,
   Check,
@@ -280,10 +281,11 @@ function buildAllItems(
 interface DemoCanvasProps {
   scenario: DemoScenario;
   phase: number;
+  avatar?: string;
   onContentGrow?: () => void;
 }
 
-export function DemoCanvas({ scenario, phase: rawPhase, onContentGrow }: DemoCanvasProps) {
+export function DemoCanvas({ scenario, phase: rawPhase, avatar, onContentGrow }: DemoCanvasProps) {
   // Offset phase by intro phases so canvas interactions start at 0
   const phase = rawPhase - INTRO_PHASES;
   const { resolvedTheme } = useTheme();
@@ -312,6 +314,32 @@ export function DemoCanvas({ scenario, phase: rawPhase, onContentGrow }: DemoCan
 
   return (
     <>
+      {/* Patient header */}
+      <div className="flex items-center gap-3 mb-6 pb-4 border-b border-border/50">
+        {avatar ? (
+          <div className="h-10 w-10 rounded-full overflow-hidden ring-1 ring-border/30">
+            <Image
+              src={avatar}
+              alt={scenario.patient}
+              width={80}
+              height={80}
+              className="h-full w-full object-cover"
+              unoptimized
+            />
+          </div>
+        ) : (
+          <div className="h-10 w-10 rounded-full bg-muted flex items-center justify-center ring-1 ring-border/30">
+            <span className="text-sm text-muted-foreground">
+              {scenario.patient.charAt(0)}
+            </span>
+          </div>
+        )}
+        <div>
+          <p className="text-sm font-medium text-foreground">{scenario.patient}</p>
+          <p className="text-xs text-muted-foreground">{scenario.subtitle}</p>
+        </div>
+      </div>
+
       {items.map((item) => {
         if (item.type === "user") {
           return (
