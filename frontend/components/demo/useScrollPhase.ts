@@ -1,6 +1,6 @@
 "use client";
 
-import { useEffect, useState, type RefObject } from "react";
+import { useCallback, useEffect, useState, type RefObject } from "react";
 
 const PHASES_PER_INTERACTION = 5;
 const TOTAL_INTERACTIONS = 3;
@@ -15,6 +15,7 @@ const TOTAL_PHASES = TOTAL_INTERACTIONS * PHASES_PER_INTERACTION;
  */
 export function useScrollPhase(containerRef: RefObject<HTMLElement | null>): {
   phase: number;
+  reset: () => void;
 } {
   const [phase, setPhase] = useState(0);
 
@@ -61,5 +62,7 @@ export function useScrollPhase(containerRef: RefObject<HTMLElement | null>): {
     };
   }, [containerRef]);
 
-  return { phase };
+  const reset = useCallback(() => setPhase(0), []);
+
+  return { phase, reset };
 }
