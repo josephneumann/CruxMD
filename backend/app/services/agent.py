@@ -463,7 +463,19 @@ class AgentService:
 
             logger.debug(f"Tool round {_round + 1}: {len(tool_calls)} tool call(s)")
 
-            kwargs["input"].extend(response.output)
+            # Serialize output items to plain dicts to avoid SDK-only fields
+            for item in response.output:
+                if item.type == "function_call":
+                    kwargs["input"].append({
+                        "type": "function_call",
+                        "id": item.id,
+                        "call_id": item.call_id,
+                        "name": item.name,
+                        "arguments": item.arguments,
+                    })
+                else:
+                    kwargs["input"].append(item)
+
             for tool_call in tool_calls:
                 result = await execute_tool(
                     name=tool_call.name,
@@ -488,12 +500,16 @@ class AgentService:
         patient_id: str,
         graph: KnowledgeGraph,
         db: AsyncSession,
-    ) -> None:
-        """Execute tool-calling rounds, leaving kwargs ready for a final call.
+    ) -> AsyncGenerator[tuple[str, str], None]:
+        """Execute tool-calling rounds, yielding SSE events for each tool interaction.
 
         Like _run_tool_rounds but does NOT make the final text-generation call.
         After this returns, kwargs["input"] contains the full conversation
         including all tool calls and results, ready for a streaming final call.
+
+        Yields (event_type, data_json) tuples:
+          - ("tool_call", json) when the LLM invokes a tool
+          - ("tool_result", json) when a tool returns its result
 
         Args:
             kwargs: API call kwargs (mutated in place).
@@ -509,16 +525,32 @@ class AgentService:
                 if item.type == "function_call"
             ]
             if not tool_calls:
-                # No tool calls — model wants to generate text.
-                # Don't consume that response; let the caller stream it.
-                # Remove the tool schemas so the streaming call produces text.
                 kwargs.pop("tools", None)
                 return
 
             logger.debug(f"Tool round {_round + 1}: {len(tool_calls)} tool call(s)")
 
-            kwargs["input"].extend(response.output)
+            # Serialize output items to plain dicts — SDK objects carry extra
+            # fields (e.g. parsed_arguments) that the API rejects on re-send.
+            for item in response.output:
+                if item.type == "function_call":
+                    kwargs["input"].append({
+                        "type": "function_call",
+                        "id": item.id,
+                        "call_id": item.call_id,
+                        "name": item.name,
+                        "arguments": item.arguments,
+                    })
+                else:
+                    kwargs["input"].append(item)
+
             for tool_call in tool_calls:
+                yield ("tool_call", json.dumps({
+                    "name": tool_call.name,
+                    "call_id": tool_call.call_id,
+                    "arguments": tool_call.arguments,
+                }))
+
                 result = await execute_tool(
                     name=tool_call.name,
                     arguments=tool_call.arguments,
@@ -531,6 +563,12 @@ class AgentService:
                     "call_id": tool_call.call_id,
                     "output": result,
                 })
+
+                yield ("tool_result", json.dumps({
+                    "call_id": tool_call.call_id,
+                    "name": tool_call.name,
+                    "output": result,
+                }))
 
         # Max rounds reached — remove tools to force text generation
         kwargs.pop("tools", None)
@@ -698,12 +736,13 @@ class AgentService:
         if tools_available:
             kwargs["tools"] = TOOL_SCHEMAS
 
-        # Execute tool rounds (non-streaming), then stream the final response.
+        # Execute tool rounds, yielding tool_call/tool_result events as they happen.
         # _execute_tool_calls leaves kwargs ready for the final streaming call.
         if tools_available:
-            await self._execute_tool_calls(
+            async for event in self._execute_tool_calls(
                 kwargs, context.meta.patient_id, graph, db
-            )
+            ):
+                yield event
 
         # Stream the final response (reasoning summaries + narrative deltas)
         async with self._client.responses.stream(**kwargs) as stream:

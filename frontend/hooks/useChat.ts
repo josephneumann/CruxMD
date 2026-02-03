@@ -16,18 +16,30 @@ import type {
   StreamDeltaEvent,
   StreamDoneEvent,
   StreamErrorEvent,
+  StreamToolCallEvent,
+  StreamToolResultEvent,
   ReasoningEffort,
 } from "@/lib/types";
 import { isChatResponse, DEFAULT_MODEL } from "@/lib/types";
 
 /** Streaming phase for progressive UI updates */
-export type StreamPhase = "reasoning" | "narrative" | "done";
+export type StreamPhase = "tool_calling" | "reasoning" | "narrative" | "done";
+
+/** A tool call with its result (populated when complete) */
+export interface ToolCallState {
+  name: string;
+  callId: string;
+  arguments: string;
+  result?: string;
+}
 
 /** Streaming state attached to an in-flight assistant message */
 export interface StreamingState {
   phase: StreamPhase;
   reasoningText: string;
   narrativeText: string;
+  /** Tool calls made during this response */
+  toolCalls: ToolCallState[];
   /** How long reasoning took in ms (set when phase transitions to done) */
   reasoningDurationMs?: number;
 }
@@ -244,7 +256,55 @@ export function useChat(patientId: string | null): UseChatReturn {
               continue; // Skip malformed SSE data
             }
 
-            if (evt.event === "reasoning" || evt.event === "narrative") {
+            if (evt.event === "tool_call") {
+              const parsed = data as StreamToolCallEvent;
+              setMessages((prev) => {
+                const idx = prev.findIndex((m) => m.id === assistantMessageId);
+                if (idx === -1) return prev;
+                const msg = prev[idx];
+                const s = msg.streaming ?? {
+                  phase: "tool_calling" as StreamPhase,
+                  reasoningText: "",
+                  narrativeText: "",
+                  toolCalls: [],
+                };
+                const updated: StreamingState = {
+                  ...s,
+                  phase: "tool_calling",
+                  toolCalls: [
+                    ...s.toolCalls,
+                    {
+                      name: parsed.name,
+                      callId: parsed.call_id,
+                      arguments: parsed.arguments,
+                    },
+                  ],
+                };
+                const next = [...prev];
+                next[idx] = { ...msg, streaming: updated };
+                return next;
+              });
+            } else if (evt.event === "tool_result") {
+              const parsed = data as StreamToolResultEvent;
+              setMessages((prev) => {
+                const idx = prev.findIndex((m) => m.id === assistantMessageId);
+                if (idx === -1) return prev;
+                const msg = prev[idx];
+                const s = msg.streaming;
+                if (!s) return prev;
+                const updated: StreamingState = {
+                  ...s,
+                  toolCalls: s.toolCalls.map((tc) =>
+                    tc.callId === parsed.call_id
+                      ? { ...tc, result: parsed.output }
+                      : tc
+                  ),
+                };
+                const next = [...prev];
+                next[idx] = { ...msg, streaming: updated };
+                return next;
+              });
+            } else if (evt.event === "reasoning" || evt.event === "narrative") {
               const parsed = data as StreamDeltaEvent;
               const phase = evt.event as StreamPhase;
 
@@ -261,6 +321,7 @@ export function useChat(patientId: string | null): UseChatReturn {
                   phase: "reasoning",
                   reasoningText: "",
                   narrativeText: "",
+                  toolCalls: [],
                 };
                 const updated: StreamingState = {
                   ...s,
@@ -299,6 +360,7 @@ export function useChat(patientId: string | null): UseChatReturn {
                     phase: "done" as StreamPhase,
                     reasoningText: msg.streaming?.reasoningText ?? "",
                     narrativeText: parsed.response.narrative,
+                    toolCalls: msg.streaming?.toolCalls ?? [],
                     reasoningDurationMs,
                   },
                   pending: false,
@@ -427,6 +489,7 @@ export function useChat(patientId: string | null): UseChatReturn {
           phase: "reasoning",
           reasoningText: "",
           narrativeText: "",
+          toolCalls: [],
         },
       };
 

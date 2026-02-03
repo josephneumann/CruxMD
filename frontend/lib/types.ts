@@ -162,6 +162,20 @@ export interface StreamErrorEvent {
   detail: string;
 }
 
+/** Tool call event — LLM is invoking a tool */
+export interface StreamToolCallEvent {
+  name: string;
+  call_id: string;
+  arguments: string;
+}
+
+/** Tool result event — tool execution completed */
+export interface StreamToolResultEvent {
+  call_id: string;
+  name: string;
+  output: string;
+}
+
 // =============================================================================
 // Type Guards for Runtime Validation
 // =============================================================================

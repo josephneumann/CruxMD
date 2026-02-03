@@ -1123,7 +1123,20 @@ class TestToolUseStreamLoop:
         ):
             events.append((et, data))
 
-        # Should get reasoning, narrative, and done events (streamed)
+        # Should get tool_call, tool_result, then reasoning, narrative, done
+        tool_call_events = [e for e in events if e[0] == "tool_call"]
+        tool_result_events = [e for e in events if e[0] == "tool_result"]
+        assert len(tool_call_events) == 1
+        assert len(tool_result_events) == 1
+
+        tc_data = json.loads(tool_call_events[0][1])
+        assert tc_data["name"] == "search_patient_data"
+        assert tc_data["call_id"] == "call_1"
+
+        tr_data = json.loads(tool_result_events[0][1])
+        assert tr_data["call_id"] == "call_1"
+        assert tr_data["output"] == "Tool result text"
+
         assert any(e[0] == "reasoning" for e in events)
         assert any(e[0] == "narrative" for e in events)
         done_events = [e for e in events if e[0] == "done"]

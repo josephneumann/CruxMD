@@ -29,7 +29,7 @@ const MOCK_AGENT_1: DisplayMessage = {
   role: "assistant",
   content: "",
   timestamp: new Date("2026-01-30T09:15:12"),
-  streaming: { phase: "done", reasoningText: "**Reviewing medication list**\n\nI need to check the patient's active medications and cross-reference for known drug interactions.\n\n**Cross-referencing interactions**\n\nLisinopril + Spironolactone can both increase potassium. Combined with the patient's CKD stage 3, this creates a significant hyperkalemia risk.", narrativeText: "", reasoningDurationMs: 8200 },
+  streaming: { phase: "done", reasoningText: "**Reviewing medication list**\n\nI need to check the patient's active medications and cross-reference for known drug interactions.\n\n**Cross-referencing interactions**\n\nLisinopril + Spironolactone can both increase potassium. Combined with the patient's CKD stage 3, this creates a significant hyperkalemia risk.", narrativeText: "", reasoningDurationMs: 8200, toolCalls: [] },
   agentResponse: {
     thinking: "**Reviewing medication list**\n\nI need to check the patient's active medications and cross-reference for known drug interactions.\n\n**Cross-referencing interactions**\n\nLisinopril + Spironolactone can both increase potassium. Combined with the patient's CKD stage 3, this creates a significant hyperkalemia risk.",
     narrative: "The patient is currently taking **4 active medications**:\n\n1. **Lisinopril** 20mg daily — ACE inhibitor for hypertension\n2. **Metformin** 1000mg twice daily — Type 2 diabetes management\n3. **Spironolactone** 25mg daily — Aldosterone antagonist for heart failure\n4. **Atorvastatin** 40mg at bedtime — Cholesterol management\n\nI identified one significant interaction that warrants attention.",
@@ -67,7 +67,7 @@ const MOCK_AGENT_2: DisplayMessage = {
   role: "assistant",
   content: "",
   timestamp: new Date("2026-01-30T09:16:38"),
-  streaming: { phase: "done", reasoningText: "**Querying lab results**\n\nPulling potassium values from the last 6 months to assess trend direction.", narrativeText: "", reasoningDurationMs: 3400 },
+  streaming: { phase: "done", reasoningText: "**Querying lab results**\n\nPulling potassium values from the last 6 months to assess trend direction.", narrativeText: "", reasoningDurationMs: 3400, toolCalls: [] },
   agentResponse: {
     thinking: "**Querying lab results**\n\nPulling potassium values from the last 6 months to assess trend direction.",
     narrative: "Here are the potassium levels over the last 6 months:\n\n| Date | K⁺ (mEq/L) | Status |\n|---|---|---|\n| 2025-07-20 | 4.2 | Normal |\n| 2025-09-14 | 4.4 | Normal |\n| 2025-11-03 | 4.6 | Normal |\n| 2026-01-15 | 4.8 | High-normal |\n\nThere is a **consistent upward trend** of approximately 0.1 mEq/L per month. While all values remain within the reference range (3.5–5.0), the trajectory warrants attention given the dual potassium-elevating medications.",

@@ -72,6 +72,7 @@ export function MessageHistory({
           return (
             <ThinkingIndicator
               reasoningText={streamingMsg?.streaming?.reasoningText}
+              toolCalls={streamingMsg?.streaming?.toolCalls}
               lottieData={lottieData}
             />
           );
