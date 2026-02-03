@@ -1,5 +1,6 @@
 import type { LucideIcon } from "lucide-react";
 import { FlaskConical, Search, CalendarClock, Network, Stethoscope } from "lucide-react";
+import { TOOL_NAMES } from "@/lib/types";
 
 interface ToolConfig {
   icon: LucideIcon;
@@ -10,11 +11,11 @@ interface ToolConfig {
 }
 
 const TOOL_CONFIG: Record<string, ToolConfig> = {
-  search_patient_data: { icon: Search, activeLabel: "Searching", doneLabel: "Searched patient data" },
-  get_encounter_details: { icon: Stethoscope, activeLabel: "Retrieving encounter", doneLabel: "Retrieved encounter details" },
-  get_lab_history: { icon: FlaskConical, activeLabel: "Looking up labs", doneLabel: "Looked up lab history" },
-  find_related_resources: { icon: Network, activeLabel: "Finding related resources", doneLabel: "Found related resources" },
-  get_patient_timeline: { icon: CalendarClock, activeLabel: "Getting timeline", doneLabel: "Retrieved patient timeline" },
+  [TOOL_NAMES.SEARCH_PATIENT_DATA]: { icon: Search, activeLabel: "Searching", doneLabel: "Searched patient data" },
+  [TOOL_NAMES.GET_ENCOUNTER_DETAILS]: { icon: Stethoscope, activeLabel: "Retrieving encounter", doneLabel: "Retrieved encounter details" },
+  [TOOL_NAMES.GET_LAB_HISTORY]: { icon: FlaskConical, activeLabel: "Looking up labs", doneLabel: "Looked up lab history" },
+  [TOOL_NAMES.FIND_RELATED_RESOURCES]: { icon: Network, activeLabel: "Finding related resources", doneLabel: "Found related resources" },
+  [TOOL_NAMES.GET_PATIENT_TIMELINE]: { icon: CalendarClock, activeLabel: "Getting timeline", doneLabel: "Retrieved patient timeline" },
 };
 
 const DEFAULT_CONFIG: ToolConfig = { icon: Search, activeLabel: "Running tool", doneLabel: "Ran tool" };
@@ -28,15 +29,15 @@ function extractSearchTerm(name: string, argumentsJson: string): string | null {
     const args = JSON.parse(argumentsJson);
 
     switch (name) {
-      case "search_patient_data":
+      case TOOL_NAMES.SEARCH_PATIENT_DATA:
         return args.query ?? null;
-      case "get_lab_history":
+      case TOOL_NAMES.GET_LAB_HISTORY:
         return args.lab_name ?? null;
-      case "get_encounter_details":
+      case TOOL_NAMES.GET_ENCOUNTER_DETAILS:
         return args.encounter_fhir_id ?? null;
-      case "find_related_resources":
+      case TOOL_NAMES.FIND_RELATED_RESOURCES:
         return args.resource_type ?? null;
-      case "get_patient_timeline": {
+      case TOOL_NAMES.GET_PATIENT_TIMELINE: {
         const parts: string[] = [];
         if (args.start_date) parts.push(args.start_date);
         if (args.end_date) parts.push(args.end_date);

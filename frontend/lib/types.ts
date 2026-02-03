@@ -162,6 +162,17 @@ export interface StreamErrorEvent {
   detail: string;
 }
 
+/** Known agent tool names (mirrors backend TOOL_SCHEMAS) */
+export const TOOL_NAMES = {
+  SEARCH_PATIENT_DATA: "search_patient_data",
+  GET_ENCOUNTER_DETAILS: "get_encounter_details",
+  GET_LAB_HISTORY: "get_lab_history",
+  FIND_RELATED_RESOURCES: "find_related_resources",
+  GET_PATIENT_TIMELINE: "get_patient_timeline",
+} as const;
+
+export type ToolName = (typeof TOOL_NAMES)[keyof typeof TOOL_NAMES];
+
 /** Tool call event — LLM is invoking a tool */
 export interface StreamToolCallEvent {
   name: string;

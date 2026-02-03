@@ -962,8 +962,9 @@ class TestToolUseLoop:
             db=AsyncMock(),
         )
 
-        call_args = mock_client.responses.parse.call_args
-        assert call_args.kwargs["tools"] is TOOL_SCHEMAS
+        # First .parse() call (inside _execute_tool_calls) should include tools
+        first_call = mock_client.responses.parse.call_args_list[0]
+        assert first_call.kwargs["tools"] is TOOL_SCHEMAS
 
     @pytest.mark.asyncio
     @patch("app.services.agent.execute_tool", new_callable=AsyncMock)

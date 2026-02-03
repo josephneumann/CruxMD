@@ -431,68 +431,25 @@ class AgentService:
         """Close the OpenAI client connection."""
         await self._client.close()
 
-    async def _run_tool_rounds(
-        self,
-        kwargs: dict[str, Any],
-        patient_id: str,
-        graph: KnowledgeGraph,
-        db: AsyncSession,
-    ) -> Any:
-        """Execute tool-calling rounds until the LLM stops requesting tools.
+    @staticmethod
+    def _append_response_output(kwargs: dict[str, Any], response: Any) -> None:
+        """Append response output items to kwargs["input"], serializing SDK objects.
 
-        Mutates kwargs["input"] by appending tool calls and results.
-
-        Args:
-            kwargs: API call kwargs (must include "input" key).
-            patient_id: Current patient ID for tool execution.
-            graph: KnowledgeGraph instance.
-            db: AsyncSession instance.
-
-        Returns:
-            The final API response (after all tool rounds complete).
+        SDK objects from .parse() carry extra fields (e.g. parsed_arguments)
+        that the API rejects on re-send. This method serializes function_call
+        items to plain dicts with only the required fields.
         """
-        response = await self._client.responses.parse(**kwargs)
-
-        for _round in range(MAX_TOOL_ROUNDS):
-            tool_calls = [
-                item for item in response.output
-                if item.type == "function_call"
-            ]
-            if not tool_calls:
-                break
-
-            logger.debug(f"Tool round {_round + 1}: {len(tool_calls)} tool call(s)")
-
-            # Serialize output items to plain dicts to avoid SDK-only fields
-            for item in response.output:
-                if item.type == "function_call":
-                    kwargs["input"].append({
-                        "type": "function_call",
-                        "id": item.id,
-                        "call_id": item.call_id,
-                        "name": item.name,
-                        "arguments": item.arguments,
-                    })
-                else:
-                    kwargs["input"].append(item)
-
-            for tool_call in tool_calls:
-                result = await execute_tool(
-                    name=tool_call.name,
-                    arguments=tool_call.arguments,
-                    patient_id=patient_id,
-                    graph=graph,
-                    db=db,
-                )
+        for item in response.output:
+            if item.type == "function_call":
                 kwargs["input"].append({
-                    "type": "function_call_output",
-                    "call_id": tool_call.call_id,
-                    "output": result,
+                    "type": "function_call",
+                    "id": item.id,
+                    "call_id": item.call_id,
+                    "name": item.name,
+                    "arguments": item.arguments,
                 })
-
-            response = await self._client.responses.parse(**kwargs)
-
-        return response
+            else:
+                kwargs["input"].append(item)
 
     async def _execute_tool_calls(
         self,
@@ -503,9 +460,8 @@ class AgentService:
     ) -> AsyncGenerator[tuple[str, str], None]:
         """Execute tool-calling rounds, yielding SSE events for each tool interaction.
 
-        Like _run_tool_rounds but does NOT make the final text-generation call.
         After this returns, kwargs["input"] contains the full conversation
-        including all tool calls and results, ready for a streaming final call.
+        including all tool calls and results, ready for a final call.
 
         Yields (event_type, data_json) tuples:
           - ("tool_call", json) when the LLM invokes a tool
@@ -526,23 +482,12 @@ class AgentService:
             ]
             if not tool_calls:
                 kwargs.pop("tools", None)
+                kwargs["_last_response"] = response
                 return
 
             logger.debug(f"Tool round {_round + 1}: {len(tool_calls)} tool call(s)")
 
-            # Serialize output items to plain dicts — SDK objects carry extra
-            # fields (e.g. parsed_arguments) that the API rejects on re-send.
-            for item in response.output:
-                if item.type == "function_call":
-                    kwargs["input"].append({
-                        "type": "function_call",
-                        "id": item.id,
-                        "call_id": item.call_id,
-                        "name": item.name,
-                        "arguments": item.arguments,
-                    })
-                else:
-                    kwargs["input"].append(item)
+            self._append_response_output(kwargs, response)
 
             for tool_call in tool_calls:
                 yield ("tool_call", json.dumps({
@@ -572,6 +517,7 @@ class AgentService:
 
         # Max rounds reached — remove tools to force text generation
         kwargs.pop("tools", None)
+        kwargs["_last_response"] = None
 
     def _build_input_messages(
         self,
@@ -654,11 +600,17 @@ class AgentService:
         if tools_available:
             kwargs["tools"] = TOOL_SCHEMAS
 
-        if tools_available:
-            response = await self._run_tool_rounds(
+            # Run tool rounds (discard SSE events — non-streaming path).
+            # _execute_tool_calls stores the final non-tool response in kwargs.
+            async for _ in self._execute_tool_calls(
                 kwargs, context.meta.patient_id, graph, db
-            )
-        else:
+            ):
+                pass
+
+        # Reuse the response from _execute_tool_calls if available,
+        # otherwise make a fresh call (no tools path, or max rounds hit).
+        response = kwargs.pop("_last_response", None)
+        if response is None:
             response = await self._client.responses.parse(**kwargs)
 
         agent_response = response.output_parsed
