@@ -9,7 +9,7 @@ export const qtProlongationScenario: DemoScenario = {
     // Interaction 1 — Chart Review
     {
       userMessage:
-        "Pull up Dorothy Williams — urgent care sent her records from yesterday",
+        "Dorothy Williams — urgent care sent over records from yesterday. Run her med list against the new script before I call her back.",
       agentResponse: {
         reasoningText: `Scanning medication list for Dorothy Williams, 74F...
 
@@ -65,7 +65,7 @@ Making matters worse, her most recent labs show **potassium at 3.3 mEq/L** and *
 
     // Interaction 2 — Risk Quantification
     {
-      userMessage: "How serious is this?",
+      userMessage: "Quantify the TdP risk — I need to know if this is a phone call today or an ER send.",
       agentResponse: {
         reasoningText: `Quantifying torsades de pointes (TdP) risk using the Tisdale Risk Score framework and known risk factor analysis...
 
@@ -134,7 +134,7 @@ The urgent care physician likely checked for azithromycin allergies but would no
 
     // Interaction 3 — Intervention
     {
-      userMessage: "What's the safe alternative?",
+      userMessage: "I'm discontinuing the azithromycin — give me a QT-safe alternative with equivalent bronchitis coverage and the full intervention checklist.",
       agentResponse: {
         reasoningText: `Reviewing antibiotic alternatives for acute bronchitis without QT prolongation risk...
 
@@ -191,6 +191,13 @@ The urgent care physician likely checked for azithromycin allergies but would no
               "Ray WA, et al. Azithromycin and the Risk of Cardiovascular Death. N Engl J Med. 2012;366(20):1881–90",
             ],
           },
+        ],
+        actions: [
+          { label: "Discontinue azithromycin", type: "order" },
+          { label: "Prescribe amoxicillin-clavulanate 875/125mg BID", type: "order" },
+          { label: "Order stat ECG", type: "order" },
+          { label: "Order stat BMP", type: "order" },
+          { label: "Add QT-drug allergy alert", type: "alert" },
         ],
         followUps: [
           {

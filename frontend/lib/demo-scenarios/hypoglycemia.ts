@@ -9,11 +9,11 @@ export const hypoglycemiaScenario: DemoScenario = {
     // Interaction 1 — The Deceptive Win
     {
       userMessage:
-        "Robert Garcia is here for diabetes follow-up. His A1c came down nicely.",
+        "Pull up Robert Garcia's labs — he's on my schedule for diabetes follow-up this afternoon.",
       agentResponse: {
-        reasoningText: `Reviewing Robert Garcia, 79M, longitudinal diabetes management data...
+        reasoningText: `Pulling Robert Garcia, 79M, diabetes management data and recent labs...
 
-**HbA1c trend**: 8.2% → 7.4% → 6.8% over past 12 months. Significant reduction — need to evaluate whether this is appropriate for his age and risk profile.
+**HbA1c trend**: 8.2% → 7.4% → 6.8% over past 12 months. That's a significant drop — looks like good news, but let me check his medication profile and risk factors before concluding.
 
 **Active medications**:
 - Metformin 1000mg BID
@@ -22,19 +22,19 @@ export const hypoglycemiaScenario: DemoScenario = {
 - Aspirin 81mg daily
 - Atorvastatin 40mg daily
 
-**Key concern**: Propranolol is a non-selective beta-blocker. It blocks both β1 and β2 receptors. β2-adrenergic blockade masks the catecholamine-mediated warning signs of hypoglycemia — tachycardia, tremor, anxiety, diaphoresis. Patients on non-selective beta-blockers can drop to dangerously low glucose levels without feeling it.
+**Wait — this combination is concerning.** Propranolol is a non-selective beta-blocker. It blocks both β1 and β2 receptors. β2-adrenergic blockade masks the catecholamine-mediated warning signs of hypoglycemia — tachycardia, tremor, anxiety, diaphoresis. Patients on non-selective beta-blockers can drop to dangerously low glucose levels without feeling it.
 
-**ADA Standards of Care 2026**: For older adults (≥65) with multiple comorbidities, limited life expectancy, or established cardiovascular disease, a less stringent HbA1c target of <8.0% is recommended. An HbA1c of 6.8% in a 79-year-old on a sulfonylurea is a red flag for over-treatment.
+**ADA Standards of Care 2026**: For older adults (≥65) with multiple comorbidities or established cardiovascular disease, a less stringent HbA1c target of <8.0% is recommended. An HbA1c of 6.8% in a 79-year-old on a sulfonylurea isn't a win — it's a red flag for over-treatment and possible occult hypoglycemia.
 
-Cross-referencing recent encounters and glucose logs...`,
+Cross-referencing recent encounters...`,
         reasoningDurationMs: 7200,
-        narrative: `Robert Garcia is a **79-year-old man** with longstanding type 2 diabetes and coronary artery disease. His HbA1c has come down from 8.2% to **6.8%** over the past year — which looks like a success on paper.
+        narrative: `Robert's A1c dropped from 8.2% to **6.8%** over the past year. That might look like progress, but I'm flagging it as a concern.
 
-However, I have two significant concerns about this trajectory:
+At 79 with coronary artery disease, **an HbA1c of 6.8% is too aggressive**. The ADA recommends a target of <8.0% for older adults with established cardiovascular disease — tight control in this population increases hypoglycemia risk without improving outcomes.
 
-First, **an HbA1c of 6.8% is likely too aggressive for his profile**. The ADA recommends a target of <8.0% for older adults with established cardiovascular disease and multiple comorbidities. Over-treatment in this population doesn't improve outcomes — it increases harm.
+More concerning: he's on **glipizide** (a sulfonylurea with high hypoglycemia risk) combined with **propranolol** (a non-selective beta-blocker). Propranolol blocks the body's early warning system for low blood sugar — the racing heart, tremor, and anxiety that normally alert a patient to eat something. Robert could be dropping dangerously low **without feeling it**.
 
-Second, he's on **glipizide** (a sulfonylurea with high hypoglycemia risk) combined with **propranolol** (a non-selective beta-blocker). Propranolol blocks the body's early warning system for low blood sugar — the racing heart, tremor, and anxiety that normally alert a patient to eat something. Robert could be experiencing significant hypoglycemia **without knowing it**.`,
+This A1c "improvement" may actually represent recurrent hypoglycemia that's being masked.`,
         insights: [
           {
             type: "warning",
@@ -71,7 +71,7 @@ Second, he's on **glipizide** (a sulfonylurea with high hypoglycemia risk) combi
 
     // Interaction 2 — The Hidden Pattern
     {
-      userMessage: "Show me his glucose readings and recent visits",
+      userMessage: "Show me his glucose logs and any recent encounters — let's see if he's actually been having hypo episodes.",
       agentResponse: {
         reasoningText: `Pulling glucose logs, encounter records, and renal function for Robert Garcia...
 
@@ -151,7 +151,7 @@ Making everything worse, his **kidney function is declining** — eGFR has dropp
 
     // Interaction 3 — Unwinding the Cascade
     {
-      userMessage: "What changes do I need to make?",
+      userMessage: "I'm stopping the glipizide today. Walk me through the full de-escalation — beta-blocker switch, metformin dose adjustment, and the new A1c target.",
       agentResponse: {
         reasoningText: `Developing a medication adjustment plan to address the three compounding factors: sulfonylurea hypoglycemia, beta-blocker masking, and renal accumulation...
 
@@ -221,6 +221,14 @@ Making everything worse, his **kidney function is declining** — eGFR has dropp
               "Battelino T, et al. Clinical targets for continuous glucose monitoring data interpretation. Diabetes Care. 2019;42(8):1593–1603",
             ],
           },
+        ],
+        actions: [
+          { label: "Discontinue glipizide", type: "order" },
+          { label: "Prescribe metoprolol succinate 50mg daily", type: "order" },
+          { label: "Reduce metformin to 500mg BID", type: "order" },
+          { label: "Order 2-week CGM trial", type: "order" },
+          { label: "Flag driving safety review", type: "alert" },
+          { label: "Schedule 2-week follow-up", type: "document" },
         ],
         followUps: [
           {

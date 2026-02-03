@@ -1,8 +1,10 @@
 "use client";
 
-import { useCallback, useMemo, useRef, useState } from "react";
-import { useScrollPhase } from "./useScrollPhase";
+import { useCallback, useEffect, useMemo, useRef, useState } from "react";
+import { useAutoplay, INTRO_PHASES } from "./useAutoplay";
+import { useTypewriter } from "./useTypewriter";
 import { DemoCanvas } from "./DemoCanvas";
+import { DemoHomeScreen } from "./DemoHomeScreen";
 import { ScenarioTabs } from "./ScenarioTabs";
 import {
   heartFailureScenario,
@@ -19,56 +21,86 @@ const SCENARIO_TABS = [
 ];
 
 export function DemoSection() {
-  const sectionRef = useRef<HTMLElement>(null);
-  const scrollDriverRef = useRef<HTMLDivElement>(null);
+  const canvasRef = useRef<HTMLDivElement>(null);
   const [activeTabId, setActiveTabId] = useState(SCENARIO_TABS[0].id);
-  const { phase, reset: resetPhase } = useScrollPhase(scrollDriverRef);
-
+  const scrollRef = useRef<HTMLDivElement>(null);
   const activeScenario = useMemo(
     () => SCENARIO_TABS.find((t) => t.id === activeTabId)!.scenario,
     [activeTabId],
   );
 
+  const { phase, reset: resetAutoplay, introMessage } = useAutoplay(canvasRef, activeScenario);
+
+  const isIntro = phase < INTRO_PHASES;
+  const isTyping = phase === 1;
+  const isSubmitted = phase >= 2;
+
+  // Typewriter text for the home screen input
+  const typedText = useTypewriter(introMessage, isTyping);
+
+  // Auto-scroll canvas to bottom as new content appears
+  const scrollToBottom = useCallback(() => {
+    const el = scrollRef.current;
+    if (el) {
+      el.scrollTo({ top: el.scrollHeight, behavior: "smooth" });
+    }
+  }, []);
+
+  useEffect(() => {
+    scrollToBottom();
+  }, [phase, scrollToBottom]);
+
   const handleTabSelect = useCallback(
     (id: string) => {
       if (id === activeTabId) return;
       setActiveTabId(id);
-      resetPhase();
-      sectionRef.current?.scrollIntoView({ behavior: "smooth" });
+      resetAutoplay();
     },
-    [activeTabId, resetPhase],
+    [activeTabId, resetAutoplay],
   );
 
   return (
-    <section ref={sectionRef} className="relative px-8 py-16 md:py-24">
-      <div className="max-w-6xl mx-auto">
-        <h2 className="text-2xl md:text-3xl font-medium text-foreground text-center mb-12">
-          See CruxMD in action
-        </h2>
+    <section className="relative px-8 py-16 md:py-24">
+      <div className="max-w-4xl mx-auto">
+        {/* Scenario tabs — fade in after intro */}
+        <div
+          className={`transition-all duration-700 ease-out ${
+            isIntro ? "opacity-0 translate-y-2 pointer-events-none" : "opacity-100 translate-y-0"
+          }`}
+        >
+          <ScenarioTabs
+            tabs={SCENARIO_TABS}
+            activeId={activeTabId}
+            onSelect={handleTabSelect}
+          />
+        </div>
 
-        <ScenarioTabs
-          tabs={SCENARIO_TABS}
-          activeId={activeTabId}
-          onSelect={handleTabSelect}
-        />
-
-        {/* Scroll-driven layout */}
-        <div ref={scrollDriverRef} className="relative flex gap-8" style={{ height: "600vh" }}>
-          {/* Scroll driver (invisible — provides scroll height) */}
-          <div className="w-[45%] shrink-0" aria-hidden="true" />
-
-          {/* Sticky canvas */}
+        {/* Canvas frame */}
+        <div
+          ref={canvasRef}
+          className="rounded-xl border border-border bg-background"
+          role="region"
+          aria-label="Interactive demo preview"
+        >
           <div
-            className="w-[55%] shrink-0 sticky top-[80px] self-start"
-            style={{ maxHeight: "calc(100vh - 100px)" }}
-            role="region"
-            aria-label="Interactive demo preview"
+            ref={scrollRef}
+            className="overflow-y-auto transition-[height] duration-700 ease-out"
+            style={{ height: isIntro ? "auto" : "70vh", maxHeight: "70vh" }}
           >
-            <div className="rounded-xl border border-border bg-background overflow-y-auto" style={{ maxHeight: "calc(100vh - 120px)" }}>
-              <div className="max-w-3xl mx-auto px-4 pt-8 pb-8">
-                <DemoCanvas scenario={activeScenario} phase={phase} />
+            {/* Home screen — visible during intro phases */}
+            {isIntro && (
+              <DemoHomeScreen
+                inputText={isTyping ? typedText : ""}
+                submitted={isSubmitted}
+              />
+            )}
+
+            {/* Canvas — visible after intro */}
+            {!isIntro && (
+              <div className="max-w-3xl mx-auto px-4 pt-8 pb-8 animate-in fade-in slide-in-from-bottom-2 duration-700 ease-out">
+                <DemoCanvas scenario={activeScenario} phase={phase} onContentGrow={scrollToBottom} />
               </div>
-            </div>
+            )}
           </div>
         </div>
       </div>

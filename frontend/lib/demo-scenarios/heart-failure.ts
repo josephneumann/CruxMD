@@ -23,7 +23,7 @@ export const heartFailureScenario: DemoScenario = {
     // ── Interaction 1 — "The Huddle" ──────────────────────────────────────
     {
       userMessage:
-        "I'm seeing Margaret Chen this afternoon. What should I know?",
+        "Pre-visit huddle for Margaret Chen — she's on my schedule this afternoon. Flag anything I should dig into.",
       agentResponse: {
         reasoningText:
           "Pulling Margaret Chen's chart — active problem list, current medications, recent encounters, and trending labs. She's 68F with hypertension, type 2 diabetes, and obesity. I'm seeing four active medications: lisinopril 10 mg daily, metformin 1000 mg BID, atorvastatin 40 mg daily, and furosemide — which was added just 4 months ago and has already been uptitrated twice. That diuretic escalation pattern is notable. Let me flag the key items for the visit.",
@@ -42,15 +42,15 @@ export const heartFailureScenario: DemoScenario = {
           },
         ],
         followUps: [
-          { question: "Show me her weight trend", intent: "trend_analysis" },
-          { question: "What's her BNP history?", intent: "lab_trend" },
+          { question: "Pull her weight trend alongside the BNP", intent: "trend_analysis" },
+          { question: "Show me the BNP trajectory over the last 6 months", intent: "lab_trend" },
         ],
       },
     },
 
     // ── Interaction 2 — "Connecting the Dots" ─────────────────────────────
     {
-      userMessage: "Show me her weight trend and BNP history",
+      userMessage: "Pull her weight trend alongside the BNP — I want to see if the diuretic escalation correlates with fluid retention.",
       agentResponse: {
         reasoningText:
           "Looking at weight entries over the past 6 months and NT-proBNP results over the same period. Weight: 187 lbs in August → 191 in October → 195 in January — an 8-pound gain despite the patient reporting dietary efforts. NT-proBNP: 85 pg/mL in July, 142 in October, 219 in January. Each value falls within the lab's normal reference range (< 300 pg/mL for her age), but the upward trajectory is unmistakable. I'm also checking recent visit notes — the October encounter documents fatigue attributed to \"just getting older\" and mild exertional dyspnea charted as \"deconditioning.\" These symptoms were assessed in isolation and explained away, but together with the biomarker and weight trends they paint a different picture.",
@@ -82,11 +82,11 @@ export const heartFailureScenario: DemoScenario = {
         ],
         followUps: [
           {
-            question: "What treatment should I start?",
+            question: "I'm thinking GDMT — walk me through initiation given her current regimen",
             intent: "treatment_plan",
           },
           {
-            question: "What's her cardiac risk profile?",
+            question: "What's her full cardiac risk profile?",
             intent: "risk_assessment",
           },
         ],
@@ -95,7 +95,7 @@ export const heartFailureScenario: DemoScenario = {
 
     // ── Interaction 3 — "The Action Plan" ─────────────────────────────────
     {
-      userMessage: "What treatment should I start?",
+      userMessage: "I'm thinking GDMT — walk me through initiation given her current regimen and the contraindication landscape.",
       agentResponse: {
         reasoningText:
           "Reviewing Margaret's current regimen against heart failure GDMT recommendations. She's on lisinopril 10 mg — an ACE inhibitor, which is appropriate but under-dosed for HF (target 20-40 mg). She's not on a beta-blocker — needs one. She has T2DM and likely HFpEF or early HFrEF — SGLT2 inhibitors have robust evidence in both. Checking for contraindications: BP runs 130-140s systolic, HR 78 — room for beta-blocker. eGFR 62 — adequate for SGLT2i. No documented hyperkalemia. Need an echocardiogram to classify HF subtype and quantify EF before full optimization, but initial GDMT can and should start now.",
@@ -123,14 +123,29 @@ export const heartFailureScenario: DemoScenario = {
             ],
           },
         ],
+        actions: [
+          { label: "Order echocardiogram", type: "order", icon: "heart" },
+          { label: "Prescribe carvedilol 3.125 mg BID", type: "order" },
+          { label: "Uptitrate lisinopril to 20 mg", type: "order" },
+          { label: "Refer to cardiology", type: "refer" },
+          { label: "Schedule 2-week follow-up", type: "document" },
+        ],
         followUps: [
-          { question: "Draft the referral", intent: "generate_referral" },
+          { question: "Draft the cardiology referral", intent: "generate_referral" },
           {
-            question: "What monitoring do I need?",
+            question: "What monitoring parameters should I track?",
             intent: "monitoring_plan",
           },
         ],
       },
     },
   ],
+
+  epilogue: {
+    actionLabel: "Order echocardiogram",
+    confirmation:
+      "Echocardiogram ordered for Margaret Chen. Your scheduling agent is texting with her now to confirm an appointment time.",
+    memory:
+      "Learned: your echocardiogram referral preferences for patients with suspected heart failure.",
+  },
 };

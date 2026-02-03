@@ -9,7 +9,7 @@ export const hcmScenario: DemoScenario = {
     // Interaction 1 — Sports Physical
     {
       userMessage:
-        "I've got a sports physical for Tyler Reeves, 17, basketball. Anything in the chart?",
+        "Sports physical for Tyler Reeves, 17, varsity basketball. Pull the family history and any prior cardiac workup before I go in.",
       agentResponse: {
         reasoningText: `Pulling demographics and chart history for Tyler Reeves, 17M...
 
@@ -61,7 +61,7 @@ Two first- or second-degree relatives with premature cardiac death, plus a sibli
     // Interaction 2 — Exam Findings
     {
       userMessage:
-        "I heard a soft systolic murmur that changes with position. He also says he gets lightheaded during intense practice.",
+        "I'm hearing a soft systolic murmur with dynamic variation on Valsalva. He also reports exertional lightheadedness during intense drills. Correlate that with the family history.",
       agentResponse: {
         reasoningText: `Correlating exam findings with family history and reported symptoms...
 
@@ -122,7 +122,7 @@ Taken together — a family history of two premature cardiac deaths, a sibling w
 
     // Interaction 3 — Protecting the Patient
     {
-      userMessage: "What workup do I order?",
+      userMessage: "I'm withholding clearance. Walk me through the full workup and the referral pathway — I want cardiology looped in this week.",
       agentResponse: {
         reasoningText: `Reviewing screening and diagnostic guidelines for suspected HCM in a young athlete...
 
@@ -178,6 +178,13 @@ Taken together — a family history of two premature cardiac deaths, a sibling w
               "Ommen SR, et al. 2020 AHA/ACC Guideline for the Diagnosis and Treatment of Patients With Hypertrophic Cardiomyopathy. Circulation. 2020;142(25):e558–631",
             ],
           },
+        ],
+        actions: [
+          { label: "Order 12-lead ECG", type: "order" },
+          { label: "Order transthoracic echocardiogram", type: "order" },
+          { label: "Refer to pediatric cardiology", type: "refer" },
+          { label: "Withhold sports clearance", type: "alert" },
+          { label: "Request brother's cardiac records", type: "document" },
         ],
         followUps: [
           {

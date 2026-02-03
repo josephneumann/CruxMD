@@ -86,21 +86,8 @@ export default function Home() {
         {/* Problem / Solution */}
         <section className="px-8 py-16 md:py-24">
           <div className="max-w-5xl mx-auto grid md:grid-cols-2 gap-12 md:gap-16">
-            {/* Problem */}
+            {/* Thinking Partner */}
             <div className="border-l-4 border-primary/30 pl-6">
-              <h2 className="text-2xl font-medium text-foreground mb-4">
-                A swarm of agents for routine work
-              </h2>
-              <p className="text-muted-foreground leading-relaxed">
-                Dozens of specialized AI agents work in parallel — reviewing charts,
-                flagging abnormals, drafting notes, checking interactions. Each agent
-                is an expert at one thing, and together they handle the cognitive
-                overhead that buries clinicians in busywork.
-              </p>
-            </div>
-
-            {/* Solution */}
-            <div className="border-l-4 border-accent pl-6">
               <h2 className="text-2xl font-medium text-foreground mb-4">
                 A thinking partner that never misses
               </h2>
@@ -110,6 +97,19 @@ export default function Home() {
                 exhaustive so you can handle the irreplaceable: the patient in front of you.
               </p>
             </div>
+
+            {/* Autonomous Agents */}
+            <div className="border-l-4 border-accent pl-6">
+              <h2 className="text-2xl font-medium text-foreground mb-4">
+                Autonomous agents for routine work
+              </h2>
+              <p className="text-muted-foreground leading-relaxed">
+                Dozens of specialized AI agents work in parallel — reviewing charts,
+                flagging abnormals, drafting notes, checking interactions. Each agent
+                is an expert at one thing, and together they handle the cognitive
+                overhead that buries clinicians in busywork.
+              </p>
+            </div>
           </div>
         </section>
 
@@ -117,11 +117,19 @@ export default function Home() {
         <DemoSection />
 
         {/* Testimonials */}
-        <section className="px-8 py-16 md:py-24">
-          <h2 className="text-2xl md:text-3xl font-medium text-foreground text-center mb-12">
-            Trusted by over 15,000 doctors
-          </h2>
-          <div className="max-w-4xl mx-auto grid grid-cols-1 md:grid-cols-2 gap-12">
+        <section className="relative px-8 py-16 md:py-24 overflow-hidden">
+          <Image
+            src="/brand/forest-background-watercolor-2.png"
+            alt=""
+            fill
+            className="object-cover object-center"
+          />
+          <div className="absolute inset-0 bg-background/75 dark:bg-background/85" />
+          <div className="relative z-10">
+            <h2 className="text-2xl md:text-3xl font-medium text-foreground text-center mb-12">
+              Trusted by over 15,000 doctors
+            </h2>
+            <div className="max-w-4xl mx-auto grid grid-cols-1 md:grid-cols-2 gap-12">
             <div className="flex flex-col items-center">
               <Image
                 src="/brand/doctor-watercolor-portrait-1.png"
@@ -165,18 +173,12 @@ export default function Home() {
               </Card>
             </div>
           </div>
+          </div>
         </section>
 
         {/* Final CTA */}
-        <section className="relative border-t border-border px-8 py-20 md:py-28 overflow-hidden">
-          <Image
-            src="/brand/medical-office-2.png"
-            alt=""
-            fill
-            className="object-cover object-center"
-          />
-          <div className="absolute inset-0 bg-background/75 dark:bg-background/85" />
-          <div className="relative z-10 max-w-2xl mx-auto text-center">
+        <section className="border-t border-border px-8 py-20 md:py-28">
+          <div className="max-w-2xl mx-auto text-center">
             <h2 className="text-2xl md:text-3xl font-medium text-foreground mb-2">
               Hire CruxMD to your staff
             </h2>

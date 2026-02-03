@@ -5,9 +5,16 @@
  * re-exported here for consumption by the DemoSection component.
  */
 
-import type { Insight, FollowUp } from "./types";
+import type { Insight, FollowUp, ActionType } from "./types";
 
 // ─── Types ───────────────────────────────────────────────────────────────────
+
+export interface DemoAction {
+  label: string;
+  type: ActionType;
+  description?: string;
+  icon?: "heart" | "pill" | "stethoscope" | "file" | "alert" | "link";
+}
 
 export interface DemoInteraction {
   userMessage: string;
@@ -17,7 +24,17 @@ export interface DemoInteraction {
     narrative: string;
     insights: Insight[];
     followUps: FollowUp[];
+    actions?: DemoAction[];
   };
+}
+
+export interface DemoEpilogue {
+  /** Which action button label triggers the epilogue (shown as "selected") */
+  actionLabel: string;
+  /** Confirmation text shown after the action is "placed" */
+  confirmation: string;
+  /** Memory learning text shown below the confirmation */
+  memory: string;
 }
 
 export interface DemoScenario {
@@ -26,6 +43,7 @@ export interface DemoScenario {
   subtitle: string;
   patient: string;
   interactions: [DemoInteraction, DemoInteraction, DemoInteraction];
+  epilogue?: DemoEpilogue;
 }
 
 // ─── Scenario re-exports ─────────────────────────────────────────────────────
