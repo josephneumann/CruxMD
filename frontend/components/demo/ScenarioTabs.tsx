@@ -60,7 +60,7 @@ export function ScenarioTabs({ tabs, activeId, onSelect }: ScenarioTabsProps) {
     <div
       role="tablist"
       aria-label="Demo scenarios"
-      className="flex gap-1 border-b border-border mb-4"
+      className="flex gap-0.5 md:gap-1 border-b border-border mb-4 overflow-x-auto scrollbar-hide"
       onKeyDown={handleKeyDown}
     >
       {tabs.map((tab) => {
@@ -72,7 +72,7 @@ export function ScenarioTabs({ tabs, activeId, onSelect }: ScenarioTabsProps) {
             aria-selected={isActive}
             tabIndex={isActive ? 0 : -1}
             onClick={() => handleClick(tab.id)}
-            className={`px-4 py-2.5 text-sm transition-colors relative whitespace-nowrap ${
+            className={`px-2.5 md:px-4 py-2 md:py-2.5 text-xs md:text-sm transition-colors relative whitespace-nowrap flex-shrink-0 ${
               isActive
                 ? "font-semibold text-foreground"
                 : "text-muted-foreground hover:text-foreground"

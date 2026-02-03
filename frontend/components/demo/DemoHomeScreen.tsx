@@ -1,13 +1,7 @@
 "use client";
 
 import Image from "next/image";
-import { ArrowUp, Users, AlertCircle, BookOpen, Plus, Clock, ChevronDown } from "lucide-react";
-
-const QUICK_ACTIONS = [
-  { label: "Start huddle", icon: Users },
-  { label: "Patients needing attention", icon: AlertCircle },
-  { label: "Review research", icon: BookOpen },
-];
+import { ArrowUp, Plus, Clock, ChevronDown } from "lucide-react";
 
 interface DemoHomeScreenProps {
   inputText: string;
@@ -17,7 +11,7 @@ interface DemoHomeScreenProps {
 export function DemoHomeScreen({ inputText, submitted }: DemoHomeScreenProps) {
   return (
     <div
-      className={`flex flex-col items-center justify-center py-12 transition-all duration-700 ease-out ${
+      className={`flex flex-col items-center justify-center py-12 px-4 transition-all duration-700 ease-out ${
         submitted ? "opacity-0 scale-[0.97]" : "opacity-100 scale-100"
       }`}
     >
@@ -66,7 +60,7 @@ export function DemoHomeScreen({ inputText, submitted }: DemoHomeScreenProps) {
           </div>
           <div className="flex items-center gap-2">
             <span className="flex items-center gap-1 text-sm text-muted-foreground px-2 py-1">
-              GPT-4o
+              Opus 4.5
               <ChevronDown className="h-3 w-3" />
             </span>
             <span
@@ -82,18 +76,6 @@ export function DemoHomeScreen({ inputText, submitted }: DemoHomeScreenProps) {
         </div>
       </div>
 
-      {/* Quick actions */}
-      <div className="flex flex-wrap justify-center gap-2 mt-6">
-        {QUICK_ACTIONS.map(({ label, icon: Icon }) => (
-          <span
-            key={label}
-            className="flex items-center gap-2 px-4 py-2 rounded-full border border-border bg-card text-sm text-muted-foreground"
-          >
-            <Icon className="h-4 w-4" />
-            {label}
-          </span>
-        ))}
-      </div>
     </div>
   );
 }
