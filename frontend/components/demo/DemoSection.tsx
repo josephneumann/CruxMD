@@ -203,7 +203,7 @@ export function DemoSection() {
         >
           <div
             ref={scrollRef}
-            className="overflow-y-auto scrollbar-hide h-[80vh] md:h-[70vh]"
+            className="overflow-y-auto scrollbar-hide h-[75vh] md:h-[70vh]"
           >
             {/* Home screen — visible during intro phases */}
             {isIntro && (
