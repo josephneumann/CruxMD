@@ -173,7 +173,7 @@ export default function ChatPage() {
           <div className="flex flex-wrap justify-center gap-2 mt-6">
             {[
               { label: "Start huddle", icon: Users },
-              { label: "Patients needing attention", icon: AlertCircle },
+              { label: "Let's review patients needing my attention today", icon: AlertCircle },
               { label: "Review research", icon: BookOpen },
             ].map(({ label, icon: Icon }) => (
               <button

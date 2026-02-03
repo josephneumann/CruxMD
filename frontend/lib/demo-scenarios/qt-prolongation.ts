@@ -5,42 +5,46 @@ export const qtProlongationScenario: DemoScenario = {
   title: "QT Prolongation",
   subtitle: "Time Bomb",
   patient: "Dorothy Williams, 74F",
+  triageMessage:
+    "Dorothy Williams, 74F — AFib, depression. Urgent care sent records from yesterday. She was prescribed azithromycin for bronchitis, but she's on citalopram and diltiazem. I'm flagging a dangerous multi-drug QT prolongation risk.",
   interactions: [
     // Interaction 1 — Chart Review
     {
       userMessage:
-        "Dorothy Williams — urgent care sent over records from yesterday. Run her med list against the new script before I call her back.",
+        "Show me the full interaction picture. What are her electrolytes?",
       agentResponse: {
-        reasoningText: `Scanning medication list for Dorothy Williams, 74F...
+        reasoningText: `Cross-referencing the new azithromycin script against her medication list...
 
 **Active medications**: diltiazem 240mg daily (AFib rate control), citalopram 20mg daily (depression), omeprazole 20mg daily (GERD).
 
-**New prescription**: azithromycin 500mg day 1, then 250mg days 2–5 (Z-pak) — prescribed yesterday at urgent care for acute bronchitis.
+Checking drug interaction databases:
+- **Citalopram**: FDA black box warning for dose-dependent QT prolongation — blocks cardiac IKr channels
+- **Diltiazem**: Calcium channel blocker causing bradycardia, which prolongs QT interval
+- **Azithromycin**: Independent QT prolongation risk via IKr channel blockade
 
-Checking drug interaction databases... azithromycin is a known QT-prolonging agent. Cross-referencing with current medication list:
-- **Citalopram**: FDA black box warning for dose-dependent QT prolongation
-- **Diltiazem**: CYP3A4 inhibitor — will increase azithromycin serum levels by reducing hepatic clearance
-- **Azithromycin**: Independent QT prolongation risk, now with elevated levels due to CYP3A4 interaction
+This is an **additive pharmacodynamic interaction** — three drugs all affecting cardiac repolarization through overlapping mechanisms.
 
 Pulling recent labs... K+ 3.3 mEq/L (low normal 3.5), Mg 1.7 mg/dL (low normal 1.8). Both below threshold — hypokalemia and hypomagnesemia independently prolong QT interval.
 
-This is a multi-hit QT prolongation scenario. Flagging immediately.`,
+This is a multi-hit QT prolongation scenario.`,
         reasoningDurationMs: 7800,
-        narrative: `Dorothy Williams is a **74-year-old woman** with atrial fibrillation, GERD, and depression. She visited urgent care yesterday for acute bronchitis and was prescribed **azithromycin (Z-pak)**.
+        narrative: `This is a **triple-threat scenario** for QT prolongation:
 
-I've identified a **dangerous drug interaction** that needs immediate attention. Her current medications include **citalopram** (which carries an FDA black box warning for QT prolongation) and **diltiazem** (a CYP3A4 inhibitor that will raise azithromycin blood levels). Adding azithromycin — itself a QT-prolonging drug — creates a triple-threat scenario.
+**Citalopram** carries an FDA black box warning for dose-dependent QT prolongation. **Diltiazem** causes bradycardia, which independently prolongs QT. And now **azithromycin** — itself a known QT-prolonging drug — has been added on top.
 
-Making matters worse, her most recent labs show **potassium at 3.3 mEq/L** and **magnesium at 1.7 mg/dL**, both below normal. Low electrolytes independently destabilize cardiac repolarization and amplify drug-induced QT prolongation.`,
+Making matters worse, her most recent labs show **potassium at 3.3 mEq/L** and **magnesium at 1.7 mg/dL**, both below normal. Low electrolytes destabilize cardiac repolarization and lower the threshold for drug-induced arrhythmia.
+
+This is an additive pharmacodynamic interaction — the QT effects stack.`,
         insights: [
           {
             type: "critical",
             title: "Multi-Drug QT Prolongation Risk",
             content:
-              "Dangerous combination: azithromycin + citalopram + diltiazem (CYP3A4 inhibitor boosting azithromycin levels). Three concurrent QT-prolonging factors identified.",
+              "Dangerous combination: azithromycin + citalopram (both block cardiac IKr channels) + diltiazem (bradycardia compounds QT prolongation). This is an additive pharmacodynamic interaction — three drugs affecting cardiac repolarization simultaneously.",
             citations: [
-              "CredibleMeds QT Drug List — azithromycin: Known Risk",
+              "CredibleMeds QT Drug List — azithromycin: Known Risk, citalopram: Known Risk",
               "FDA Safety Communication: Citalopram dose-dependent QT prolongation (2012)",
-              "Flockhart Drug Interactions — diltiazem moderate CYP3A4 inhibitor",
+              "Tisdale JE. Drug-Induced QT Interval Prolongation. AACN Adv Crit Care. 2016;27(1):53–64",
             ],
           },
           {
@@ -54,11 +58,7 @@ Making matters worse, her most recent labs show **potassium at 3.3 mEq/L** and *
           },
         ],
         followUps: [
-          { question: "How serious is this?", intent: "risk_quantification" },
-          {
-            question: "What should I do right now?",
-            intent: "intervention_plan",
-          },
+          { question: "Has she taken any doses yet?", intent: "timing_assessment" },
         ],
       },
     },
@@ -79,7 +79,9 @@ Making matters worse, her most recent labs show **potassium at 3.3 mEq/L** and *
 **Drug-level risk factors:**
 6. **Citalopram** — Known Risk category (CredibleMeds), dose-dependent IKr blockade
 7. **Azithromycin** — Known Risk category, linked to cardiovascular death in observational studies (Ray et al., NEJM 2012)
-8. **Diltiazem as CYP3A4 inhibitor** — Increases azithromycin exposure, magnifying its QT effect
+8. **Diltiazem** — Non-dihydropyridine CCB causing bradycardia, which independently prolongs QT interval
+
+**Additive pharmacodynamic interaction**: Two IKr blockers (citalopram + azithromycin) plus bradycardia from diltiazem — the QT effects stack.
 
 **Prior ECG data:** Last ECG 6 months ago showed QTc 438ms. With a female upper limit of 460ms, she was already at the 95th percentile before adding azithromycin. Adding the current drug combination and electrolyte derangement could push QTc well above 500ms — the danger zone for TdP.
 
@@ -93,7 +95,7 @@ Dorothy has **5+ concurrent risk factors** for torsades de pointes (TdP), a pote
 
 **Patient factors**: Female sex (2–3× higher TdP risk than males), age >65, underlying atrial fibrillation, hypokalemia (K+ 3.3), and hypomagnesemia (Mg 1.7).
 
-**Drug factors**: Three QT-prolonging agents acting simultaneously, with diltiazem inhibiting CYP3A4 and **boosting azithromycin blood levels** beyond what the prescriber intended.
+**Drug factors**: Two known QT-prolonging agents (citalopram + azithromycin) both blocking cardiac IKr channels, plus diltiazem causing bradycardia — which independently prolongs QT. The effects are **additive through pharmacodynamic interaction**.
 
 Her last ECG showed a **QTc of 438ms** — already at the 95th percentile for women. The current drug-electrolyte combination could push her QTc above 500ms, where TdP risk rises exponentially. Each additional 10ms of QTc prolongation increases arrhythmia risk by **5–7%** — and she's facing contributions from multiple sources simultaneously.
 
@@ -121,12 +123,8 @@ The urgent care physician likely checked for azithromycin allergies but would no
         ],
         followUps: [
           {
-            question: "What's the safe alternative?",
-            intent: "antibiotic_substitution",
-          },
-          {
-            question: "Should I get a stat ECG?",
-            intent: "diagnostic_workup",
+            question: "Should I send her to the ER?",
+            intent: "disposition_decision",
           },
         ],
       },
@@ -198,6 +196,7 @@ The urgent care physician likely checked for azithromycin allergies but would no
           { label: "Order stat ECG", type: "order" },
           { label: "Order stat BMP", type: "order" },
           { label: "Add QT-drug allergy alert", type: "alert" },
+          { label: "Contact patient", type: "alert" },
         ],
         followUps: [
           {
@@ -212,4 +211,43 @@ The urgent care physician likely checked for azithromycin allergies but would no
       },
     },
   ],
+
+  epilogue: {
+    completions: [
+      {
+        label: "Contact patient",
+        type: "human_queued",
+        result: "Queued for immediate nurse call; staff will notify you when patient is on the phone",
+      },
+      {
+        label: "Discontinue azithromycin",
+        type: "instant",
+        result: "Azithromycin discontinued — order sent to pharmacy",
+      },
+      {
+        label: "Prescribe amoxicillin-clavulanate 875/125mg BID",
+        type: "instant",
+        result: "Amoxicillin-clavulanate prescribed — sent to Walgreens",
+      },
+      {
+        label: "Order stat ECG",
+        type: "agent_task",
+        activeLabel: "Coordinating with mobile ECG unit...",
+        result: "Stat ECG ordered — mobile unit dispatched for home collection today",
+      },
+      {
+        label: "Order stat BMP",
+        type: "agent_task",
+        activeLabel: "Booking lab appointment...",
+        result: "Stat BMP ordered — lab appointment booked for 2:30 PM",
+      },
+      {
+        label: "Add QT-drug allergy alert",
+        type: "instant",
+        result: "QT-prolonging drug alert added — visible to all future prescribers",
+      },
+    ],
+    memory:
+      "Learned: your QT-prolongation screening preferences and safe antibiotic alternatives.",
+  },
 };

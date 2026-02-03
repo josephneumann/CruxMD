@@ -1,24 +1,27 @@
 "use client";
 
-import { useEffect, useMemo, useState } from "react";
+import { useEffect, useMemo, useRef, useState } from "react";
 import { useTheme } from "next-themes";
 import Image from "next/image";
+import Lottie from "lottie-react";
 import {
   Brain,
   Check,
   FileText,
   Heart,
+  Mic,
   Pill,
   Send,
   AlertCircle,
   ExternalLink,
   Stethoscope,
+  User,
 } from "lucide-react";
 import { AgentMessage, ThinkingIndicator } from "@/components/canvas";
 import { useTypewriter } from "./useTypewriter";
 import type { DisplayMessage } from "@/hooks";
-import { INTRO_PHASES } from "./useAutoplay";
-import type { DemoScenario, DemoInteraction, DemoAction, DemoEpilogue } from "@/lib/demo-scenarios";
+import { INTRO_PHASES, TRIAGE_PHASES } from "./useAutoplay";
+import type { DemoScenario, DemoInteraction, DemoAction, DemoEpilogueCompletion } from "@/lib/demo-scenarios";
 import type { ActionType } from "@/lib/types";
 
 const PHASES_PER_INTERACTION = 5;
@@ -64,32 +67,116 @@ const ACTION_COLORS: Record<ActionType, string> = {
 
 function DemoActionButtons({
   actions,
-  selectedLabel,
+  selectedLabels,
 }: {
   actions: DemoAction[];
-  selectedLabel?: string;
+  selectedLabels?: string[];
+}) {
+  const selected = new Set(selectedLabels ?? []);
+  return (
+    <div className="mt-4">
+      {/* Take action separator */}
+      <div className="flex items-center gap-3 mb-3">
+        <div className="h-px flex-1 bg-border/40" />
+        <span className="text-xs font-medium text-muted-foreground/70 uppercase tracking-wider">
+          Take action
+        </span>
+        <div className="h-px flex-1 bg-border/40" />
+      </div>
+      <div className="flex flex-wrap gap-2 mb-2">
+        {actions.map((action, i) => {
+          const Icon = getActionIcon(action);
+          const isSelected = selected.has(action.label);
+          const colors = isSelected
+            ? "text-primary border-primary/30 bg-primary/10"
+            : ACTION_COLORS[action.type] ?? ACTION_COLORS.document;
+          return (
+            <button
+              key={i}
+              className={`inline-flex items-center gap-2 px-3 py-1.5 text-sm font-medium rounded-lg border transition-colors cursor-default ${colors}`}
+              tabIndex={-1}
+              aria-disabled="true"
+            >
+              {isSelected ? <Check className="h-3.5 w-3.5" /> : <Icon className="h-3.5 w-3.5" />}
+              {action.label}
+            </button>
+          );
+        })}
+      </div>
+    </div>
+  );
+}
+
+// ─── Date formatting helpers ─────────────────────────────────────────────────
+
+function formatFutureDate(daysFromNow: number): string {
+  const date = new Date();
+  date.setDate(date.getDate() + daysFromNow);
+  return date.toLocaleDateString("en-US", { month: "short", day: "numeric" });
+}
+
+function replaceDatePlaceholders(text: string): string {
+  return text
+    .replace("{twoWeeksFromNow}", formatFutureDate(14))
+    .replace("{oneWeekFromNow}", formatFutureDate(7))
+    .replace("{tomorrow}", formatFutureDate(1));
+}
+
+// ─── Epilogue results list ───────────────────────────────────────────────────
+
+interface EpilogueResultItem {
+  completion: DemoEpilogueCompletion;
+  isInProgress: boolean;
+}
+
+function DemoEpilogueResults({
+  items,
+  lottieData,
+}: {
+  items: EpilogueResultItem[];
+  lottieData: object | null;
 }) {
   return (
-    <div className="flex flex-wrap gap-2 mt-3 mb-2">
-      {actions.map((action, i) => {
-        const Icon = getActionIcon(action);
-        const isSelected = selectedLabel === action.label;
-        const colors = isSelected
-          ? "text-primary border-primary/30 bg-primary/10"
-          : ACTION_COLORS[action.type] ?? ACTION_COLORS.document;
+    <ul className="space-y-2 my-3">
+      {items.map((item, i) => {
+        const { completion, isInProgress } = item;
+        const { type, activeLabel, result } = completion;
+
+        // Determine icon based on type and state
+        let icon: React.ReactNode;
+        if (type === "human_queued") {
+          // Human-queued always shows user icon
+          icon = <User className="h-4 w-4 text-blue-500 shrink-0 mt-0.5" />;
+        } else if (type === "agent_task" && isInProgress) {
+          // Agent task in progress shows Crux spin
+          icon = lottieData ? (
+            <div className="h-4 w-4 shrink-0 mt-0.5">
+              <Lottie animationData={lottieData} loop autoplay className="h-4 w-4" />
+            </div>
+          ) : (
+            <div className="h-4 w-4 shrink-0 mt-0.5 rounded-full border-2 border-primary border-t-transparent animate-spin" />
+          );
+        } else {
+          // Instant or completed agent_task shows checkmark
+          icon = <Check className="h-4 w-4 text-primary shrink-0 mt-0.5" />;
+        }
+
+        // Determine text based on state
+        const rawText = type === "agent_task" && isInProgress && activeLabel ? activeLabel : result;
+        const text = replaceDatePlaceholders(rawText);
+
         return (
-          <button
+          <li
             key={i}
-            className={`inline-flex items-center gap-2 px-3 py-1.5 text-sm font-medium rounded-lg border transition-colors cursor-default ${colors}`}
-            tabIndex={-1}
-            aria-disabled="true"
+            className="flex items-start gap-2 text-sm text-muted-foreground animate-in fade-in slide-in-from-bottom-1 duration-300"
+            style={{ animationDelay: `${i * 50}ms` }}
           >
-            {isSelected ? <Check className="h-3.5 w-3.5" /> : <Icon className="h-3.5 w-3.5" />}
-            {action.label}
-          </button>
+            {icon}
+            <span>{text}</span>
+          </li>
         );
       })}
-    </div>
+    </ul>
   );
 }
 
@@ -97,18 +184,14 @@ function DemoActionButtons({
 
 function DemoMemoryNudge({ text }: { text: string }) {
   return (
-    <div className="flex items-center gap-2 my-3 text-sm text-muted-foreground animate-in fade-in slide-in-from-bottom-1 duration-500">
-      <Brain className="h-3.5 w-3.5 shrink-0" />
-      <span>{text}</span>
+    <div className="animate-in fade-in slide-in-from-bottom-1 duration-500">
+      {/* Subtle separator line */}
+      <div className="border-t border-border/40 my-4" />
+      <div className="flex items-center gap-2 text-sm text-muted-foreground">
+        <Brain className="h-3.5 w-3.5 shrink-0" />
+        <span>{text}</span>
+      </div>
     </div>
-  );
-}
-
-function DemoConfirmation({ text }: { text: string }) {
-  return (
-    <p className="my-3 text-sm text-muted-foreground animate-in fade-in slide-in-from-bottom-1 duration-300">
-      {text}
-    </p>
   );
 }
 
@@ -124,6 +207,7 @@ function DemoUserMessage({
   onContentGrow?: () => void;
 }) {
   const displayed = useTypewriter(text, typing, onContentGrow);
+  const isActivelyTyping = typing && displayed.length < text.length;
   return (
     <div className="mb-8">
       <div className="flex justify-end">
@@ -135,12 +219,38 @@ function DemoUserMessage({
           {/* Visible typewriter text overlaid at same position */}
           <p className="text-foreground whitespace-pre-wrap absolute inset-0 px-4 py-3">
             {displayed}
-            {typing && displayed.length < text.length && (
-              <span className="inline-block w-0.5 h-4 bg-foreground/60 align-text-bottom ml-0.5 animate-pulse" />
-            )}
           </p>
+          {/* Mic icon in lower right - pulses while typing, disappears when done */}
+          {isActivelyTyping && (
+            <Mic className="absolute bottom-2 right-2 h-3.5 w-3.5 text-muted-foreground/60 animate-pulse" />
+          )}
         </div>
       </div>
+    </div>
+  );
+}
+
+// ─── Triage message (AI initiates) ──────────────────────────────────────────
+
+const TRIAGE_STYLES = [
+  "text-foreground text-sm leading-relaxed",
+  "[&_p]:mb-3 [&_p:last-child]:mb-0",
+  "[&_strong]:font-semibold",
+].join(" ");
+
+function DemoTriageMessage({
+  text,
+  typing,
+  onContentGrow,
+}: {
+  text: string;
+  typing: boolean;
+  onContentGrow?: () => void;
+}) {
+  const displayed = useTypewriter(text, typing, onContentGrow, "stream");
+  return (
+    <div className="mb-6">
+      <p className={TRIAGE_STYLES}>{displayed}</p>
     </div>
   );
 }
@@ -148,16 +258,17 @@ function DemoUserMessage({
 // ─── Message building ───────────────────────────────────────────────────────
 
 interface RenderedItem {
-  type: "user" | "agent" | "actions" | "thinking" | "memory" | "confirmation";
+  type: "user" | "agent" | "actions" | "thinking" | "memory" | "epilogue-results" | "triage";
   key: string;
   message?: DisplayMessage;
   userText?: string;
+  triageText?: string;
   typing?: boolean;
   actions?: DemoAction[];
-  selectedLabel?: string;
+  selectedLabels?: string[];
   reasoningText?: string;
   memoryText?: string;
-  confirmationText?: string;
+  epilogueItems?: EpilogueResultItem[];
 }
 
 function interactionToItems(
@@ -230,24 +341,54 @@ function interactionToItems(
 function buildAllItems(
   scenario: DemoScenario,
   phase: number,
+  completedAgentTasks: Set<string>,
 ): RenderedItem[] {
   const items: RenderedItem[] = [];
+
+  // Triage message appears first (AI initiates the conversation)
+  // It types during phase 0 (triage phase), then is static afterward
+  if (phase >= 0 && scenario.triageMessage) {
+    items.push({
+      type: "triage",
+      key: "triage-message",
+      triageText: scenario.triageMessage,
+      typing: phase < TRIAGE_PHASES,
+    });
+  }
+
+  // Interactions start after triage phase completes
+  const interactionPhase = phase - TRIAGE_PHASES;
+  if (interactionPhase < 0) return items;
+
   const interactionPhases = scenario.interactions.length * PHASES_PER_INTERACTION;
-  const epiloguePhase = phase - interactionPhases; // -1 or less = no epilogue yet
+  const epiloguePhase = interactionPhase - interactionPhases; // -1 or less = no epilogue yet
   const hasEpilogue = !!scenario.epilogue;
+  const completions = scenario.epilogue?.completions ?? [];
+
+  // Calculate how many actions are checked based on epilogue phase
+  // Phase 0 = pause (no selections), Phase 1+ = one selection per phase
+  const checkedCount = hasEpilogue ? Math.max(0, Math.min(epiloguePhase, completions.length)) : 0;
+  const checkedLabels = completions.slice(0, checkedCount).map(c => c.label);
+
+  // Build epilogue items with in-progress state for agent tasks
+  const epilogueItems: EpilogueResultItem[] = completions.slice(0, checkedCount).map((completion) => ({
+    completion,
+    // Agent tasks start in progress until their animation completes
+    isInProgress: completion.type === "agent_task" && !completedAgentTasks.has(completion.label),
+  }));
 
   for (let i = 0; i < scenario.interactions.length; i++) {
     const interactionStart = i * PHASES_PER_INTERACTION;
-    if (phase < interactionStart) break;
+    if (interactionPhase < interactionStart) break;
 
-    const localPhase = Math.min(phase - interactionStart, PHASES_PER_INTERACTION - 1);
+    const localPhase = Math.min(interactionPhase - interactionStart, PHASES_PER_INTERACTION - 1);
     const interactionItems = interactionToItems(scenario.interactions[i], i, localPhase);
 
-    // If epilogue is active and this is the last interaction, mark the selected action
+    // If epilogue is active and this is the last interaction, mark checked actions
     if (hasEpilogue && epiloguePhase >= 0 && i === scenario.interactions.length - 1) {
       for (const item of interactionItems) {
         if (item.type === "actions") {
-          item.selectedLabel = scenario.epilogue!.actionLabel;
+          item.selectedLabels = checkedLabels;
         }
       }
     }
@@ -255,17 +396,17 @@ function buildAllItems(
     items.push(...interactionItems);
   }
 
-  // Epilogue phase 0: confirmation
-  if (hasEpilogue && epiloguePhase >= 0) {
+  // Epilogue: show results list if any actions are checked
+  if (hasEpilogue && epilogueItems.length > 0) {
     items.push({
-      type: "confirmation",
-      key: "epilogue-confirmation",
-      confirmationText: scenario.epilogue!.confirmation,
+      type: "epilogue-results",
+      key: "epilogue-results",
+      epilogueItems,
     });
   }
 
-  // Epilogue phase 1: memory
-  if (hasEpilogue && epiloguePhase >= 1) {
+  // Memory shows after all actions are checked (epiloguePhase > completions.length because phase 0 is pause)
+  if (hasEpilogue && epiloguePhase > completions.length) {
     items.push({
       type: "memory",
       key: "epilogue-memory",
@@ -285,23 +426,64 @@ interface DemoCanvasProps {
   onContentGrow?: () => void;
 }
 
+// Duration for agent task "working" animation before showing result
+const AGENT_TASK_DURATION_MS = 5000;
+
 export function DemoCanvas({ scenario, phase: rawPhase, avatar, onContentGrow }: DemoCanvasProps) {
   // Offset phase by intro phases so canvas interactions start at 0
   const phase = rawPhase - INTRO_PHASES;
   const { resolvedTheme } = useTheme();
   const [lottieLight, setLottieLight] = useState<object | null>(null);
   const [lottieDark, setLottieDark] = useState<object | null>(null);
+  const [completedAgentTasks, setCompletedAgentTasks] = useState<Set<string>>(new Set());
+  const timersRef = useRef<Map<string, ReturnType<typeof setTimeout>>>(new Map());
 
   useEffect(() => {
     fetch("/brand/crux-spin.json").then((r) => r.json()).then(setLottieLight).catch(() => {});
     fetch("/brand/crux-spin-reversed.json").then((r) => r.json()).then(setLottieDark).catch(() => {});
   }, []);
 
+  // Reset completed tasks when scenario changes
+  useEffect(() => {
+    setCompletedAgentTasks(new Set());
+    timersRef.current.forEach((timer) => clearTimeout(timer));
+    timersRef.current.clear();
+  }, [scenario.id]);
+
+  // Set up timers for agent_task items to transition from "in progress" to "completed"
+  const completions = scenario.epilogue?.completions ?? [];
+  const interactionPhases = scenario.interactions.length * PHASES_PER_INTERACTION;
+  const interactionPhase = phase - TRIAGE_PHASES;
+  const epiloguePhase = interactionPhase - interactionPhases;
+  const checkedCount = Math.max(0, Math.min(epiloguePhase, completions.length));
+
+  useEffect(() => {
+    // Check each completion that's now visible
+    for (let i = 0; i < checkedCount; i++) {
+      const completion = completions[i];
+      // Skip if stayInProgress is true - these never resolve
+      if (completion.stayInProgress) continue;
+      if (completion.type === "agent_task" && !completedAgentTasks.has(completion.label) && !timersRef.current.has(completion.label)) {
+        // Start timer to complete this agent task
+        const timer = setTimeout(() => {
+          setCompletedAgentTasks((prev) => new Set([...prev, completion.label]));
+          timersRef.current.delete(completion.label);
+        }, AGENT_TASK_DURATION_MS);
+        timersRef.current.set(completion.label, timer);
+      }
+    }
+
+    // Cleanup timers on unmount
+    return () => {
+      timersRef.current.forEach((timer) => clearTimeout(timer));
+    };
+  }, [checkedCount, completions, completedAgentTasks]);
+
   const lottieData = resolvedTheme === "dark" ? lottieDark : lottieLight;
 
   const items = useMemo(
-    () => buildAllItems(scenario, phase),
-    [scenario, phase],
+    () => buildAllItems(scenario, phase, completedAgentTasks),
+    [scenario, phase, completedAgentTasks],
   );
 
   if (items.length === 0) {
@@ -341,6 +523,16 @@ export function DemoCanvas({ scenario, phase: rawPhase, avatar, onContentGrow }:
       </div>
 
       {items.map((item) => {
+        if (item.type === "triage") {
+          return (
+            <DemoTriageMessage
+              key={item.key}
+              text={item.triageText!}
+              typing={item.typing!}
+              onContentGrow={onContentGrow}
+            />
+          );
+        }
         if (item.type === "user") {
           return (
             <DemoUserMessage
@@ -365,12 +557,12 @@ export function DemoCanvas({ scenario, phase: rawPhase, avatar, onContentGrow }:
             <DemoActionButtons
               key={item.key}
               actions={item.actions!}
-              selectedLabel={item.selectedLabel}
+              selectedLabels={item.selectedLabels}
             />
           );
         }
-        if (item.type === "confirmation") {
-          return <DemoConfirmation key={item.key} text={item.confirmationText!} />;
+        if (item.type === "epilogue-results") {
+          return <DemoEpilogueResults key={item.key} items={item.epilogueItems!} lottieData={lottieData} />;
         }
         if (item.type === "memory") {
           return <DemoMemoryNudge key={item.key} text={item.memoryText!} />;

@@ -2,19 +2,23 @@
 
 import { useCallback, useEffect, useRef, useState } from "react";
 import type { DemoScenario } from "@/lib/demo-scenarios";
+import { STREAM_CHARS_PER_TICK, STREAM_INTERVAL_MS } from "@/lib/constants/chat";
 
 const PHASES_PER_INTERACTION = 5;
 const TOTAL_INTERACTIONS = 3;
-/** Extra phases after last interaction: confirmation + memory */
-const EPILOGUE_PHASES = 2;
 
 /** Number of intro phases before canvas interactions begin. */
 export const INTRO_PHASES = 3;
 
-const INTRO_MESSAGE = "Let's review my patients scheduled for this morning";
+/** Number of phases for triage message typewriter (before first interaction). */
+export const TRIAGE_PHASES = 1;
 
-/** Average ms per character for typing estimate (matches useTypewriter rates). */
-const AVG_MS_PER_CHAR = 38;
+const INTRO_MESSAGE = "Lets review patients needing my attention this morning";
+
+/** Average ms per character for human typing estimate (matches useTypewriter "human" mode). */
+const AVG_MS_PER_CHAR_HUMAN = 38;
+/** Effective ms per character for AI streaming (matches useTypewriter "stream" mode). */
+const AVG_MS_PER_CHAR_STREAM = STREAM_INTERVAL_MS / STREAM_CHARS_PER_TICK;
 /** Extra buffer after typing completes before advancing. */
 const POST_TYPING_PAUSE = 400;
 
@@ -27,32 +31,53 @@ const PHASE_DURATIONS: Record<number, number> = {
   4: 1200, // follow-ups
 };
 
+function getEpiloguePhaseCount(scenario?: DemoScenario): number {
+  if (!scenario?.epilogue) return 0;
+  // One phase for pre-epilogue pause + one per completion + one for memory
+  return 1 + scenario.epilogue.completions.length + 1;
+}
+
 function getTotalPhases(scenario?: DemoScenario): number {
-  const base = INTRO_PHASES + TOTAL_INTERACTIONS * PHASES_PER_INTERACTION;
-  return scenario?.epilogue ? base + EPILOGUE_PHASES : base;
+  const base = INTRO_PHASES + TRIAGE_PHASES + TOTAL_INTERACTIONS * PHASES_PER_INTERACTION;
+  return base + getEpiloguePhaseCount(scenario);
 }
 
 function getPhaseDuration(phase: number, scenario?: DemoScenario): number {
   // Intro phases
   if (phase < INTRO_PHASES) {
     if (phase === 0) return 1200; // home screen visible
-    if (phase === 1) return INTRO_MESSAGE.length * AVG_MS_PER_CHAR + POST_TYPING_PAUSE; // typing
+    if (phase === 1) return INTRO_MESSAGE.length * AVG_MS_PER_CHAR_HUMAN + POST_TYPING_PAUSE; // typing
     return 1000; // submit animation (allows smooth transition)
   }
 
   const canvasPhase = phase - INTRO_PHASES;
-  const interactionPhases = TOTAL_INTERACTIONS * PHASES_PER_INTERACTION;
 
-  // Epilogue phases
-  if (canvasPhase >= interactionPhases) {
-    return canvasPhase === interactionPhases ? 1600 : 1200;
+  // Triage phase — AI's initial seeding message (uses fast streaming speed)
+  if (canvasPhase < TRIAGE_PHASES) {
+    const triageLen = scenario?.triageMessage?.length ?? 100;
+    return triageLen * AVG_MS_PER_CHAR_STREAM + POST_TYPING_PAUSE;
   }
 
-  const localPhase = canvasPhase % PHASES_PER_INTERACTION;
+  const interactionPhase = canvasPhase - TRIAGE_PHASES;
+  const interactionPhases = TOTAL_INTERACTIONS * PHASES_PER_INTERACTION;
+
+  // Epilogue phases (pause, then one per action completion, then memory)
+  if (interactionPhase >= interactionPhases) {
+    const epiloguePhase = interactionPhase - interactionPhases;
+    const completionCount = scenario?.epilogue?.completions.length ?? 0;
+    // Phase 0: pre-epilogue pause — let narrative fully resolve before action selection
+    if (epiloguePhase === 0) return 1800;
+    // Action completion phases — slower to perceive each check
+    if (epiloguePhase <= completionCount) return 800;
+    // Memory phase
+    return 1200;
+  }
+
+  const localPhase = interactionPhase % PHASES_PER_INTERACTION;
   if (localPhase === 0 && scenario) {
-    const interactionIdx = Math.floor(canvasPhase / PHASES_PER_INTERACTION);
+    const interactionIdx = Math.floor(interactionPhase / PHASES_PER_INTERACTION);
     const msg = scenario.interactions[interactionIdx]?.userMessage ?? "";
-    return msg.length * AVG_MS_PER_CHAR + POST_TYPING_PAUSE;
+    return msg.length * AVG_MS_PER_CHAR_HUMAN + POST_TYPING_PAUSE;
   }
   return PHASE_DURATIONS[localPhase] ?? 1200;
 }
@@ -138,5 +163,7 @@ export function useAutoplay(triggerRef: React.RefObject<HTMLElement | null>, sce
     ? Math.max(phase, INTRO_PHASES)
     : Math.max(phase, 0);
 
-  return { phase: effectivePhase, isPlaying, reset, introMessage: INTRO_MESSAGE };
+  const isComplete = phase >= totalPhases - 1;
+
+  return { phase: effectivePhase, isPlaying, isComplete, reset, introMessage: INTRO_MESSAGE };
 }

@@ -28,12 +28,31 @@ export interface DemoInteraction {
   };
 }
 
+/**
+ * Epilogue completion types:
+ * - instant: Simple orders that resolve immediately (prescriptions, flags)
+ * - agent_task: Work requiring coordination (scheduling, referrals, records)
+ * - human_queued: Sensitive interactions routed to staff (callbacks, difficult conversations)
+ */
+export type EpilogueCompletionType = "instant" | "agent_task" | "human_queued";
+
+export interface DemoEpilogueCompletion {
+  /** The action button label to check */
+  label: string;
+  /** Completion type determines animation behavior */
+  type: EpilogueCompletionType;
+  /** For agent_task: in-progress label (e.g., "Scheduling echocardiogram...") */
+  activeLabel?: string;
+  /** Result text to show when complete */
+  result: string;
+  /** If true, agent_task stays in progress indefinitely (never resolves) */
+  stayInProgress?: boolean;
+}
+
 export interface DemoEpilogue {
-  /** Which action button label triggers the epilogue (shown as "selected") */
-  actionLabel: string;
-  /** Confirmation text shown after the action is "placed" */
-  confirmation: string;
-  /** Memory learning text shown below the confirmation */
+  /** Array of action completions to animate sequentially */
+  completions: DemoEpilogueCompletion[];
+  /** Memory learning text shown at the very end */
   memory: string;
 }
 
@@ -42,6 +61,8 @@ export interface DemoScenario {
   title: string;
   subtitle: string;
   patient: string;
+  /** AI's initial triage message that introduces the patient and prompts investigation */
+  triageMessage: string;
   interactions: [DemoInteraction, DemoInteraction, DemoInteraction];
   epilogue?: DemoEpilogue;
 }

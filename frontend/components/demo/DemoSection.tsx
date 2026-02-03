@@ -21,15 +21,19 @@ const SCENARIO_TABS = [
 ];
 
 export function DemoSection() {
+  const sectionRef = useRef<HTMLElement>(null);
   const canvasRef = useRef<HTMLDivElement>(null);
-  const [activeTabId, setActiveTabId] = useState(SCENARIO_TABS[0].id);
   const scrollRef = useRef<HTMLDivElement>(null);
+  const [activeTabId, setActiveTabId] = useState(SCENARIO_TABS[0].id);
+  const [isLocked, setIsLocked] = useState(false);
+  const scrollAccumulatorRef = useRef(0);
+
   const activeTab = useMemo(
     () => SCENARIO_TABS.find((t) => t.id === activeTabId)!,
     [activeTabId],
   );
 
-  const { phase, reset: resetAutoplay, introMessage } = useAutoplay(canvasRef, activeTab.scenario);
+  const { phase, reset: resetAutoplay, introMessage, isComplete } = useAutoplay(canvasRef, activeTab.scenario);
 
   const isIntro = phase < INTRO_PHASES;
   const isTyping = phase === 1;
@@ -55,13 +59,128 @@ export function DemoSection() {
       if (id === activeTabId) return;
       setActiveTabId(id);
       resetAutoplay();
+      // Reset canvas scroll position
+      if (scrollRef.current) {
+        scrollRef.current.scrollTop = 0;
+      }
     },
     [activeTabId, resetAutoplay],
   );
 
+  // Scroll hijacking logic - lock body scroll when demo section is in view
+  useEffect(() => {
+    const section = sectionRef.current;
+    const scrollContainer = scrollRef.current;
+    if (!section || !scrollContainer) return;
+
+    let isLockedInternal = false;
+
+    const lockScroll = () => {
+      if (!isLockedInternal) {
+        isLockedInternal = true;
+        setIsLocked(true);
+        document.body.style.overflow = "hidden";
+      }
+    };
+
+    const unlockScroll = () => {
+      if (isLockedInternal) {
+        isLockedInternal = false;
+        setIsLocked(false);
+        document.body.style.overflow = "";
+      }
+    };
+
+    // Check if we should be locked based on current visibility
+    const checkAndLock = () => {
+      const rect = section.getBoundingClientRect();
+      // Lock when section top is near or above viewport top and demo not complete
+      const shouldLock = rect.top <= 100 && rect.bottom > window.innerHeight * 0.5 && !isComplete;
+
+      if (shouldLock) {
+        lockScroll();
+        // Snap to section top if we're close
+        if (rect.top > 0 && rect.top < 100) {
+          section.scrollIntoView({ behavior: "smooth", block: "start" });
+        }
+      }
+    };
+
+    // Use IntersectionObserver to detect when section enters viewport
+    const observer = new IntersectionObserver(
+      ([entry]) => {
+        if (entry.isIntersecting && !isComplete) {
+          checkAndLock();
+        }
+      },
+      { threshold: 0.5 }
+    );
+    observer.observe(section);
+
+    const handleWheel = (e: WheelEvent) => {
+      const rect = section.getBoundingClientRect();
+      const scrollingDown = e.deltaY > 0;
+      const scrollingUp = e.deltaY < 0;
+
+      // Check if demo section fills the viewport (or nearly so)
+      const sectionFillsViewport = rect.top <= 10 && rect.bottom >= window.innerHeight - 10;
+
+      // Check if we're approaching from above (scrolling down)
+      const approachingFromAbove = rect.top > 10;
+
+      const { scrollTop, scrollHeight, clientHeight } = scrollContainer;
+      const isAtBottom = scrollTop + clientHeight >= scrollHeight - 1;
+
+      // SCROLLING UP: Always allow - user can return to hero anytime
+      if (scrollingUp) {
+        unlockScroll();
+        return;
+      }
+
+      // SCROLLING DOWN scenarios:
+      if (scrollingDown) {
+        // If demo section hasn't filled viewport yet (approaching from above), let page scroll
+        if (approachingFromAbove) {
+          unlockScroll();
+          return;
+        }
+
+        // If demo is complete and canvas is at bottom, release to scroll past demo
+        if (isComplete && isAtBottom) {
+          unlockScroll();
+          return;
+        }
+      }
+
+      // If section doesn't fill viewport at all, don't hijack
+      if (!sectionFillsViewport) {
+        unlockScroll();
+        return;
+      }
+
+      // Lock and hijack scroll (only for scrolling down within demo)
+      e.preventDefault();
+      lockScroll();
+
+      // Apply scroll to canvas
+      scrollContainer.scrollTop += e.deltaY;
+    };
+
+    window.addEventListener("wheel", handleWheel, { passive: false });
+
+    return () => {
+      observer.disconnect();
+      window.removeEventListener("wheel", handleWheel);
+      document.body.style.overflow = "";
+    };
+  }, [isComplete]);
+
   return (
-    <section className="relative px-8 py-16 md:py-24">
-      <div className="max-w-4xl mx-auto">
+    <section
+      ref={sectionRef}
+      className="relative px-8 h-screen flex flex-col justify-center overflow-hidden"
+    >
+      <div className="max-w-4xl mx-auto w-full">
         {/* Scenario tabs — fade in after intro */}
         <div
           className={`transition-all duration-700 ease-out ${
@@ -84,8 +203,8 @@ export function DemoSection() {
         >
           <div
             ref={scrollRef}
-            className="overflow-y-auto transition-[height] duration-700 ease-out"
-            style={{ height: isIntro ? "auto" : "70vh", maxHeight: "70vh" }}
+            className="overflow-y-auto scrollbar-hide"
+            style={{ height: "70vh" }}
           >
             {/* Home screen — visible during intro phases */}
             {isIntro && (
@@ -103,6 +222,13 @@ export function DemoSection() {
             )}
           </div>
         </div>
+
+        {/* Scroll hint — appears after demo completes */}
+        {isComplete && (
+          <p className="text-center text-xs text-muted-foreground/60 mt-4">
+            Scroll to continue
+          </p>
+        )}
       </div>
     </section>
   );

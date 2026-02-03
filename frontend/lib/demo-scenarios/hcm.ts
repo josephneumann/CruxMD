@@ -5,34 +5,36 @@ export const hcmScenario: DemoScenario = {
   title: "Hidden HCM",
   subtitle: "Hypertrophic Cardiomyopathy",
   patient: "Tyler Reeves, 17M",
+  triageMessage:
+    "Tyler Reeves, 17M — varsity basketball, here for sports physical. His family history is concerning: father died at 42 of sudden cardiac death, grandfather died suddenly in his 50s, brother referred for cardiac screening. No prior workup on Tyler.",
   interactions: [
     // Interaction 1 — Sports Physical
     {
       userMessage:
-        "Sports physical for Tyler Reeves, 17, varsity basketball. Pull the family history and any prior cardiac workup before I go in.",
+        "Do we have records from the brother's cardiac screening? And confirm Tyler's never had an ECG.",
       agentResponse: {
-        reasoningText: `Pulling demographics and chart history for Tyler Reeves, 17M...
+        reasoningText: `Searching for records from brother's cardiac workup and checking Tyler's chart for prior cardiac testing...
 
-**Demographics**: 17-year-old male, varsity basketball player, presenting for pre-participation sports physical.
+**Brother's cardiac screening**: Referred 2 years ago per family history notes, but **outcome not documented in this chart**. No external records on file.
 
-**Past medical history**: No chronic conditions, no prior hospitalizations. Up to date on immunizations. Last visit 14 months ago for ankle sprain (basketball-related).
+**Tyler's cardiac workup**: No ECG, no echocardiogram, no cardiology referral — ever. His last visit was 14 months ago for an ankle sprain.
 
-**Family history** — this is where it gets concerning:
-- **Father**: Died at age 42 of "massive heart attack" (per maternal report at intake)
-- **Paternal grandfather**: Sudden death in his 50s, circumstances unclear
-- **Brother (age 20)**: Referred for "cardiac screening" 2 years ago — **outcome not documented in this chart**
+**Family history pattern**:
+- Father died at 42 of "massive heart attack" (per maternal report)
+- Paternal grandfather: sudden death in 50s
+- Brother (age 20): referred for cardiac screening — results unknown
 
-Two first-degree and one second-degree relative with premature cardiac death or cardiac concern. This pattern is highly suggestive of a heritable cardiomyopathy, most commonly hypertrophic cardiomyopathy (HCM).
+Two first-degree and one second-degree relative with premature cardiac death. This pattern is highly suggestive of hypertrophic cardiomyopathy (HCM), which is autosomal dominant.
 
-Checking for prior cardiac workup on Tyler... none found. No ECG, no echocardiogram, no cardiology referral on file.
-
-This patient should NOT receive sports clearance without further evaluation.`,
+This patient should NOT receive sports clearance without cardiac evaluation.`,
         reasoningDurationMs: 7200,
-        narrative: `Tyler Reeves is a **17-year-old male varsity basketball player** here for a pre-participation sports physical. He has no chronic medical conditions and no prior hospitalizations.
+        narrative: `**No records from the brother's cardiac screening** — he was referred 2 years ago, but the results aren't in our system.
 
-However, his **family history is a major red flag**. His father died at age 42 of a "massive heart attack," and his paternal grandfather died suddenly in his 50s. His older brother was referred for cardiac screening 2 years ago, but the **results are not in Tyler's chart**.
+**Tyler has never had an ECG or echocardiogram.** His only recent visit was an ankle sprain.
 
-Two first- or second-degree relatives with premature cardiac death, plus a sibling with a known cardiac concern — this pattern strongly suggests an **inherited cardiomyopathy**, most likely hypertrophic cardiomyopathy (HCM). Tyler has never had an ECG or echocardiogram.`,
+The family pattern is textbook for **inherited cardiomyopathy**: father died suddenly at 42, paternal grandfather died suddenly in his 50s, and the brother had enough concern to warrant cardiac screening. Two first-degree relatives with premature cardiac death plus a sibling with a known cardiac concern — this strongly suggests **hypertrophic cardiomyopathy (HCM)**, which is autosomal dominant.
+
+Tyler needs cardiac workup before we can consider clearance.`,
         insights: [
           {
             type: "warning",
@@ -47,12 +49,8 @@ Two first- or second-degree relatives with premature cardiac death, plus a sibli
         ],
         followUps: [
           {
-            question: "What should I look for on exam?",
-            intent: "physical_exam_guidance",
-          },
-          {
-            question: "What screening does he need?",
-            intent: "diagnostic_workup",
+            question: "Can you reach the brother's cardiologist?",
+            intent: "records_request",
           },
         ],
       },
@@ -109,11 +107,7 @@ Taken together — a family history of two premature cardiac deaths, a sibling w
         ],
         followUps: [
           {
-            question: "What workup do I order?",
-            intent: "diagnostic_workup",
-          },
-          {
-            question: "Should I pull him from practice now?",
+            question: "Can he still do light exercise?",
             intent: "activity_restriction",
           },
         ],
@@ -128,7 +122,7 @@ Taken together — a family history of two premature cardiac deaths, a sibling w
 
 **Immediate diagnostic workup:**
 
-1. **12-lead ECG** — Abnormal in ~97% of HCM patients. Common findings: LVH voltage criteria, deep T-wave inversions (especially in lateral leads), pathological Q waves, ST-segment abnormalities. A normal ECG substantially lowers the probability but does not exclude HCM.
+1. **12-lead ECG** — Abnormal in 75–95% of HCM patients (sensitivity varies with disease severity). Common findings: LVH voltage criteria, deep T-wave inversions (especially in lateral leads), pathological Q waves, ST-segment abnormalities. A normal ECG lowers the probability but does not exclude HCM, particularly in younger patients with early disease.
 
 2. **Transthoracic echocardiogram (TTE)** — Gold standard for diagnosis. Looking for:
    - Asymmetric septal hypertrophy (≥15mm in adults, ≥z-score 2 in adolescents)
@@ -148,7 +142,7 @@ Taken together — a family history of two premature cardiac deaths, a sibling w
         reasoningDurationMs: 8100,
         narrative: `Here's the workup plan:
 
-**1. 12-lead ECG** — This is abnormal in approximately 97% of HCM patients. Look for left ventricular hypertrophy, deep T-wave inversions in lateral leads, pathological Q waves, and ST-segment changes. A normal ECG makes HCM less likely but does not rule it out.
+**1. 12-lead ECG** — This is abnormal in the majority of HCM patients (75–95% depending on disease severity). Look for left ventricular hypertrophy, deep T-wave inversions in lateral leads, pathological Q waves, and ST-segment changes. A normal ECG makes HCM less likely but does not rule it out — especially in younger patients with early disease.
 
 **2. Transthoracic echocardiogram** — The gold standard for diagnosis. This will assess for asymmetric septal hypertrophy, systolic anterior motion of the mitral valve, and LVOT obstruction at rest and with Valsalva provocation.
 
@@ -199,4 +193,40 @@ Taken together — a family history of two premature cardiac deaths, a sibling w
       },
     },
   ],
+
+  epilogue: {
+    completions: [
+      {
+        label: "Withhold sports clearance",
+        type: "human_queued",
+        result: "Call queued to athletic coordinator — requires personal outreach",
+      },
+      {
+        label: "Order 12-lead ECG",
+        type: "agent_task",
+        activeLabel: "Scheduling ECG...",
+        result: "12-lead ECG ordered — scheduled for today before patient leaves",
+      },
+      {
+        label: "Order transthoracic echocardiogram",
+        type: "agent_task",
+        activeLabel: "Coordinating with Pediatric Cardiology...",
+        result: "Echo ordered — Pediatric Cardiology slot confirmed Thursday 9 AM",
+      },
+      {
+        label: "Refer to pediatric cardiology",
+        type: "agent_task",
+        activeLabel: "Sending urgent referral...",
+        result: "Urgent referral sent to Dr. Martinez — flagged for family history of SCD",
+      },
+      {
+        label: "Request brother's cardiac records",
+        type: "agent_task",
+        activeLabel: "Requesting records...",
+        result: "Records request sent to University Cardiology with family consent",
+      },
+    ],
+    memory:
+      "Learned: your cardiac screening protocol for young athletes with family history of sudden death.",
+  },
 };

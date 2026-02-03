@@ -11,7 +11,7 @@ interface DemoHomeScreenProps {
 export function DemoHomeScreen({ inputText, submitted }: DemoHomeScreenProps) {
   return (
     <div
-      className={`flex flex-col items-center justify-center py-12 px-4 transition-all duration-700 ease-out ${
+      className={`flex flex-col items-center justify-center min-h-full py-12 px-4 transition-all duration-700 ease-out ${
         submitted ? "opacity-0 scale-[0.97]" : "opacity-100 scale-100"
       }`}
     >
@@ -19,8 +19,8 @@ export function DemoHomeScreen({ inputText, submitted }: DemoHomeScreenProps) {
       <div className="flex flex-col items-center mb-8">
         <div className="mb-4 h-24 w-24 rounded-full overflow-hidden">
           <Image
-            src="/brand/demo/demo-doctor-chen.png"
-            alt="Dr. Chen"
+            src="/brand/demo/demo-doctor-davis.png"
+            alt="Dr. Davis"
             width={384}
             height={384}
             className="h-full w-full object-cover"
@@ -30,7 +30,7 @@ export function DemoHomeScreen({ inputText, submitted }: DemoHomeScreenProps) {
         <div className="flex items-center gap-3">
           <Image src="/brand/mark-primary.svg" alt="" width={32} height={32} />
           <h2 className="text-2xl md:text-3xl font-light text-foreground">
-            Good morning, <span className="font-normal">Dr. Chen</span>
+            Good morning, <span className="font-normal">Dr. Davis</span>
           </h2>
         </div>
       </div>
@@ -43,9 +43,6 @@ export function DemoHomeScreen({ inputText, submitted }: DemoHomeScreenProps) {
               <span className="text-muted-foreground">
                 What can I help you with today?
               </span>
-            )}
-            {inputText && (
-              <span className="inline-block w-0.5 h-4 bg-foreground/60 align-text-bottom ml-0.5 animate-pulse" />
             )}
           </div>
         </div>

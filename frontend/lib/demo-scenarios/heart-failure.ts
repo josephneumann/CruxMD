@@ -18,18 +18,20 @@ export const heartFailureScenario: DemoScenario = {
   title: "Heart Failure",
   subtitle: "Silent Progression",
   patient: "Margaret Chen, 68F",
+  triageMessage:
+    "Margaret Chen, 68F — HTN, T2DM, obesity. On your schedule this afternoon. Her furosemide has been uptitrated twice in 4 months (20 → 30 → 40 mg). Escalating diuretic requirement may indicate worsening fluid retention.",
 
   interactions: [
     // ── Interaction 1 — "The Huddle" ──────────────────────────────────────
     {
       userMessage:
-        "Pre-visit huddle for Margaret Chen — she's on my schedule this afternoon. Flag anything I should dig into.",
+        "What's driving the diuretic escalation? Pull her recent trends.",
       agentResponse: {
         reasoningText:
-          "Pulling Margaret Chen's chart — active problem list, current medications, recent encounters, and trending labs. She's 68F with hypertension, type 2 diabetes, and obesity. I'm seeing four active medications: lisinopril 10 mg daily, metformin 1000 mg BID, atorvastatin 40 mg daily, and furosemide — which was added just 4 months ago and has already been uptitrated twice. That diuretic escalation pattern is notable. Let me flag the key items for the visit.",
+          "Checking medication history, weight trends, and labs. Furosemide was added 4 months ago and uptitrated twice. Let me pull her weight, NT-proBNP, and any relevant visit notes to understand the underlying pattern.",
         reasoningDurationMs: 6400,
         narrative:
-          "**Margaret Chen** is a **68-year-old woman** with hypertension, type 2 diabetes, and obesity.\n\n**Active medications** — lisinopril 10 mg daily, metformin 1000 mg BID, atorvastatin 40 mg daily, and furosemide 40 mg daily.\n\nOne thing stands out: **furosemide was started 4 months ago at 20 mg and has already been increased twice** — first to 30 mg, then to 40 mg. That kind of escalating diuretic requirement in a short window warrants closer evaluation of her volume status and cardiac function.",
+          "**Active medications** — lisinopril 10 mg daily, metformin 1000 mg BID, atorvastatin 40 mg daily, and furosemide 40 mg daily.\n\nThe furosemide escalation pattern is concerning: **started at 20 mg just 4 months ago and already at 40 mg**. That kind of rapid uptitration suggests progressive fluid retention that's outpacing her current regimen.\n\nHer most recent labs show **NT-proBNP at 219 pg/mL** — technically within normal range, but I want to look at the trend. She also had a visit note from October mentioning fatigue.",
         insights: [
           {
             type: "warning",
@@ -42,8 +44,7 @@ export const heartFailureScenario: DemoScenario = {
           },
         ],
         followUps: [
-          { question: "Pull her weight trend alongside the BNP", intent: "trend_analysis" },
-          { question: "Show me the BNP trajectory over the last 6 months", intent: "lab_trend" },
+          { question: "What's the latest echocardiogram?", intent: "imaging_review" },
         ],
       },
     },
@@ -82,10 +83,6 @@ export const heartFailureScenario: DemoScenario = {
         ],
         followUps: [
           {
-            question: "I'm thinking GDMT — walk me through initiation given her current regimen",
-            intent: "treatment_plan",
-          },
-          {
             question: "What's her full cardiac risk profile?",
             intent: "risk_assessment",
           },
@@ -98,10 +95,10 @@ export const heartFailureScenario: DemoScenario = {
       userMessage: "I'm thinking GDMT — walk me through initiation given her current regimen and the contraindication landscape.",
       agentResponse: {
         reasoningText:
-          "Reviewing Margaret's current regimen against heart failure GDMT recommendations. She's on lisinopril 10 mg — an ACE inhibitor, which is appropriate but under-dosed for HF (target 20-40 mg). She's not on a beta-blocker — needs one. She has T2DM and likely HFpEF or early HFrEF — SGLT2 inhibitors have robust evidence in both. Checking for contraindications: BP runs 130-140s systolic, HR 78 — room for beta-blocker. eGFR 62 — adequate for SGLT2i. No documented hyperkalemia. Need an echocardiogram to classify HF subtype and quantify EF before full optimization, but initial GDMT can and should start now.",
+          "Reviewing Margaret's current regimen against heart failure GDMT recommendations. She's on lisinopril 10 mg — an ACE inhibitor, which is appropriate but under-dosed for HF (target 20-40 mg). She's not on a beta-blocker — needs one. She has T2DM and suspected HF — per 2022 AHA/ACC/HFSA guidelines, SGLT2 inhibitors are now recommended regardless of ejection fraction (Class 2a for HFpEF, Class 1 for HFrEF), so we can start without waiting for echo results. Checking for contraindications: BP runs 130-140s systolic, HR 78 — room for beta-blocker. eGFR 62 — adequate for SGLT2i. No documented hyperkalemia. Need an echocardiogram to classify HF subtype and quantify EF before full optimization, but initial GDMT can and should start now.",
         reasoningDurationMs: 7800,
         narrative:
-          "Here's a guideline-directed plan to initiate today and refine after imaging:\n\n**1. Optimize ACE inhibitor** — Uptitrate lisinopril from 10 mg to 20 mg daily (target 20–40 mg for HF). Monitor potassium and creatinine in 1–2 weeks.\n\n**2. Start beta-blocker** — Initiate carvedilol 3.125 mg BID. Low starting dose with gradual uptitration. Her resting HR of 78 and systolic BP in the 130s provide a comfortable margin.\n\n**3. Consider SGLT2 inhibitor** — Empagliflozin 10 mg daily. Strong evidence for heart failure outcomes (EMPEROR-Preserved, DELIVER trials) *and* glycemic benefit given her T2DM — dual indication.\n\n**4. Order echocardiogram** — Essential to classify HF subtype (HFrEF vs HFpEF) and guide further optimization. If EF ≤ 40%, add mineralocorticoid receptor antagonist.\n\n**5. Close follow-up** — Schedule 2-week recheck with daily home weights. Instruct Margaret to call if weight increases > 2 lbs/day or > 5 lbs/week.",
+          "Here's a guideline-directed plan to initiate today and refine after imaging:\n\n**1. Optimize ACE inhibitor** — Uptitrate lisinopril from 10 mg to 20 mg daily (target 20–40 mg for HF). Monitor potassium and creatinine in 1–2 weeks.\n\n**2. Start beta-blocker** — Initiate carvedilol 3.125 mg BID. Low starting dose with gradual uptitration. Her resting HR of 78 and systolic BP in the 130s provide a comfortable margin.\n\n**3. Add SGLT2 inhibitor** — Empagliflozin 10 mg daily. Per 2022 AHA/ACC/HFSA guidelines, SGLT2 inhibitors are now recommended across the full spectrum of HF (both HFrEF and HFpEF) — no need to wait for echo results to start. Dual benefit: heart failure outcomes (EMPEROR-Preserved, DELIVER trials) *and* glycemic control for her T2DM.\n\n**4. Order echocardiogram** — Essential to classify HF subtype (HFrEF vs HFpEF) and guide further optimization. If EF ≤ 40%, add mineralocorticoid receptor antagonist.\n\n**5. Close follow-up** — Schedule 2-week recheck with daily home weights. Instruct Margaret to call if weight increases > 2 lbs/day or > 5 lbs/week.",
         insights: [
           {
             type: "positive",
@@ -124,11 +121,10 @@ export const heartFailureScenario: DemoScenario = {
           },
         ],
         actions: [
-          { label: "Order echocardiogram", type: "order", icon: "heart" },
           { label: "Prescribe carvedilol 3.125 mg BID", type: "order" },
           { label: "Uptitrate lisinopril to 20 mg", type: "order" },
           { label: "Refer to cardiology", type: "refer" },
-          { label: "Schedule 2-week follow-up", type: "document" },
+          { label: "Order echocardiogram", type: "order", icon: "heart" },
         ],
         followUps: [
           { question: "Draft the cardiology referral", intent: "generate_referral" },
@@ -142,10 +138,30 @@ export const heartFailureScenario: DemoScenario = {
   ],
 
   epilogue: {
-    actionLabel: "Order echocardiogram",
-    confirmation:
-      "Echocardiogram ordered for Margaret Chen. Your scheduling agent is texting with her now to confirm an appointment time.",
+    completions: [
+      {
+        label: "Prescribe carvedilol 3.125 mg BID",
+        type: "instant",
+        result: "Carvedilol 3.125 mg BID prescribed — sent to CVS Pharmacy",
+      },
+      {
+        label: "Uptitrate lisinopril to 20 mg",
+        type: "instant",
+        result: "Lisinopril uptitrated to 20 mg — patient notified via portal",
+      },
+      {
+        label: "Refer to cardiology",
+        type: "agent_task",
+        activeLabel: "Coordinating with cardiology...",
+        result: "Cardiology referral sent to Dr. Patel — urgent slot confirmed",
+      },
+      {
+        label: "Order echocardiogram",
+        type: "human_queued",
+        result: "Follow-up appointment and echocardiogram queued for discussion and scheduling during today's visit",
+      },
+    ],
     memory:
-      "Learned: your echocardiogram referral preferences for patients with suspected heart failure.",
+      "Learned: your diagnosis and treatment preferences for heart failure.",
   },
 };

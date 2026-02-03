@@ -1,12 +1,6 @@
 import Image from "next/image";
 import Link from "next/link";
-import {
-  Sparkles,
-  Zap,
-  Layers,
-  Github,
-  Palette,
-} from "lucide-react";
+import { Github, Palette } from "lucide-react";
 import { Button } from "@/components/ui/button";
 import { Card, CardContent } from "@/components/ui/card";
 import { Header } from "@/components/Header";
@@ -54,32 +48,19 @@ export default function Home() {
             </div>
 
             {/* Headline */}
-            <h1 className="text-3xl md:text-5xl font-medium text-foreground text-center max-w-3xl mb-6 leading-tight">
+            <h1 className="text-3xl md:text-5xl font-medium text-foreground text-center max-w-3xl mb-4 leading-tight">
               Human Presence<br />Machine Precision
             </h1>
+
+            {/* Subtitle */}
+            <p className="text-lg md:text-xl text-muted-foreground text-center mb-8">
+              A clinical thinking partner and autonomous care team for primary care
+            </p>
 
             {/* CTA */}
             <Button asChild size="lg">
               <Link href="/chat">Start Now</Link>
             </Button>
-          </div>
-        </section>
-
-        {/* Trust Bar */}
-        <section className="px-8 py-8 border-b border-border">
-          <div className="max-w-4xl mx-auto flex flex-col md:flex-row items-center justify-center gap-6 md:gap-12 text-sm text-muted-foreground">
-            <div className="flex items-center gap-2">
-              <Sparkles className="size-4" />
-              <span>SOTA clinical models</span>
-            </div>
-            <div className="flex items-center gap-2">
-              <Layers className="size-4" />
-              <span>Adapts to your preferences</span>
-            </div>
-            <div className="flex items-center gap-2">
-              <Zap className="size-4" />
-              <span>Integrates with your EHR</span>
-            </div>
           </div>
         </section>
 
