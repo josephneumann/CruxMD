@@ -32,7 +32,6 @@ export interface DemoScenario {
 
 export { heartFailureScenario } from "./demo-scenarios/heart-failure";
 
-// Future scenarios:
-// export { qtProlongationScenario } from "./demo-scenarios/qt-prolongation";
-// export { hcmScenario } from "./demo-scenarios/hcm";
-// export { hypoglycemiaScenario } from "./demo-scenarios/hypoglycemia";
+export { qtProlongationScenario } from "./demo-scenarios/qt-prolongation";
+export { hcmScenario } from "./demo-scenarios/hcm";
+export { hypoglycemiaScenario } from "./demo-scenarios/hypoglycemia";
