@@ -16,7 +16,7 @@ export default function Home() {
         <section className="relative flex flex-col items-center justify-center px-8 py-20 md:py-28 overflow-hidden">
           {/* Background image */}
           <Image
-            src="/brand/forest-background-watercolor.png"
+            src="/brand/backgrounds/forest-watercolor.png"
             alt=""
             fill
             className="object-cover object-center"
@@ -30,7 +30,7 @@ export default function Home() {
             {/* X Mark */}
             <div className="mb-8">
               <Image
-                src="/brand/mark-primary.svg"
+                src="/brand/logos/mark-primary.svg"
                 alt=""
                 width={80}
                 height={80}
@@ -38,7 +38,7 @@ export default function Home() {
                 className="dark:hidden"
               />
               <Image
-                src="/brand/mark-reversed.svg"
+                src="/brand/logos/mark-reversed.svg"
                 alt=""
                 width={80}
                 height={80}
@@ -100,7 +100,7 @@ export default function Home() {
         {/* Testimonials */}
         <section className="relative px-8 py-16 md:py-24 overflow-hidden">
           <Image
-            src="/brand/forest-background-watercolor-2.png"
+            src="/brand/backgrounds/forest-watercolor-2.png"
             alt=""
             fill
             className="object-cover object-center"
@@ -113,7 +113,7 @@ export default function Home() {
             <div className="max-w-4xl mx-auto grid grid-cols-1 md:grid-cols-2 gap-12">
             <div className="flex flex-col items-center">
               <Image
-                src="/brand/doctor-watercolor-portrait-1.png"
+                src="/brand/portraits/doctor-wilcox.png"
                 alt="Dr. Brian Wilcox"
                 width={200}
                 height={200}
@@ -134,7 +134,7 @@ export default function Home() {
             </div>
             <div className="flex flex-col items-center">
               <Image
-                src="/brand/doctor-watercolor-portrait-2.png"
+                src="/brand/portraits/doctor-patel.png"
                 alt="Dr. Priya Patel"
                 width={200}
                 height={200}
@@ -177,14 +177,14 @@ export default function Home() {
       <footer className="border-t border-border px-8 py-6">
         <div className="max-w-6xl mx-auto flex flex-col md:flex-row justify-between items-center gap-4">
           <Image
-            src="/brand/wordmark-primary.svg"
+            src="/brand/logos/wordmark-primary.svg"
             alt="CruxMD"
             width={100}
             height={24}
             className="dark:hidden"
           />
           <Image
-            src="/brand/wordmark-reversed.svg"
+            src="/brand/logos/wordmark-reversed.svg"
             alt="CruxMD"
             width={100}
             height={24}

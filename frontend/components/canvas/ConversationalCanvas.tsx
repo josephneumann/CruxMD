@@ -32,11 +32,11 @@ export function ConversationalCanvas({ patient, initialMessage }: Conversational
 
   // Load both Lottie animations
   useEffect(() => {
-    fetch("/brand/crux-spin.json")
+    fetch("/brand/animations/crux-spin.json")
       .then((res) => res.json())
       .then(setLottieLight)
       .catch((err) => console.error("Failed to load animation:", err));
-    fetch("/brand/crux-spin-reversed.json")
+    fetch("/brand/animations/crux-spin-reversed.json")
       .then((res) => res.json())
       .then(setLottieDark)
       .catch((err) => console.error("Failed to load reversed animation:", err));

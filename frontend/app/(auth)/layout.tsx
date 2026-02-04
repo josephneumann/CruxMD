@@ -12,7 +12,7 @@ export default function AuthLayout({
         <div className="relative overflow-hidden rounded-xl border shadow-sm">
           {/* Forest background */}
           <Image
-            src="/brand/forest-background-login-watercolor.png"
+            src="/brand/backgrounds/forest-login.png"
             alt=""
             fill
             className="object-cover object-center"
@@ -25,7 +25,7 @@ export default function AuthLayout({
             <div className="flex justify-center pt-6">
               <Link href="/">
                 <Image
-                  src="/brand/mark-primary.svg"
+                  src="/brand/logos/mark-primary.svg"
                   alt="CruxMD"
                   width={48}
                   height={48}

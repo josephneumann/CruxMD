@@ -8,7 +8,7 @@ export function Header() {
     <header className="flex items-center justify-between px-6 py-3 border-b border-border">
       <Link href="/">
         <Image
-          src="/brand/wordmark-primary.svg"
+          src="/brand/logos/wordmark-primary.svg"
           alt="CruxMD"
           width={120}
           height={28}
@@ -16,7 +16,7 @@ export function Header() {
           className="dark:hidden"
         />
         <Image
-          src="/brand/wordmark-reversed.svg"
+          src="/brand/logos/wordmark-reversed.svg"
           alt="CruxMD"
           width={120}
           height={28}

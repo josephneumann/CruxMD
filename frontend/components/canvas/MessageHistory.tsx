@@ -25,7 +25,7 @@ export function MessageHistory({
 }: MessageHistoryProps) {
   const bottomRef = useRef<HTMLDivElement>(null);
   const { resolvedTheme } = useTheme();
-  const markSrc = resolvedTheme === "dark" ? "/brand/mark-reversed.svg" : "/brand/mark-primary.svg";
+  const markSrc = resolvedTheme === "dark" ? "/brand/logos/mark-reversed.svg" : "/brand/logos/mark-primary.svg";
 
   const containerRef = useRef<HTMLDivElement>(null);
 

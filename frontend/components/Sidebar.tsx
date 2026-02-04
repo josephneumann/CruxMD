@@ -77,8 +77,8 @@ export function Sidebar({ className }: SidebarProps) {
   const closeMobile = useCallback(() => setMobileOpen(false), []);
 
   const wordmarkSrc = mounted && resolvedTheme === "dark"
-    ? "/brand/wordmark-reversed.png"
-    : "/brand/wordmark-primary.png";
+    ? "/brand/logos/wordmark-reversed.png"
+    : "/brand/logos/wordmark-primary.png";
 
   const sidebarContent = (
     <>
@@ -173,7 +173,7 @@ export function Sidebar({ className }: SidebarProps) {
               <span className="relative flex items-center justify-center h-5 w-5 shrink-0">
                 {mounted && (
                   <Image
-                    src={resolvedTheme === "dark" ? "/brand/mark-reversed.svg" : "/brand/mark-primary.svg"}
+                    src={resolvedTheme === "dark" ? "/brand/logos/mark-reversed.svg" : "/brand/logos/mark-primary.svg"}
                     alt="CruxMD"
                     width={20}
                     height={20}

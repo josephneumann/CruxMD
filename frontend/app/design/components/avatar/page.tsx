@@ -87,7 +87,7 @@ export default function AvatarPage() {
           <div className="flex flex-col items-center">
             <div className="h-40 w-40 rounded-full overflow-hidden mb-4">
               <Image
-                src="/brand/doctor-watercolor-portrait-1.png"
+                src="/brand/portraits/doctor-wilcox.png"
                 alt="Dr. Brian Wilcox"
                 width={300}
                 height={300}
@@ -100,7 +100,7 @@ export default function AvatarPage() {
           <div className="flex flex-col items-center">
             <div className="h-40 w-40 rounded-full overflow-hidden mb-4">
               <Image
-                src="/brand/doctor-watercolor-portrait-2.png"
+                src="/brand/portraits/doctor-patel.png"
                 alt="Dr. Priya Patel"
                 width={300}
                 height={300}

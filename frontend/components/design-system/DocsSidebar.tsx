@@ -49,7 +49,7 @@ export function DocsSidebar() {
       <div className="flex items-center justify-between px-4 py-3 h-14">
         <Link href="/" className="flex items-center" onClick={closeMobile}>
           <Image
-            src="/brand/wordmark-primary.svg"
+            src="/brand/logos/wordmark-primary.svg"
             alt="CruxMD"
             width={120}
             height={28}
@@ -57,7 +57,7 @@ export function DocsSidebar() {
             priority
           />
           <Image
-            src="/brand/wordmark-reversed.svg"
+            src="/brand/logos/wordmark-reversed.svg"
             alt="CruxMD"
             width={120}
             height={28}

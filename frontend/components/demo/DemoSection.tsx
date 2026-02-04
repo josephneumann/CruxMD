@@ -14,10 +14,10 @@ import {
 } from "@/lib/demo-scenarios";
 
 const SCENARIO_TABS = [
-  { id: "heart-failure", label: "Heart Failure", scenario: heartFailureScenario, avatar: "/brand/demo/avatar-margaret-chen.png" },
-  { id: "qt-prolongation", label: "QT Prolongation", scenario: qtProlongationScenario, avatar: "/brand/demo/avatar-dorothy-williams.png" },
-  { id: "hcm", label: "Young Athlete", scenario: hcmScenario, avatar: "/brand/demo/avatar-tyler-reeves.png" },
-  { id: "hypoglycemia", label: "Hypoglycemia", scenario: hypoglycemiaScenario, avatar: "/brand/demo/avatar-robert-garcia.png" },
+  { id: "heart-failure", label: "Heart Failure", scenario: heartFailureScenario, avatar: "/brand/demo/patient-margaret-chen.png" },
+  { id: "qt-prolongation", label: "QT Prolongation", scenario: qtProlongationScenario, avatar: "/brand/demo/patient-dorothy-williams.png" },
+  { id: "hcm", label: "Young Athlete", scenario: hcmScenario, avatar: "/brand/demo/patient-tyler-reeves.png" },
+  { id: "hypoglycemia", label: "Hypoglycemia", scenario: hypoglycemiaScenario, avatar: "/brand/demo/patient-robert-garcia.png" },
 ];
 
 export function DemoSection() {

@@ -218,7 +218,7 @@ const EPILOGUE_COMPLETIONS: CompletionItem[] = [
 
 export default function ChatDesignPage() {
   const { resolvedTheme } = useTheme();
-  const markSrc = resolvedTheme === "dark" ? "/brand/mark-reversed.svg" : "/brand/mark-primary.svg";
+  const markSrc = resolvedTheme === "dark" ? "/brand/logos/mark-reversed.svg" : "/brand/logos/mark-primary.svg";
 
   // ChatInput demo state
   const [inputValue, setInputValue] = useState("");
@@ -265,7 +265,7 @@ export default function ChatDesignPage() {
             <div className="flex items-center gap-3 mb-6 pb-4 border-b border-border/50">
               <div className="h-10 w-10 rounded-full overflow-hidden ring-1 ring-border/30">
                 <Image
-                  src="/brand/demo/avatar-margaret-chen.png"
+                  src="/brand/demo/patient-margaret-chen.png"
                   alt="Margaret Chen"
                   width={80}
                   height={80}

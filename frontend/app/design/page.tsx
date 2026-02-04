@@ -53,7 +53,7 @@ export default function DesignOverviewPage() {
       {/* Hero banner — breaks out of parent max-w container */}
       <div className="relative -mx-8 -mt-12 mb-12 flex flex-col items-center justify-center overflow-hidden py-24 md:py-32">
         <NextImage
-          src="/brand/watercolor-pallette.png"
+          src="/brand/reference/watercolor-palette.png"
           alt=""
           fill
           className="object-cover object-center"

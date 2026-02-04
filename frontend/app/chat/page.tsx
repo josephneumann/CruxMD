@@ -74,7 +74,7 @@ export default function ChatPage() {
             </div>
             <div className="flex items-center gap-3">
               <Image
-                src="/brand/mark-primary.svg"
+                src="/brand/logos/mark-primary.svg"
                 alt=""
                 width={40}
                 height={40}

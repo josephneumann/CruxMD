@@ -78,7 +78,7 @@ export default function AssetsPage() {
   const { copied, copy } = useCopyToClipboard();
 
   useEffect(() => {
-    fetch("/brand/crux-spin.json")
+    fetch("/brand/animations/crux-spin.json")
       .then((res) => res.json())
       .then((data) => setLottieData(data));
   }, []);
@@ -100,25 +100,25 @@ export default function AssetsPage() {
       >
         <AssetCard
           name="Primary Wordmark"
-          src="/brand/wordmark-primary.svg"
+          src="/brand/logos/wordmark-primary.svg"
           description="Use on light backgrounds"
           bgClass="bg-white"
         />
         <AssetCard
           name="Reversed Wordmark"
-          src="/brand/wordmark-reversed.svg"
+          src="/brand/logos/wordmark-reversed.svg"
           description="Use on dark backgrounds"
           bgClass="bg-slate-900"
         />
         <AssetCard
           name="Mono Dark Wordmark"
-          src="/brand/wordmark-mono-dark.svg"
+          src="/brand/logos/wordmark-mono-dark.svg"
           description="Single color, dark variant"
           bgClass="bg-white"
         />
         <AssetCard
           name="Mono Light Wordmark"
-          src="/brand/wordmark-mono-light.svg"
+          src="/brand/logos/wordmark-mono-light.svg"
           description="Single color, light variant"
           bgClass="bg-slate-900"
         />
@@ -131,7 +131,7 @@ export default function AssetsPage() {
       >
         <AssetCard
           name="Primary Mark"
-          src="/brand/mark-primary.svg"
+          src="/brand/logos/mark-primary.svg"
           description="Use on light backgrounds"
           bgClass="bg-white"
           width={48}
@@ -139,7 +139,7 @@ export default function AssetsPage() {
         />
         <AssetCard
           name="Reversed Mark"
-          src="/brand/mark-reversed.svg"
+          src="/brand/logos/mark-reversed.svg"
           description="Use on dark backgrounds"
           bgClass="bg-slate-900"
           width={48}
@@ -147,7 +147,7 @@ export default function AssetsPage() {
         />
         <AssetCard
           name="Mono Dark Mark"
-          src="/brand/mark-mono-dark.svg"
+          src="/brand/logos/mark-mono-dark.svg"
           description="Single color, dark variant"
           bgClass="bg-white"
           width={48}
@@ -155,7 +155,7 @@ export default function AssetsPage() {
         />
         <AssetCard
           name="Mono Light Mark"
-          src="/brand/mark-mono-light.svg"
+          src="/brand/logos/mark-mono-light.svg"
           description="Single color, light variant"
           bgClass="bg-slate-900"
           width={48}
@@ -221,9 +221,9 @@ export default function AssetsPage() {
           <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
             <div className="space-y-2">
               <div className="flex items-center justify-between">
-                <code className="text-sm font-mono bg-muted px-2 py-1 rounded">/brand/crux-spin.json</code>
+                <code className="text-sm font-mono bg-muted px-2 py-1 rounded">/brand/animations/crux-spin.json</code>
                 <button
-                  onClick={() => copy("/brand/crux-spin.json")}
+                  onClick={() => copy("/brand/animations/crux-spin.json")}
                   className="p-1.5 rounded hover:bg-muted transition-colors"
                   title="Copy path"
                 >
@@ -240,9 +240,9 @@ export default function AssetsPage() {
             </div>
             <div className="space-y-2">
               <div className="flex items-center justify-between">
-                <code className="text-sm font-mono bg-muted px-2 py-1 rounded">/brand/crux-spin.lottie</code>
+                <code className="text-sm font-mono bg-muted px-2 py-1 rounded">/brand/animations/crux-spin.lottie</code>
                 <button
-                  onClick={() => copy("/brand/crux-spin.lottie")}
+                  onClick={() => copy("/brand/animations/crux-spin.lottie")}
                   className="p-1.5 rounded hover:bg-muted transition-colors"
                   title="Copy path"
                 >
@@ -272,7 +272,7 @@ function SpinningLogo() {
   const [lottieData, setLottieData] = useState<object | null>(null);
 
   useEffect(() => {
-    fetch("/brand/crux-spin.json")
+    fetch("/brand/animations/crux-spin.json")
       .then((res) => res.json())
       .then((data) => setLottieData(data));
   }, []);
@@ -402,8 +402,8 @@ function Logo() {
   const { resolvedTheme } = useTheme()
 
   const src = resolvedTheme === "dark"
-    ? "/brand/wordmark-reversed.svg"
-    : "/brand/wordmark-primary.svg"
+    ? "/brand/logos/wordmark-reversed.svg"
+    : "/brand/logos/wordmark-primary.svg"
 
   return (
     <Image

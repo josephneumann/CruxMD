@@ -160,7 +160,7 @@ export default function BrandPage() {
       <div className="space-y-6">
         <div className="relative -mx-8 overflow-hidden rounded-none py-16 md:py-20 flex flex-col items-center justify-center">
           <NextImage
-            src="/brand/office-background.png"
+            src="/brand/backgrounds/office.png"
             alt=""
             fill
             className="object-cover object-center"

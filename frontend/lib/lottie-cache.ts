@@ -36,8 +36,8 @@ export async function loadLottieData(): Promise<void> {
 
   try {
     const [lightRes, darkRes] = await Promise.all([
-      fetch("/brand/crux-spin.json"),
-      fetch("/brand/crux-spin-reversed.json"),
+      fetch("/brand/animations/crux-spin.json"),
+      fetch("/brand/animations/crux-spin-reversed.json"),
     ]);
 
     const [light, dark] = await Promise.all([

@@ -19,7 +19,7 @@ export function DemoHomeScreen({ inputText, submitted }: DemoHomeScreenProps) {
       <div className="flex flex-col items-center mb-8">
         <div className="mb-4 h-24 w-24 rounded-full overflow-hidden">
           <Image
-            src="/brand/demo/demo-doctor-davis.png"
+            src="/brand/portraits/doctor-davis.png"
             alt="Dr. Davis"
             width={384}
             height={384}
@@ -28,7 +28,7 @@ export function DemoHomeScreen({ inputText, submitted }: DemoHomeScreenProps) {
           />
         </div>
         <div className="flex items-center gap-3">
-          <Image src="/brand/mark-primary.svg" alt="" width={32} height={32} />
+          <Image src="/brand/logos/mark-primary.svg" alt="" width={32} height={32} />
           <h2 className="text-2xl md:text-3xl font-light text-foreground">
             Good morning, <span className="font-normal">Dr. Davis</span>
           </h2>
