@@ -60,11 +60,7 @@ out/
 .claude/*.local.md
 
 # Session summaries from parallel agent workflow
-session_summaries/*
-!session_summaries/.gitkeep
+docs/session_summaries/
 
 # Pending handoffs for automated worker dispatch
-pending_handoffs/*
-!pending_handoffs/.gitkeep
-session_summaries/
-pending_handoffs/
+docs/pending_handoffs/

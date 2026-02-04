@@ -174,6 +174,33 @@ async def update_session(
     return SessionResponse.model_validate(session)
 
 
+@router.delete("/{session_id}", status_code=status.HTTP_204_NO_CONTENT)
+async def delete_session(
+    session_id: uuid.UUID,
+    db: AsyncSession = Depends(get_db),
+    _user_id: str = Depends(verify_bearer_token),
+) -> None:
+    """Delete a session.
+
+    Args:
+        session_id: The session UUID.
+
+    Raises:
+        HTTPException: 404 if session not found.
+    """
+    result = await db.execute(select(Session).where(Session.id == session_id))
+    session = result.scalar_one_or_none()
+
+    if session is None:
+        raise HTTPException(
+            status_code=status.HTTP_404_NOT_FOUND,
+            detail="Session not found",
+        )
+
+    await db.delete(session)
+    await db.flush()
+
+
 @router.post("/{session_id}/handoff", response_model=SessionResponse, status_code=status.HTTP_201_CREATED)
 async def create_handoff(
     session_id: uuid.UUID,
@@ -206,8 +233,9 @@ async def create_handoff(
             detail="Parent session not found",
         )
 
-    # Pause the parent
-    parent.status = SessionStatusModel.PAUSED
+    # Mark parent as completed (handoff means this session is done)
+    parent.status = SessionStatusModel.COMPLETED
+    parent.completed_at = datetime.now(timezone.utc)
 
     # Create child session
     child = Session(

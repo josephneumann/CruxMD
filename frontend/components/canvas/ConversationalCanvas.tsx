@@ -18,12 +18,13 @@ import type { PatientListItem } from "@/lib/types";
 
 interface ConversationalCanvasProps {
   patient: PatientListItem | null;
+  sessionId?: string;
   initialMessage?: string;
 }
 
-export function ConversationalCanvas({ patient, initialMessage }: ConversationalCanvasProps) {
+export function ConversationalCanvas({ patient, sessionId, initialMessage }: ConversationalCanvasProps) {
   const patientId = patient?.id ?? null;
-  const { messages, sendMessage, isLoading, error, clearError, retry, model, setModel, reasoningEffort, setReasoningEffort } = useChat(patientId);
+  const { messages, sendMessage, isLoading, error, clearError, retry, model, setModel, reasoningEffort, setReasoningEffort } = useChat(patientId, sessionId);
   const [inputValue, setInputValue] = useState("");
   const [lottieLight, setLottieLight] = useState<object | null>(null);
   const [lottieDark, setLottieDark] = useState<object | null>(null);

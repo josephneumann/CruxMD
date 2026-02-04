@@ -22,7 +22,6 @@ class SessionStatus(str, enum.Enum):
     """Session lifecycle states."""
 
     ACTIVE = "active"
-    PAUSED = "paused"
     COMPLETED = "completed"
 
 
@@ -43,7 +42,12 @@ class Session(Base):
 
     # === Classification ===
     status: Mapped[SessionStatus] = mapped_column(
-        Enum(SessionStatus, name="session_status", create_constraint=True),
+        Enum(
+            SessionStatus,
+            name="session_status",
+            create_constraint=True,
+            values_callable=lambda x: [e.value for e in x],
+        ),
         nullable=False,
         default=SessionStatus.ACTIVE,
         index=True,
@@ -65,6 +69,11 @@ class Session(Base):
     )
 
     # === Content ===
+    name: Mapped[str | None] = mapped_column(
+        Text,
+        nullable=True,
+        comment="User-editable session name",
+    )
     summary: Mapped[str | None] = mapped_column(
         Text,
         nullable=True,

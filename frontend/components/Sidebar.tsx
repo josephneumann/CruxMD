@@ -10,7 +10,7 @@ import {
   PanelLeft,
   Search,
   Users,
-  PauseCircle,
+  Folders,
   ChevronUp,
   Sun,
   Moon,
@@ -30,7 +30,7 @@ interface SidebarProps {
 const NAV_ITEMS = [
   { icon: Search, label: "Search", href: "#" },
   { icon: Users, label: "Patients", href: "/patients" },
-  { icon: PauseCircle, label: "Sessions", href: "/sessions" },
+  { icon: Folders, label: "Sessions", href: "/sessions" },
 ];
 
 export function Sidebar({ className }: SidebarProps) {

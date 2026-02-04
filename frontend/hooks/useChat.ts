@@ -249,9 +249,10 @@ function parseSSEChunk(
  *
  * @param patientId - The patient ID to chat about. When this changes,
  *                    the conversation is reset.
+ * @param sessionId - Optional session ID to persist messages to.
  * @returns Chat state and controls
  */
-export function useChat(patientId: string | null): UseChatReturn {
+export function useChat(patientId: string | null, sessionId?: string): UseChatReturn {
   const [messages, setMessages] = useState<DisplayMessage[]>([]);
   const [isLoading, setIsLoading] = useState(false);
   const [error, setError] = useState<ChatError | null>(null);
@@ -266,6 +267,15 @@ export function useChat(patientId: string | null): UseChatReturn {
 
   // Track previous patientId to detect changes
   const previousPatientIdRef = useRef<string | null>(null);
+
+  // Track previous sessionId to detect changes
+  const previousSessionIdRef = useRef<string | undefined>(undefined);
+
+  // Track if session has been initialized
+  const sessionInitializedRef = useRef(false);
+
+  // Track the actual database session ID (may differ from URL sessionId)
+  const dbSessionIdRef = useRef<string | null>(null);
 
   // AbortController for cancelling in-flight streams
   const abortControllerRef = useRef<AbortController | null>(null);
@@ -284,6 +294,58 @@ export function useChat(patientId: string | null): UseChatReturn {
     };
   }, []);
 
+  // Initialize or load session
+  useEffect(() => {
+    if (!sessionId || !patientId) return;
+    if (sessionInitializedRef.current && previousSessionIdRef.current === sessionId) return;
+
+    sessionInitializedRef.current = false;
+    previousSessionIdRef.current = sessionId;
+
+    // Try to load existing session or create new one
+    const initSession = async () => {
+      try {
+        // First, try to get existing session
+        const getRes = await fetch(`/api/sessions/${sessionId}`);
+
+        if (getRes.ok) {
+          // Session exists, load its messages
+          const session = await getRes.json();
+          dbSessionIdRef.current = session.id;
+          if (session.messages && session.messages.length > 0) {
+            const loadedMessages: DisplayMessage[] = session.messages.map((msg: ChatMessage, idx: number) => ({
+              id: `loaded_${idx}_${Date.now()}`,
+              role: msg.role,
+              content: msg.content,
+              timestamp: new Date(),
+              pending: false,
+            }));
+            setMessages(loadedMessages);
+          }
+          sessionInitializedRef.current = true;
+        } else if (getRes.status === 404) {
+          // Session doesn't exist, create it
+          const createRes = await fetch("/api/sessions", {
+            method: "POST",
+            headers: { "Content-Type": "application/json" },
+            body: JSON.stringify({ patient_id: patientId }),
+          });
+          if (createRes.ok) {
+            const newSession = await createRes.json();
+            dbSessionIdRef.current = newSession.id;
+          } else {
+            console.error("Failed to create session:", await createRes.text());
+          }
+          sessionInitializedRef.current = true;
+        }
+      } catch (err) {
+        console.error("Failed to initialize session:", err);
+      }
+    };
+
+    initSession();
+  }, [sessionId, patientId]);
+
   // Reset conversation when patient changes
   useEffect(() => {
     if (previousPatientIdRef.current !== patientId) {
@@ -295,6 +357,8 @@ export function useChat(patientId: string | null): UseChatReturn {
       abortControllerRef.current?.abort();
       abortControllerRef.current = null;
       previousPatientIdRef.current = patientId;
+      sessionInitializedRef.current = false;
+      dbSessionIdRef.current = null;
     }
   }, [patientId]);
 
@@ -323,6 +387,28 @@ export function useChat(patientId: string | null): UseChatReturn {
           : msg
       )
     );
+  }, []);
+
+  /**
+   * Persist current messages to the session.
+   */
+  const persistMessages = useCallback(async (currentMessages: DisplayMessage[]) => {
+    const actualSessionId = dbSessionIdRef.current;
+    if (!actualSessionId) return;
+
+    const chatMessages: ChatMessage[] = currentMessages
+      .filter((msg) => !msg.pending && msg.content)
+      .map((msg) => ({ role: msg.role, content: msg.content }));
+
+    try {
+      await fetch(`/api/sessions/${actualSessionId}`, {
+        method: "PATCH",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({ messages: chatMessages }),
+      });
+    } catch (err) {
+      console.error("Failed to persist messages to session:", err);
+    }
   }, []);
 
   /**
@@ -526,6 +612,7 @@ export function useChat(patientId: string | null): UseChatReturn {
           patient_id: patientId,
           message: content.trim(),
           conversation_id: conversationIdRef.current ?? undefined,
+          session_id: dbSessionIdRef.current ?? undefined,
           conversation_history:
             conversationHistory.length > 0 ? conversationHistory : undefined,
           model,
@@ -599,7 +686,7 @@ export function useChat(patientId: string | null): UseChatReturn {
         setIsLoading(false);
       }
     },
-    [patientId, model, reasoningEffort, sendStreaming, sendNonStreaming]
+    [patientId, sessionId, model, reasoningEffort, sendStreaming, sendNonStreaming]
   );
 
   const retry = useCallback(async (): Promise<void> => {
@@ -607,6 +694,20 @@ export function useChat(patientId: string | null): UseChatReturn {
       await sendMessage(lastFailedMessageRef.current);
     }
   }, [sendMessage]);
+
+  // Persist messages to session when conversation updates
+  // persistMessages already filters out pending messages, so this saves:
+  // 1. User message immediately after sending
+  // 2. Full conversation after assistant response completes
+  useEffect(() => {
+    if (!dbSessionIdRef.current || messages.length === 0) return;
+
+    // Count non-pending messages to avoid unnecessary saves during streaming
+    const completedCount = messages.filter((m) => !m.pending).length;
+    if (completedCount === 0) return;
+
+    persistMessages(messages);
+  }, [messages, persistMessages]);
 
   return {
     messages,

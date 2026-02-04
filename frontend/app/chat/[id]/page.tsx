@@ -53,6 +53,7 @@ export default function ChatSessionPage() {
 
         <ConversationalCanvas
           patient={selectedPatient}
+          sessionId={sessionId}
           initialMessage={initialMessage}
         />
       </main>

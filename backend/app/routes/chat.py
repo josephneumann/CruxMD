@@ -4,6 +4,7 @@ import json
 import logging
 import uuid
 from dataclasses import dataclass
+from datetime import datetime, timezone
 from typing import Literal
 
 from fastapi import APIRouter, Depends, HTTPException, status
@@ -15,6 +16,7 @@ from sqlalchemy.ext.asyncio import AsyncSession
 from app.auth import verify_bearer_token
 from app.database import get_db
 from app.models import FhirResource
+from app.models.session import Session
 from app.schemas import AgentResponse
 from app.schemas.context import PatientContext
 from app.services.agent import AgentService
@@ -78,6 +80,10 @@ class ChatRequest(BaseModel):
     conversation_id: uuid.UUID | None = Field(
         default=None,
         description="Optional conversation ID. Generated if not provided.",
+    )
+    session_id: uuid.UUID | None = Field(
+        default=None,
+        description="Optional session ID. If provided, messages will be persisted to this session.",
     )
     conversation_history: list[ChatMessage] | None = Field(
         default=None,
@@ -195,6 +201,46 @@ async def _prepare_chat_context(
     )
 
 
+async def _persist_messages(
+    db: AsyncSession,
+    session_id: uuid.UUID,
+    user_message: str,
+    assistant_content: str,
+) -> None:
+    """Persist user and assistant messages to a session.
+
+    This enables fire-and-forget message persistence: the backend saves
+    messages regardless of whether the client is still connected.
+
+    Args:
+        db: Database session.
+        session_id: Session UUID to update.
+        user_message: The user's message content.
+        assistant_content: The assistant's response content.
+    """
+    try:
+        result = await db.execute(select(Session).where(Session.id == session_id))
+        session = result.scalar_one_or_none()
+
+        if session is None:
+            logger.warning("Session %s not found for message persistence", session_id)
+            return
+
+        # Append new messages to the existing array
+        messages = list(session.messages)
+        messages.append({"role": "user", "content": user_message})
+        messages.append({"role": "assistant", "content": assistant_content})
+
+        session.messages = messages
+        session.last_active_at = datetime.now(timezone.utc)
+        await db.flush()
+
+        logger.debug("Persisted messages to session %s", session_id)
+    except Exception:
+        logger.exception("Failed to persist messages to session %s", session_id)
+        # Don't raise - message persistence failure shouldn't break the chat
+
+
 @router.post("", response_model=ChatResponse)
 async def chat(
     request: ChatRequest,
@@ -231,6 +277,15 @@ async def chat(
             graph=chat_ctx.graph,
             db=db,
         )
+
+        # Persist messages to session if session_id provided
+        if request.session_id:
+            await _persist_messages(
+                db=db,
+                session_id=request.session_id,
+                user_message=request.message,
+                assistant_content=agent_response.narrative,
+            )
 
         return ChatResponse(
             conversation_id=chat_ctx.conversation_id,
@@ -297,6 +352,20 @@ async def chat_stream(
                 db=db,
             ):
                 if event_type == "done":
+                    # Persist messages before yielding (fire-and-forget)
+                    # This ensures messages are saved even if client disconnects after
+                    if request.session_id:
+                        try:
+                            response_data = json.loads(data_json)
+                            await _persist_messages(
+                                db=db,
+                                session_id=request.session_id,
+                                user_message=request.message,
+                                assistant_content=response_data.get("narrative", ""),
+                            )
+                        except json.JSONDecodeError:
+                            logger.warning("Failed to parse done event for persistence")
+
                     # Wrap with conversation_id — data_json is already valid JSON
                     done_payload = f'{{"conversation_id":"{chat_ctx.conversation_id}","response":{data_json}}}'
                     yield f"event: done\ndata: {done_payload}\n\n"

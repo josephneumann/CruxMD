@@ -19,7 +19,6 @@ class SessionStatus(str, Enum):
     """Session lifecycle states."""
 
     ACTIVE = "active"
-    PAUSED = "paused"
     COMPLETED = "completed"
 
 
@@ -31,6 +30,7 @@ class SessionCreate(BaseModel):
 
     patient_id: UUID = Field(description="FHIR Patient resource ID (required)")
     parent_session_id: UUID | None = None
+    name: str | None = Field(default=None, max_length=500)
     summary: str | None = Field(default=None, max_length=10000)
 
 
@@ -38,6 +38,7 @@ class SessionUpdate(BaseModel):
     """Schema for updating a session."""
 
     status: SessionStatus | None = None
+    name: str | None = Field(default=None, max_length=500)
     summary: str | None = Field(default=None, max_length=10000)
     messages: list[dict[str, Any]] | None = Field(default=None, max_length=1000)
 
@@ -68,6 +69,7 @@ class SessionResponse(BaseModel):
     status: SessionStatus
     patient_id: UUID = Field(description="FHIR Patient resource ID")
     parent_session_id: UUID | None = Field(description="Parent session for handoff chain")
+    name: str | None = Field(description="User-editable session name")
     summary: str | None = Field(description="Session summary for handoff context")
     messages: list[dict[str, Any]] = Field(description="Conversation messages array")
     started_at: datetime

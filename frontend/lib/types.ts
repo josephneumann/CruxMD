@@ -47,6 +47,7 @@ export interface ChatRequest {
   patient_id: string;
   message: string;
   conversation_id?: string;
+  session_id?: string;
   conversation_history?: ChatMessage[];
   model?: string;
   reasoning_effort?: ReasoningEffort;
@@ -392,7 +393,7 @@ export function parsePatientList(data: unknown): PatientListItem[] {
 // =============================================================================
 
 /** Session status values */
-export const SESSION_STATUSES = ["active", "paused", "completed"] as const;
+export const SESSION_STATUSES = ["active", "completed"] as const;
 export type SessionStatus = (typeof SESSION_STATUSES)[number];
 
 /** Message stored in a session */
@@ -407,6 +408,7 @@ export interface SessionResponse {
   status: SessionStatus;
   patient_id: string;
   parent_session_id: string | null;
+  name: string | null;
   summary: string | null;
   messages: SessionMessage[];
   started_at: string;

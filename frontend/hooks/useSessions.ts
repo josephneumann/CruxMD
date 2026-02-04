@@ -1,18 +1,25 @@
 /**
  * useSessions - React hook for session state management.
  *
- * Manages paused conversation sessions, including fetching, resuming,
- * and filtering by status and patient.
+ * Manages conversation sessions, including fetching, deleting,
+ * and filtering by patient.
  */
 
 import { useState, useCallback, useEffect } from "react";
-import type { SessionResponse, SessionStatus } from "@/lib/types";
+import type { SessionResponse } from "@/lib/types";
 import { isSessionListResponse } from "@/lib/types";
 
 /** Error type for session operations */
 export interface SessionError {
   message: string;
   retryable: boolean;
+}
+
+/** Session update payload */
+export interface SessionUpdatePayload {
+  name?: string;
+  summary?: string;
+  status?: "active" | "completed";
 }
 
 /** Return type for useSessions hook */
@@ -29,21 +36,19 @@ export interface UseSessionsReturn {
   clearError: () => void;
   /** Refresh the sessions list */
   refresh: () => Promise<void>;
-  /** Resume a paused session (sets status to active) */
-  resumeSession: (sessionId: string) => Promise<void>;
+  /** Delete a session */
+  deleteSession: (sessionId: string) => Promise<void>;
+  /** Update a session */
+  updateSession: (sessionId: string, updates: SessionUpdatePayload) => Promise<void>;
 }
 
 /**
  * React hook for managing sessions state.
  *
- * @param status - Optional status filter (e.g., 'paused')
  * @param patientId - Optional patient ID filter
  * @returns Session state and controls
  */
-export function useSessions(
-  status?: SessionStatus,
-  patientId?: string
-): UseSessionsReturn {
+export function useSessions(patientId?: string): UseSessionsReturn {
   const [sessions, setSessions] = useState<SessionResponse[]>([]);
   const [total, setTotal] = useState(0);
   const [isLoading, setIsLoading] = useState(false);
@@ -59,7 +64,6 @@ export function useSessions(
 
     try {
       const params = new URLSearchParams();
-      if (status) params.set("status", status);
       if (patientId) params.set("patient_id", patientId);
       params.set("limit", "100"); // Get more sessions at once
 
@@ -89,29 +93,52 @@ export function useSessions(
     } finally {
       setIsLoading(false);
     }
-  }, [status, patientId]);
+  }, [patientId]);
 
-  const resumeSession = useCallback(async (sessionId: string) => {
+  const deleteSession = useCallback(async (sessionId: string) => {
+    setError(null);
+
+    try {
+      const response = await fetch(`/api/sessions/${sessionId}`, {
+        method: "DELETE",
+      });
+
+      if (!response.ok && response.status !== 204) {
+        const errorData = await response.json().catch(() => ({}));
+        throw new Error(
+          errorData.detail || `Failed to delete session: ${response.status}`
+        );
+      }
+
+      // Refresh list after deleting
+      await fetchSessions();
+    } catch (err) {
+      const message = err instanceof Error ? err.message : "Failed to delete session";
+      setError({ message, retryable: true });
+    }
+  }, [fetchSessions]);
+
+  const updateSession = useCallback(async (sessionId: string, updates: SessionUpdatePayload) => {
     setError(null);
 
     try {
       const response = await fetch(`/api/sessions/${sessionId}`, {
         method: "PATCH",
         headers: { "Content-Type": "application/json" },
-        body: JSON.stringify({ status: "active" }),
+        body: JSON.stringify(updates),
       });
 
       if (!response.ok) {
         const errorData = await response.json().catch(() => ({}));
         throw new Error(
-          errorData.detail || `Failed to resume session: ${response.status}`
+          errorData.detail || `Failed to update session: ${response.status}`
         );
       }
 
-      // Refresh list after resuming
+      // Refresh list after updating
       await fetchSessions();
     } catch (err) {
-      const message = err instanceof Error ? err.message : "Failed to resume session";
+      const message = err instanceof Error ? err.message : "Failed to update session";
       setError({ message, retryable: true });
     }
   }, [fetchSessions]);
@@ -128,6 +155,7 @@ export function useSessions(
     error,
     clearError,
     refresh: fetchSessions,
-    resumeSession,
+    deleteSession,
+    updateSession,
   };
 }

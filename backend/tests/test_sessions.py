@@ -157,14 +157,14 @@ class TestUpdateSession:
     async def test_update_session_status(
         self, client: AsyncClient, auth_headers: dict, session_in_db: uuid.UUID
     ):
-        """Update session status to paused."""
+        """Update session status to completed."""
         response = await client.patch(
             f"/api/sessions/{session_in_db}",
-            json={"status": "paused"},
+            json={"status": "completed"},
             headers=auth_headers,
         )
         assert response.status_code == 200
-        assert response.json()["status"] == "paused"
+        assert response.json()["status"] == "completed"
 
     @pytest.mark.asyncio
     async def test_update_session_completed_sets_completed_at(
@@ -201,8 +201,43 @@ class TestUpdateSession:
         """Update non-existent session returns 404."""
         response = await client.patch(
             f"/api/sessions/{uuid.uuid4()}",
-            json={"status": "paused"},
+            json={"status": "completed"},
             headers=auth_headers,
+        )
+        assert response.status_code == 404
+
+
+# =============================================================================
+# Delete Session Tests
+# =============================================================================
+
+
+class TestDeleteSession:
+    """Tests for DELETE /api/sessions/{session_id}."""
+
+    @pytest.mark.asyncio
+    async def test_delete_session(
+        self, client: AsyncClient, auth_headers: dict, session_in_db: uuid.UUID
+    ):
+        """Delete an existing session."""
+        response = await client.delete(
+            f"/api/sessions/{session_in_db}", headers=auth_headers
+        )
+        assert response.status_code == 204
+
+        # Verify it's gone
+        get_response = await client.get(
+            f"/api/sessions/{session_in_db}", headers=auth_headers
+        )
+        assert get_response.status_code == 404
+
+    @pytest.mark.asyncio
+    async def test_delete_session_not_found(
+        self, client: AsyncClient, auth_headers: dict
+    ):
+        """Delete non-existent session returns 404."""
+        response = await client.delete(
+            f"/api/sessions/{uuid.uuid4()}", headers=auth_headers
         )
         assert response.status_code == 404
 
@@ -311,10 +346,10 @@ class TestHandoff:
     """Tests for POST /api/sessions/{session_id}/handoff."""
 
     @pytest.mark.asyncio
-    async def test_handoff_creates_child_and_pauses_parent(
+    async def test_handoff_creates_child_and_completes_parent(
         self, client: AsyncClient, auth_headers: dict, session_in_db: uuid.UUID
     ):
-        """Handoff pauses parent and creates child session."""
+        """Handoff completes parent and creates child session."""
         response = await client.post(
             f"/api/sessions/{session_in_db}/handoff",
             json={"summary": "Handoff context"},
@@ -326,11 +361,11 @@ class TestHandoff:
         assert child["summary"] == "Handoff context"
         assert child["status"] == "active"
 
-        # Verify parent is paused
+        # Verify parent is completed
         parent_resp = await client.get(
             f"/api/sessions/{session_in_db}", headers=auth_headers
         )
-        assert parent_resp.json()["status"] == "paused"
+        assert parent_resp.json()["status"] == "completed"
 
     @pytest.mark.asyncio
     async def test_handoff_inherits_patient_id(

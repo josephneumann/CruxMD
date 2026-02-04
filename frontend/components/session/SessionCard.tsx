@@ -1,16 +1,16 @@
 "use client";
 
 import { useCallback, useState } from "react";
-import { Play, User, Clock } from "lucide-react";
+import { Trash2, User, Clock } from "lucide-react";
 import { Card, CardHeader, CardTitle, CardContent, CardFooter } from "@/components/ui/card";
 import { Button } from "@/components/ui/button";
-import { Badge } from "@/components/ui/badge";
 import type { SessionResponse, PatientListItem } from "@/lib/types";
 
 interface SessionCardProps {
   session: SessionResponse;
   patient?: PatientListItem;
-  onResume: (sessionId: string) => Promise<void>;
+  onOpen: (sessionId: string) => void;
+  onDelete: (sessionId: string) => Promise<void>;
 }
 
 /**
@@ -59,35 +59,40 @@ function getPatientName(patient?: PatientListItem): string {
 }
 
 /**
- * SessionCard - Display a single paused session with resume capability
+ * SessionCard - Display a single session with open and delete capability
  */
-export function SessionCard({ session, patient, onResume }: SessionCardProps) {
-  const [isResuming, setIsResuming] = useState(false);
+export function SessionCard({ session, patient, onOpen, onDelete }: SessionCardProps) {
+  const [isDeleting, setIsDeleting] = useState(false);
 
-  const handleResume = useCallback(async () => {
-    setIsResuming(true);
+  const handleCardClick = useCallback(() => {
+    onOpen(session.id);
+  }, [session.id, onOpen]);
+
+  const handleDelete = useCallback(async (e: React.MouseEvent) => {
+    e.stopPropagation(); // Prevent card click
+    setIsDeleting(true);
     try {
-      await onResume(session.id);
+      await onDelete(session.id);
     } finally {
-      setIsResuming(false);
+      setIsDeleting(false);
     }
-  }, [session.id, onResume]);
+  }, [session.id, onDelete]);
 
   const patientName = getPatientName(patient);
   const excerpt = getLastMessageExcerpt(session);
   const timeAgo = formatRelativeTime(session.last_active_at);
 
   return (
-    <Card className="hover:shadow-md transition-shadow">
+    <Card
+      className="hover:shadow-md transition-shadow cursor-pointer"
+      onClick={handleCardClick}
+    >
       <CardHeader className="pb-2">
         <div className="flex items-center justify-between">
           <div className="flex items-center gap-2">
             <User className="h-4 w-4 text-muted-foreground" />
             <CardTitle className="text-base">{patientName}</CardTitle>
           </div>
-          <Badge variant="neutral" size="sm">
-            {session.status}
-          </Badge>
         </div>
       </CardHeader>
 
@@ -104,12 +109,13 @@ export function SessionCard({ session, patient, onResume }: SessionCardProps) {
         </div>
         <Button
           size="sm"
-          onClick={handleResume}
-          disabled={isResuming}
-          className="gap-1"
+          variant="ghost"
+          onClick={handleDelete}
+          disabled={isDeleting}
+          className="gap-1 text-muted-foreground hover:text-destructive"
         >
-          <Play className="h-3 w-3" />
-          {isResuming ? "Resuming..." : "Resume"}
+          <Trash2 className="h-3 w-3" />
+          {isDeleting ? "Deleting..." : "Delete"}
         </Button>
       </CardFooter>
     </Card>
