@@ -1,5 +1,6 @@
 """Chat API routes for clinical reasoning agent."""
 
+import asyncio
 import json
 import logging
 import uuid
@@ -14,7 +15,7 @@ from sqlalchemy import select
 from sqlalchemy.ext.asyncio import AsyncSession
 
 from app.auth import verify_bearer_token
-from app.database import get_db
+from app.database import async_session_maker, get_db
 from app.models import FhirResource
 from app.models.session import Session
 from app.schemas import AgentResponse
@@ -201,44 +202,37 @@ async def _prepare_chat_context(
     )
 
 
-async def _persist_messages(
-    db: AsyncSession,
+async def _persist_message(
     session_id: uuid.UUID,
-    user_message: str,
-    assistant_content: str,
+    role: Literal["user", "assistant"],
+    content: str,
 ) -> None:
-    """Persist user and assistant messages to a session.
+    """Persist a message to a session.
 
-    This enables fire-and-forget message persistence: the backend saves
-    messages regardless of whether the client is still connected.
+    Uses an independent database session to ensure the message is saved
+    even if the request's db session is closed (fire-and-forget pattern).
 
     Args:
-        db: Database session.
         session_id: Session UUID to update.
-        user_message: The user's message content.
-        assistant_content: The assistant's response content.
+        role: Message role ('user' or 'assistant').
+        content: The message content.
     """
     try:
-        result = await db.execute(select(Session).where(Session.id == session_id))
-        session = result.scalar_one_or_none()
+        async with async_session_maker() as db:
+            result = await db.execute(select(Session).where(Session.id == session_id))
+            session = result.scalar_one_or_none()
 
-        if session is None:
-            logger.warning("Session %s not found for message persistence", session_id)
-            return
+            if session is None:
+                logger.warning("Session %s not found for %s message persistence", session_id, role)
+                return
 
-        # Append new messages to the existing array
-        messages = list(session.messages)
-        messages.append({"role": "user", "content": user_message})
-        messages.append({"role": "assistant", "content": assistant_content})
-
-        session.messages = messages
-        session.last_active_at = datetime.now(timezone.utc)
-        await db.flush()
-
-        logger.debug("Persisted messages to session %s", session_id)
+            messages = list(session.messages)
+            messages.append({"role": role, "content": content})
+            session.messages = messages
+            session.last_active_at = datetime.now(timezone.utc)
+            await db.commit()
     except Exception:
-        logger.exception("Failed to persist messages to session %s", session_id)
-        # Don't raise - message persistence failure shouldn't break the chat
+        logger.exception("Failed to persist %s message to session %s", role, session_id)
 
 
 @router.post("", response_model=ChatResponse)
@@ -268,6 +262,10 @@ async def chat(
     """
     chat_ctx = await _prepare_chat_context(request, db)
 
+    # Persist user message immediately
+    if request.session_id:
+        await _persist_message(request.session_id, "user", request.message)
+
     try:
         agent_response = await chat_ctx.agent.generate_response(
             context=chat_ctx.context,
@@ -278,14 +276,9 @@ async def chat(
             db=db,
         )
 
-        # Persist messages to session if session_id provided
+        # Persist assistant message when done
         if request.session_id:
-            await _persist_messages(
-                db=db,
-                session_id=request.session_id,
-                user_message=request.message,
-                assistant_content=agent_response.narrative,
-            )
+            await _persist_message(request.session_id, "assistant", agent_response.narrative)
 
         return ChatResponse(
             conversation_id=chat_ctx.conversation_id,
@@ -328,6 +321,10 @@ async def chat_stream(
     - event: done — final AgentResponse with conversation_id
     - event: error — error details
 
+    The response is generated in a background task that continues even if the
+    client disconnects. This ensures messages are persisted regardless of
+    client connection state.
+
     Args:
         request: Chat request with patient_id, message, and optional history.
         db: Database session (injected).
@@ -341,7 +338,21 @@ async def chat_stream(
     """
     chat_ctx = await _prepare_chat_context(request, db)
 
-    async def event_generator():
+    # Persist user message immediately (fire-and-forget)
+    if request.session_id:
+        await _persist_message(request.session_id, "user", request.message)
+
+    # Queue for passing events from background task to SSE stream
+    event_queue: asyncio.Queue[tuple[str, str] | None] = asyncio.Queue()
+
+    async def generate_and_persist():
+        """Generate response in background, persist when done.
+
+        This task runs independently of the SSE stream, so it continues
+        even if the client disconnects mid-stream.
+        """
+        final_response_json: str | None = None
+
         try:
             async for event_type, data_json in chat_ctx.agent.generate_response_stream(
                 context=chat_ctx.context,
@@ -351,40 +362,68 @@ async def chat_stream(
                 graph=chat_ctx.graph,
                 db=db,
             ):
+                await event_queue.put((event_type, data_json))
                 if event_type == "done":
-                    # Persist messages before yielding (fire-and-forget)
-                    # This ensures messages are saved even if client disconnects after
-                    if request.session_id:
-                        try:
-                            response_data = json.loads(data_json)
-                            await _persist_messages(
-                                db=db,
-                                session_id=request.session_id,
-                                user_message=request.message,
-                                assistant_content=response_data.get("narrative", ""),
-                            )
-                        except json.JSONDecodeError:
-                            logger.warning("Failed to parse done event for persistence")
+                    final_response_json = data_json
 
-                    # Wrap with conversation_id — data_json is already valid JSON
+        except ValueError as e:
+            logger.error("ValueError in chat stream: %s", e, exc_info=True)
+            await event_queue.put(("error", json.dumps({"detail": "Invalid request parameters."})))
+        except RuntimeError:
+            logger.error("Agent response parsing failed in stream", exc_info=True)
+            await event_queue.put(("error", json.dumps({"detail": "Failed to generate response."})))
+        except Exception:
+            logger.exception("Unexpected error during chat stream")
+            await event_queue.put(("error", json.dumps({"detail": "An error occurred during streaming."})))
+        finally:
+            # Signal end of stream
+            await event_queue.put(None)
+
+            # Persist assistant message after generation completes (fire-and-forget)
+            # This happens regardless of whether client is still connected
+            if request.session_id and final_response_json:
+                try:
+                    response_data = json.loads(final_response_json)
+                    await _persist_message(
+                        request.session_id,
+                        "assistant",
+                        response_data.get("narrative", ""),
+                    )
+                except Exception:
+                    logger.exception("Failed to persist assistant message after stream")
+
+            await chat_ctx.cleanup()
+
+    async def generate_with_timeout():
+        """Wrap generation with a 10-minute timeout."""
+        try:
+            await asyncio.wait_for(generate_and_persist(), timeout=600.0)
+        except asyncio.TimeoutError:
+            logger.error("Background generation task timed out after 10 minutes")
+            await event_queue.put(("error", json.dumps({"detail": "Request timed out."})))
+            await event_queue.put(None)
+            await chat_ctx.cleanup()
+
+    # Start generation in background task (continues even if client disconnects)
+    asyncio.create_task(generate_with_timeout())
+
+    async def event_generator():
+        """Yield SSE events from the queue."""
+        while True:
+            try:
+                event = await event_queue.get()
+                if event is None:
+                    break
+
+                event_type, data_json = event
+                if event_type == "done":
                     done_payload = f'{{"conversation_id":"{chat_ctx.conversation_id}","response":{data_json}}}'
                     yield f"event: done\ndata: {done_payload}\n\n"
                 else:
                     yield f"event: {event_type}\ndata: {data_json}\n\n"
-        except ValueError as e:
-            logger.error("ValueError in chat stream: %s", e, exc_info=True)
-            error_payload = json.dumps({"detail": "Invalid request parameters."})
-            yield f"event: error\ndata: {error_payload}\n\n"
-        except RuntimeError:
-            logger.error("Agent response parsing failed in stream", exc_info=True)
-            error_payload = json.dumps({"detail": "Failed to generate response."})
-            yield f"event: error\ndata: {error_payload}\n\n"
-        except Exception:
-            logger.exception("Unexpected error during chat stream")
-            error_payload = json.dumps({"detail": "An error occurred during streaming."})
-            yield f"event: error\ndata: {error_payload}\n\n"
-        finally:
-            await chat_ctx.cleanup()
+            except asyncio.CancelledError:
+                # Client disconnected - task continues in background
+                break
 
     return StreamingResponse(
         event_generator(),

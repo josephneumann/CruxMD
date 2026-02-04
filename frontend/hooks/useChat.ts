@@ -390,28 +390,6 @@ export function useChat(patientId: string | null, sessionId?: string): UseChatRe
   }, []);
 
   /**
-   * Persist current messages to the session.
-   */
-  const persistMessages = useCallback(async (currentMessages: DisplayMessage[]) => {
-    const actualSessionId = dbSessionIdRef.current;
-    if (!actualSessionId) return;
-
-    const chatMessages: ChatMessage[] = currentMessages
-      .filter((msg) => !msg.pending && msg.content)
-      .map((msg) => ({ role: msg.role, content: msg.content }));
-
-    try {
-      await fetch(`/api/sessions/${actualSessionId}`, {
-        method: "PATCH",
-        headers: { "Content-Type": "application/json" },
-        body: JSON.stringify({ messages: chatMessages }),
-      });
-    } catch (err) {
-      console.error("Failed to persist messages to session:", err);
-    }
-  }, []);
-
-  /**
    * Send via SSE streaming endpoint. Returns true on success, false if
    * streaming failed and caller should fall back to non-streaming.
    */
@@ -695,19 +673,9 @@ export function useChat(patientId: string | null, sessionId?: string): UseChatRe
     }
   }, [sendMessage]);
 
-  // Persist messages to session when conversation updates
-  // persistMessages already filters out pending messages, so this saves:
-  // 1. User message immediately after sending
-  // 2. Full conversation after assistant response completes
-  useEffect(() => {
-    if (!dbSessionIdRef.current || messages.length === 0) return;
-
-    // Count non-pending messages to avoid unnecessary saves during streaming
-    const completedCount = messages.filter((m) => !m.pending).length;
-    if (completedCount === 0) return;
-
-    persistMessages(messages);
-  }, [messages, persistMessages]);
+  // NOTE: Client-side persistence is disabled. The backend now handles message
+  // persistence in the chat endpoint (fire-and-forget pattern). This prevents
+  // race conditions where frontend overwrites backend-persisted messages.
 
   return {
     messages,

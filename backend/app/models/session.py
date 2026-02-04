@@ -96,6 +96,7 @@ class Session(Base):
         DateTime(timezone=True),
         server_default=text("now()"),
         onupdate=func.now(),
+        index=True,
     )
     completed_at: Mapped[datetime | None] = mapped_column(
         DateTime(timezone=True),
