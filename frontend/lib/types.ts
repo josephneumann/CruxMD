@@ -386,3 +386,59 @@ export function parsePatientList(data: unknown): PatientListItem[] {
   }
   return [];
 }
+
+// =============================================================================
+// Session Types (mirrors backend/app/schemas/session.py)
+// =============================================================================
+
+/** Session status values */
+export const SESSION_STATUSES = ["active", "paused", "completed"] as const;
+export type SessionStatus = (typeof SESSION_STATUSES)[number];
+
+/** Message stored in a session */
+export interface SessionMessage {
+  role: MessageRole;
+  content: string;
+}
+
+/** Session response from API */
+export interface SessionResponse {
+  id: string;
+  status: SessionStatus;
+  patient_id: string;
+  parent_session_id: string | null;
+  summary: string | null;
+  messages: SessionMessage[];
+  started_at: string;
+  last_active_at: string;
+  completed_at: string | null;
+}
+
+/** Paginated list of sessions */
+export interface SessionListResponse {
+  items: SessionResponse[];
+  total: number;
+  skip: number;
+  limit: number;
+}
+
+/** Type guard for SessionResponse */
+export function isSessionResponse(obj: unknown): obj is SessionResponse {
+  if (!isObject(obj)) return false;
+  if (typeof obj.id !== "string") return false;
+  if (!SESSION_STATUSES.includes(obj.status as SessionStatus)) return false;
+  if (typeof obj.patient_id !== "string") return false;
+  if (typeof obj.started_at !== "string") return false;
+  if (typeof obj.last_active_at !== "string") return false;
+  return true;
+}
+
+/** Type guard for SessionListResponse */
+export function isSessionListResponse(obj: unknown): obj is SessionListResponse {
+  if (!isObject(obj)) return false;
+  if (!Array.isArray(obj.items)) return false;
+  if (typeof obj.total !== "number") return false;
+  if (typeof obj.skip !== "number") return false;
+  if (typeof obj.limit !== "number") return false;
+  return true;
+}

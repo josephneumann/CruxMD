@@ -5,6 +5,7 @@ from datetime import date
 from unittest.mock import AsyncMock, MagicMock
 
 import pytest
+import pytest_asyncio
 from fastapi import FastAPI
 from httpx import ASGITransport, AsyncClient
 
@@ -47,7 +48,7 @@ def data_app(mock_db):
     return app, mock_db
 
 
-@pytest.fixture
+@pytest_asyncio.fixture
 async def data_client(data_app):
     """Async test client for data app."""
     app, mock_db = data_app

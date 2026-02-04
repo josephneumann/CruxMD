@@ -15,13 +15,6 @@ from pydantic import BaseModel, ConfigDict, Field
 # === Enums (match SQLAlchemy enums) ===
 
 
-class SessionType(str, Enum):
-    """Types of conversation sessions."""
-
-    ORCHESTRATING = "orchestrating"
-    PATIENT_TASK = "patient_task"
-
-
 class SessionStatus(str, Enum):
     """Session lifecycle states."""
 
@@ -36,9 +29,7 @@ class SessionStatus(str, Enum):
 class SessionCreate(BaseModel):
     """Schema for creating a new session."""
 
-    type: SessionType
-    patient_id: UUID | None = None
-    task_id: UUID | None = None
+    patient_id: UUID = Field(description="FHIR Patient resource ID (required)")
     parent_session_id: UUID | None = None
     summary: str | None = Field(default=None, max_length=10000)
 
@@ -58,13 +49,14 @@ class SessionHandoff(BaseModel):
     preserving context through summary.
     """
 
-    type: SessionType
     summary: str = Field(
         max_length=10000,
         description="Context summary to carry into the new session",
     )
-    patient_id: UUID | None = None
-    task_id: UUID | None = None
+    patient_id: UUID | None = Field(
+        default=None,
+        description="Override patient (defaults to parent's patient)",
+    )
 
 
 class SessionResponse(BaseModel):
@@ -73,10 +65,8 @@ class SessionResponse(BaseModel):
     model_config = ConfigDict(from_attributes=True)
 
     id: UUID
-    type: SessionType
     status: SessionStatus
-    patient_id: UUID | None = Field(description="FHIR Patient resource ID")
-    task_id: UUID | None = Field(description="FHIR Task resource ID (for patient_task sessions)")
+    patient_id: UUID = Field(description="FHIR Patient resource ID")
     parent_session_id: UUID | None = Field(description="Parent session for handoff chain")
     summary: str | None = Field(description="Session summary for handoff context")
     messages: list[dict[str, Any]] = Field(description="Conversation messages array")

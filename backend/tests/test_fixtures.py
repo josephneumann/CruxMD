@@ -12,7 +12,11 @@ class TestFixturesExist:
 
     def test_five_patient_bundles_exist(self, fixtures_dir: Path):
         """Should have exactly 5 patient bundles."""
-        bundles = list(fixtures_dir.glob("patient_bundle_*.json"))
+        # Exclude .profile.json files
+        bundles = [
+            f for f in fixtures_dir.glob("patient_bundle_*.json")
+            if not f.name.endswith(".profile.json")
+        ]
         assert len(bundles) == 5, f"Expected 5 bundles, found {len(bundles)}"
 
     def test_bundles_named_correctly(self, fixtures_dir: Path):

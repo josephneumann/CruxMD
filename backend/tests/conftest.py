@@ -198,6 +198,9 @@ def all_bundles() -> list[dict]:
     """Load all patient bundle fixtures from Synthea fixtures."""
     bundles = []
     for path in sorted(FIXTURES_DIR.glob("patient_bundle_*.json")):
+        # Exclude .profile.json files
+        if path.name.endswith(".profile.json"):
+            continue
         with open(path) as f:
             bundles.append(json.load(f))
     return bundles
