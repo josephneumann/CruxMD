@@ -118,9 +118,7 @@ async def create_session(
         The created session.
     """
     session = Session(
-        type=session_data.type.value,
         patient_id=session_data.patient_id,
-        task_id=session_data.task_id,
         parent_session_id=session_data.parent_session_id,
         summary=session_data.summary,
         messages=[],
@@ -187,7 +185,7 @@ async def create_handoff(
 
     Pauses the parent session and creates a new child session
     with the provided summary as context. Child inherits patient_id
-    and task_id from parent unless overridden.
+    from parent unless overridden.
 
     Args:
         session_id: The parent session UUID.
@@ -213,10 +211,8 @@ async def create_handoff(
 
     # Create child session
     child = Session(
-        type=handoff_data.type.value,
         status=SessionStatusModel.ACTIVE,
         patient_id=handoff_data.patient_id or parent.patient_id,
-        task_id=handoff_data.task_id or parent.task_id,
         parent_session_id=session_id,
         summary=handoff_data.summary,
         messages=[],

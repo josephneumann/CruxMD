@@ -3,6 +3,7 @@
 import uuid
 
 import pytest
+import pytest_asyncio
 from fastapi import FastAPI
 from httpx import ASGITransport, AsyncClient
 from unittest.mock import AsyncMock
@@ -34,7 +35,7 @@ def patients_app(mock_db):
     return app, mock_db
 
 
-@pytest.fixture
+@pytest_asyncio.fixture
 async def patients_client(patients_app):
     """Async test client for patients app."""
     app, mock_db = patients_app

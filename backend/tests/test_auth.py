@@ -3,6 +3,7 @@
 from datetime import datetime, timedelta, timezone
 
 import pytest
+import pytest_asyncio
 from fastapi import Depends, FastAPI
 from httpx import ASGITransport, AsyncClient
 from sqlalchemy.ext.asyncio import AsyncSession, async_sessionmaker
@@ -41,7 +42,7 @@ def protected_app(test_engine):
     return app
 
 
-@pytest.fixture
+@pytest_asyncio.fixture
 async def protected_client(protected_app):
     """Async test client for protected app."""
     async with AsyncClient(
@@ -51,7 +52,7 @@ async def protected_client(protected_app):
         yield ac
 
 
-@pytest.fixture
+@pytest_asyncio.fixture
 async def seed_session(db_session: AsyncSession):
     """Create a valid session in the database."""
     session = BetterAuthSession(
@@ -67,7 +68,7 @@ async def seed_session(db_session: AsyncSession):
     return session
 
 
-@pytest.fixture
+@pytest_asyncio.fixture
 async def seed_expired_session(db_session: AsyncSession):
     """Create an expired session in the database."""
     session = BetterAuthSession(

@@ -25,7 +25,6 @@ from app.schemas.session import (
     SessionListResponse,
     SessionResponse,
     SessionStatus,
-    SessionType,
     SessionUpdate,
 )
 from app.schemas.task import (
@@ -76,6 +75,5 @@ __all__ = [
     "SessionListResponse",
     "SessionResponse",
     "SessionStatus",
-    "SessionType",
     "SessionUpdate",
 ]

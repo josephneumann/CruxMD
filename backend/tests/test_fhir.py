@@ -1,6 +1,7 @@
 """Tests for FHIR API routes."""
 
 import pytest
+import pytest_asyncio
 from fastapi import FastAPI
 from httpx import ASGITransport, AsyncClient
 from unittest.mock import AsyncMock
@@ -32,7 +33,7 @@ def fhir_app(mock_db):
     return app, mock_db
 
 
-@pytest.fixture
+@pytest_asyncio.fixture
 async def fhir_client(fhir_app):
     """Async test client for fhir app."""
     app, mock_db = fhir_app

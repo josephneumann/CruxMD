@@ -16,7 +16,7 @@ from httpx import AsyncClient
 from sqlalchemy.ext.asyncio import AsyncSession, async_sessionmaker
 
 from app.models import FhirResource
-from app.models.session import Session, SessionStatus, SessionType
+from app.models.session import Session, SessionStatus
 
 
 # =============================================================================
@@ -53,7 +53,6 @@ async def session_in_db(test_engine, patient_in_db) -> uuid.UUID:
     async with session_maker() as session:
         s = Session(
             id=session_uuid,
-            type=SessionType.PATIENT_TASK,
             status=SessionStatus.ACTIVE,
             patient_id=patient_in_db,
             messages=[],
@@ -72,67 +71,39 @@ class TestCreateSession:
     """Tests for POST /api/sessions."""
 
     @pytest.mark.asyncio
-    async def test_create_session_minimal(
-        self, client: AsyncClient, auth_headers: dict
-    ):
-        """Create session with only required field (type)."""
-        response = await client.post(
-            "/api/sessions",
-            json={"type": "orchestrating"},
-            headers=auth_headers,
-        )
-        assert response.status_code == 201
-        data = response.json()
-        assert data["type"] == "orchestrating"
-        assert data["status"] == "active"
-        assert data["patient_id"] is None
-        assert data["messages"] == []
-
-    @pytest.mark.asyncio
     async def test_create_session_with_patient(
         self, client: AsyncClient, auth_headers: dict, patient_in_db: uuid.UUID
     ):
-        """Create session linked to a patient."""
+        """Create session linked to a patient (required)."""
         response = await client.post(
             "/api/sessions",
-            json={"type": "patient_task", "patient_id": str(patient_in_db)},
+            json={"patient_id": str(patient_in_db)},
             headers=auth_headers,
         )
         assert response.status_code == 201
         data = response.json()
-        assert data["type"] == "patient_task"
+        assert data["status"] == "active"
         assert data["patient_id"] == str(patient_in_db)
+        assert data["messages"] == []
 
     @pytest.mark.asyncio
     async def test_create_session_with_summary(
-        self, client: AsyncClient, auth_headers: dict
+        self, client: AsyncClient, auth_headers: dict, patient_in_db: uuid.UUID
     ):
         """Create session with a summary."""
         response = await client.post(
             "/api/sessions",
-            json={"type": "orchestrating", "summary": "Test context"},
+            json={"patient_id": str(patient_in_db), "summary": "Test context"},
             headers=auth_headers,
         )
         assert response.status_code == 201
         assert response.json()["summary"] == "Test context"
 
     @pytest.mark.asyncio
-    async def test_create_session_invalid_type_returns_422(
+    async def test_create_session_missing_patient_returns_422(
         self, client: AsyncClient, auth_headers: dict
     ):
-        """Invalid session type returns 422."""
-        response = await client.post(
-            "/api/sessions",
-            json={"type": "invalid_type"},
-            headers=auth_headers,
-        )
-        assert response.status_code == 422
-
-    @pytest.mark.asyncio
-    async def test_create_session_missing_type_returns_422(
-        self, client: AsyncClient, auth_headers: dict
-    ):
-        """Missing type field returns 422."""
+        """Missing patient_id field returns 422."""
         response = await client.post(
             "/api/sessions",
             json={},
@@ -160,7 +131,6 @@ class TestGetSession:
         assert response.status_code == 200
         data = response.json()
         assert data["id"] == str(session_in_db)
-        assert data["type"] == "patient_task"
         assert data["status"] == "active"
 
     @pytest.mark.asyncio
@@ -311,14 +281,14 @@ class TestListSessions:
 
     @pytest.mark.asyncio
     async def test_list_sessions_pagination(
-        self, client: AsyncClient, auth_headers: dict
+        self, client: AsyncClient, auth_headers: dict, patient_in_db: uuid.UUID
     ):
         """Test pagination parameters."""
         # Create 3 sessions
         for _ in range(3):
             await client.post(
                 "/api/sessions",
-                json={"type": "orchestrating"},
+                json={"patient_id": str(patient_in_db)},
                 headers=auth_headers,
             )
 
@@ -347,7 +317,7 @@ class TestHandoff:
         """Handoff pauses parent and creates child session."""
         response = await client.post(
             f"/api/sessions/{session_in_db}/handoff",
-            json={"type": "patient_task", "summary": "Handoff context"},
+            json={"summary": "Handoff context"},
             headers=auth_headers,
         )
         assert response.status_code == 201
@@ -373,7 +343,7 @@ class TestHandoff:
         """Child session inherits patient_id from parent."""
         response = await client.post(
             f"/api/sessions/{session_in_db}/handoff",
-            json={"type": "patient_task", "summary": "Inheriting patient"},
+            json={"summary": "Inheriting patient"},
             headers=auth_headers,
         )
         assert response.status_code == 201
@@ -393,7 +363,6 @@ class TestHandoff:
         response = await client.post(
             f"/api/sessions/{session_in_db}/handoff",
             json={
-                "type": "patient_task",
                 "summary": "Override patient",
                 "patient_id": str(patient_in_db),  # same patient, but explicitly set
             },
@@ -409,7 +378,7 @@ class TestHandoff:
         """Handoff from non-existent parent returns 404."""
         response = await client.post(
             f"/api/sessions/{uuid.uuid4()}/handoff",
-            json={"type": "patient_task", "summary": "Orphaned handoff"},
+            json={"summary": "Orphaned handoff"},
             headers=auth_headers,
         )
         assert response.status_code == 404
@@ -422,7 +391,7 @@ class TestHandoff:
         """Handoff without summary returns 422."""
         response = await client.post(
             f"/api/sessions/{session_in_db}/handoff",
-            json={"type": "patient_task"},
+            json={},
             headers=auth_headers,
         )
         assert response.status_code == 422

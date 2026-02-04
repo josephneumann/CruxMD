@@ -3,6 +3,7 @@
 import uuid
 
 import pytest
+import pytest_asyncio
 from fastapi import FastAPI
 from httpx import ASGITransport, AsyncClient
 from unittest.mock import AsyncMock
@@ -34,7 +35,7 @@ def tasks_app(mock_db):
     return app, mock_db
 
 
-@pytest.fixture
+@pytest_asyncio.fixture
 async def tasks_client(tasks_app):
     """Async test client for tasks app."""
     app, mock_db = tasks_app

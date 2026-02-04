@@ -1,8 +1,7 @@
 """Session model for conversation persistence and handoff.
 
-Sessions represent conversation containers — either orchestrating sessions
-(top-level clinical workflows) or patient_task sessions (focused on a
-specific task). Sessions support parent-child relationships for handoff.
+Sessions represent conversation containers linked to a patient.
+Sessions support parent-child relationships for handoff.
 """
 
 from __future__ import annotations
@@ -19,13 +18,6 @@ from sqlalchemy.orm import Mapped, mapped_column, relationship
 from app.database import Base
 
 
-class SessionType(str, enum.Enum):
-    """Types of conversation sessions."""
-
-    ORCHESTRATING = "orchestrating"
-    PATIENT_TASK = "patient_task"
-
-
 class SessionStatus(str, enum.Enum):
     """Session lifecycle states."""
 
@@ -35,10 +27,9 @@ class SessionStatus(str, enum.Enum):
 
 
 class Session(Base):
-    """Conversation session for clinical workflows.
+    """Conversation session linked to a patient.
 
-    Supports orchestrating sessions (top-level) and patient_task sessions
-    (focused on a specific task). Parent-child relationships enable handoff.
+    Parent-child relationships enable handoff.
     """
 
     __tablename__ = "sessions"
@@ -51,11 +42,6 @@ class Session(Base):
     )
 
     # === Classification ===
-    type: Mapped[SessionType] = mapped_column(
-        Enum(SessionType, name="session_type", create_constraint=True),
-        nullable=False,
-        index=True,
-    )
     status: Mapped[SessionStatus] = mapped_column(
         Enum(SessionStatus, name="session_status", create_constraint=True),
         nullable=False,
@@ -64,18 +50,11 @@ class Session(Base):
     )
 
     # === References ===
-    patient_id: Mapped[uuid.UUID | None] = mapped_column(
+    patient_id: Mapped[uuid.UUID] = mapped_column(
         UUID(as_uuid=True),
         ForeignKey("fhir_resources.id", ondelete="CASCADE"),
-        nullable=True,
+        nullable=False,
         index=True,
-    )
-    task_id: Mapped[uuid.UUID | None] = mapped_column(
-        UUID(as_uuid=True),
-        ForeignKey("fhir_resources.id", ondelete="SET NULL"),
-        nullable=True,
-        index=True,
-        comment="Task this session is working on (for patient_task type)",
     )
     parent_session_id: Mapped[uuid.UUID | None] = mapped_column(
         UUID(as_uuid=True),
@@ -129,4 +108,4 @@ class Session(Base):
     )
 
     def __repr__(self) -> str:
-        return f"<Session(id={self.id}, type={self.type}, status={self.status})>"
+        return f"<Session(id={self.id}, status={self.status})>"
