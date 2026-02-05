@@ -8,6 +8,7 @@ Uses the OpenAI Responses API with Pydantic structured outputs for type-safe
 response parsing.
 """
 
+import base64
 import json
 import logging
 from collections.abc import AsyncGenerator
@@ -205,148 +206,159 @@ def _get_observation_category(resource: dict[str, Any]) -> str:
     return "unknown"
 
 
-def _get_effective_date(resource: dict[str, Any]) -> str:
-    """Extract effective date from a FHIR resource, truncated to date only."""
-    date = resource.get("effectiveDateTime", "")
-    if not date:
-        period = resource.get("effectivePeriod", {})
-        date = period.get("start", "")
-    return date[:10] if date else ""
+# ── FHIR resource pruning ────────────────────────────────────────────────────
+# Instead of maintaining per-type formatters, we recursively simplify the raw
+# FHIR JSON so the LLM sees every clinically relevant field without FHIR
+# boilerplate (system URIs, meta, profiles, identifiers, narrative HTML).
+
+# Top-level keys to strip (zero clinical value to the LLM)
+_STRIP_KEYS = frozenset({
+    "meta", "text", "identifier", "implicitRules", "language",
+    "contained", "extension", "modifierExtension",
+})
+
+# Keys to strip from inner objects (noisy identifiers / serialisation artifacts)
+_STRIP_INNER_KEYS = frozenset({
+    "system", "use", "assigner", "rank", "postalCode",
+})
 
 
-def _format_retrieved_resource_line(resource: dict[str, Any]) -> str:
-    """Format a single retrieved FHIR resource as a compact one-liner."""
-    resource_type = resource.get("resourceType", "Unknown")
-    display = _get_display_name(resource) or resource_type
+def _simplify_codeable_concept(cc: dict[str, Any]) -> str | dict[str, Any]:
+    """Reduce a CodeableConcept to its display string when possible."""
+    codings = cc.get("coding", [])
+    display = cc.get("text") or (codings[0].get("display") if codings else None)
+    code = codings[0].get("code") if codings else None
+    if display and code:
+        return display
+    if display:
+        return display
+    return cc  # can't simplify, pass through
 
-    if resource_type == "Observation":
-        date = _get_effective_date(resource)
-        date_suffix = f" ({date})" if date else ""
 
-        value = resource.get("valueQuantity", {})
-        if value:
-            return f"- {display}: {value.get('value')} {value.get('unit', '')}{date_suffix}"
-        # Check for valueCodeableConcept
-        value_cc = resource.get("valueCodeableConcept", {})
-        if value_cc:
-            cc_display = value_cc.get("text") or (
-                value_cc.get("coding", [{}])[0].get("display", "")
-            )
-            if cc_display:
-                return f"- {display}: {cc_display}{date_suffix}"
-        # Check for component observations (e.g., blood pressure)
-        components = resource.get("component", [])
-        if components:
-            parts = []
-            for comp in components:
-                comp_display = _get_display_name(comp) or "?"
-                comp_val = comp.get("valueQuantity", {})
-                if comp_val:
-                    parts.append(f"{comp_display}: {comp_val.get('value')} {comp_val.get('unit', '')}")
-            if parts:
-                return f"- {display} ({', '.join(parts)}){date_suffix}"
-        return f"- {display}{date_suffix}"
-    elif resource_type == "Condition":
-        clinical_status = resource.get("clinicalStatus", {})
-        status_codings = clinical_status.get("coding", [])
-        status = status_codings[0].get("code") if status_codings else None
-        return f"- {display}" + (f" (status: {status})" if status else "")
-    elif resource_type == "MedicationRequest":
-        status = resource.get("status")
-        med_display = _get_display_name(resource, "medicationCodeableConcept") or display
-        return f"- {med_display}" + (f" [{status}]" if status else "")
-    elif resource_type == "Procedure":
-        date = resource.get("performedDateTime", resource.get("performedPeriod", {}).get("start", ""))
-        return f"- {display}" + (f" ({date[:10]})" if date else "")
-    elif resource_type == "CareTeam":
-        reason = _get_display_name(resource, "reasonCode") if resource.get("reasonCode") else None
-        parts = []
-        for p in resource.get("participant", []):
-            member_name = p.get("member", {}).get("display")
-            role_codings = p.get("role", [{}])[0].get("coding", [])
-            role = role_codings[0].get("display") if role_codings else None
-            if member_name:
-                parts.append(f"{member_name} ({role})" if role else member_name)
-        status = resource.get("status")
-        header = f"- Care Team" + (f" for {reason}" if reason else "")
-        if status:
-            header += f" [{status}]"
-        if parts:
-            header += f": {', '.join(parts)}"
-        return header
-    elif resource_type == "DocumentReference":
-        type_display = _get_display_name(resource, "type") or "Document"
-        date = resource.get("date", "")[:10]
-        authors = [a.get("display") for a in resource.get("author", []) if a.get("display")]
-        line = f"- {type_display}"
-        if date:
-            line += f" ({date})"
-        if authors:
-            line += f" by {', '.join(authors)}"
-        return line
-    elif resource_type == "ImagingStudy":
-        proc_codes = resource.get("procedureCode", [])
-        proc = proc_codes[0].get("coding", [{}])[0].get("display") if proc_codes else None
-        series = resource.get("series", [{}])
-        modality = series[0].get("modality", {}).get("display") if series else None
-        body_site = series[0].get("bodySite", {}).get("display") if series else None
-        date = (resource.get("started") or "")[:10]
-        line = f"- {proc or 'Imaging Study'}"
-        details = [d for d in [modality, body_site] if d]
-        if details:
-            line += f" ({', '.join(details)})"
-        if date:
-            line += f" [{date}]"
-        return line
-    elif resource_type == "Device":
-        status = resource.get("status")
-        return f"- {display}" + (f" [{status}]" if status else "")
-    elif resource_type == "MedicationAdministration":
-        med_display = _get_display_name(resource, "medicationCodeableConcept") or display
-        status = resource.get("status")
-        date = (resource.get("effectiveDateTime") or "")[:10]
-        line = f"- {med_display}"
-        if status:
-            line += f" [{status}]"
-        if date:
-            line += f" ({date})"
-        return line
-    elif resource_type == "Claim":
-        type_code = resource.get("type", {}).get("coding", [{}])[0].get("code", "")
-        items = resource.get("item", [])
-        service = items[0].get("productOrService", {}).get("coding", [{}])[0].get("display") if items else None
-        date = (resource.get("created") or "")[:10]
-        line = f"- Claim ({type_code})"
-        if service:
-            line += f": {service}"
-        if date:
-            line += f" [{date}]"
-        return line
-    elif resource_type == "ExplanationOfBenefit":
-        type_code = resource.get("type", {}).get("coding", [{}])[0].get("code", "")
-        totals = resource.get("total", [])
-        total_amt = totals[0].get("amount", {}).get("value") if totals else None
-        payment_amt = resource.get("payment", {}).get("amount", {}).get("value")
-        line = f"- EOB ({type_code})"
-        if total_amt is not None:
-            line += f": total ${total_amt:,.2f}"
-        if payment_amt is not None:
-            line += f", payment ${payment_amt:,.2f}"
-        return line
-    elif resource_type == "SupplyDelivery":
-        item = resource.get("suppliedItem", {}).get("itemCodeableConcept", {})
-        item_display = item.get("coding", [{}])[0].get("display") if item.get("coding") else item.get("text")
-        status = resource.get("status")
-        line = f"- {item_display or 'Supply Delivery'}"
-        if status:
-            line += f" [{status}]"
-        return line
-    else:
-        return f"- [{resource_type}] {display}"
+def _simplify_reference(ref: dict[str, Any]) -> str | dict[str, Any]:
+    """Reduce a Reference to its display string or a short ID."""
+    display = ref.get("display")
+    raw_ref = ref.get("reference", "")
+    # Strip urn:uuid: prefix
+    short_ref = raw_ref[9:] if raw_ref.startswith("urn:uuid:") else raw_ref
+    if display:
+        return display
+    if short_ref:
+        return short_ref
+    return ref
+
+
+def _is_codeable_concept(val: Any) -> bool:
+    """Check if a value looks like a FHIR CodeableConcept."""
+    return isinstance(val, dict) and ("coding" in val or ("text" in val and len(val) <= 3))
+
+
+def _is_reference(val: Any) -> bool:
+    """Check if a value looks like a FHIR Reference."""
+    return isinstance(val, dict) and "reference" in val and not isinstance(val.get("reference"), dict)
+
+
+def _simplify_value(val: Any) -> Any:
+    """Recursively simplify a FHIR value."""
+    if isinstance(val, dict):
+        if _is_codeable_concept(val):
+            return _simplify_codeable_concept(val)
+        if _is_reference(val):
+            return _simplify_reference(val)
+        return _simplify_dict(val)
+    if isinstance(val, list):
+        simplified = [_simplify_value(item) for item in val]
+        # Unwrap single-element lists of simple values
+        if len(simplified) == 1 and isinstance(simplified[0], str):
+            return simplified[0]
+        return simplified
+    return val
+
+
+def _simplify_dict(d: dict[str, Any]) -> dict[str, Any]:
+    """Recursively simplify a FHIR dict, stripping boilerplate keys."""
+    result = {}
+    for key, val in d.items():
+        if key in _STRIP_INNER_KEYS:
+            continue
+        simplified = _simplify_value(val)
+        # Truncate ISO date strings anywhere in the tree.
+        # Only match keys that genuinely contain dates — avoid false
+        # positives like "location" matching on the "on" suffix.
+        if isinstance(simplified, str) and "T" in simplified and (
+            key.lower().endswith(("date", "datetime"))
+            or key in ("issued", "recorded", "started", "created", "authoredOn")
+        ):
+            simplified = _truncate_date(simplified)
+        # Truncate dates inside period objects anywhere in the tree
+        if isinstance(simplified, dict) and key.lower() in (
+            "period", "billableperiod", "performedperiod",
+        ):
+            for pkey in ("start", "end"):
+                if isinstance(simplified.get(pkey), str):
+                    simplified[pkey] = _truncate_date(simplified[pkey])
+        result[key] = simplified
+    return result
+
+
+def _truncate_date(val: str) -> str:
+    """Truncate an ISO datetime to date-only if it includes time."""
+    if isinstance(val, str) and "T" in val:
+        return val[:10]
+    return val
+
+
+def _prune_fhir_resource(resource: dict[str, Any]) -> dict[str, Any]:
+    """Recursively prune a FHIR resource for LLM consumption.
+
+    Removes FHIR boilerplate (meta, system URIs, identifiers, narrative HTML),
+    simplifies CodeableConcepts and References to display strings, decodes
+    base64 clinical note content, and truncates dates. The result contains
+    every clinically relevant field in a compact, readable form.
+    """
+    # Pre-process: handle DocumentReference base64 content before recursion
+    extra: dict[str, Any] = {}
+    if resource.get("resourceType") == "DocumentReference":
+        for content_item in resource.get("content", []):
+            attachment = content_item.get("attachment", {})
+            if attachment.get("data") and "text/plain" in attachment.get("contentType", ""):
+                try:
+                    decoded = base64.b64decode(attachment["data"]).decode("utf-8")
+                    if len(decoded) > 1500:
+                        decoded = decoded[:1500] + "\n... (truncated)"
+                    extra["clinical_note"] = decoded
+                except Exception:
+                    pass
+
+    # Build a filtered copy, then let _simplify_dict handle recursive
+    # simplification, date truncation, and inner-key stripping.
+    filtered = {}
+    skip_keys = _STRIP_KEYS | {
+        # Device noise
+        "udiCarrier", "distinctIdentifier", "lotNumber", "serialNumber",
+        # Claim/EOB noise
+        "insurance", "priority",
+    }
+    for key, val in resource.items():
+        if key in skip_keys:
+            continue
+        # Replace raw content with decoded clinical_note
+        if key == "content" and "clinical_note" in extra:
+            continue
+        filtered[key] = val
+
+    pruned = _simplify_dict(filtered)
+    pruned.update(extra)
+    return pruned
 
 
 def _format_retrieved_context(retrieved_resources: list[dict[str, Any]]) -> str:
-    """Format retrieved resources grouped by type for the prompt."""
+    """Format retrieved resources grouped by type for the prompt.
+
+    Uses pruned JSON to give the LLM complete access to all clinically
+    relevant fields without FHIR boilerplate. Resources are grouped by type
+    with Observations sub-grouped by category.
+    """
     if not retrieved_resources:
         return "No additional context retrieved"
 
@@ -382,16 +394,16 @@ def _format_retrieved_context(retrieved_resources: list[dict[str, Any]]) -> str:
                     continue
                 cat_resources = by_category[cat]
                 label = cat_labels.get(cat, cat.title())
-                lines = [_format_retrieved_resource_line(r) for r in cat_resources]
-                sections.append(f"**{label} ({len(cat_resources)}):**\n" + "\n".join(lines))
+                pruned = [_prune_fhir_resource(r) for r in cat_resources]
+                sections.append(f"**{label} ({len(cat_resources)}):**\n```json\n{json.dumps(pruned, indent=2)}\n```")
             # Any categories not in cat_order
             for cat, cat_resources in by_category.items():
                 if cat not in cat_order:
-                    lines = [_format_retrieved_resource_line(r) for r in cat_resources]
-                    sections.append(f"**{cat.title()} Observations ({len(cat_resources)}):**\n" + "\n".join(lines))
+                    pruned = [_prune_fhir_resource(r) for r in cat_resources]
+                    sections.append(f"**{cat.title()} Observations ({len(cat_resources)}):**\n```json\n{json.dumps(pruned, indent=2)}\n```")
         else:
-            lines = [_format_retrieved_resource_line(r) for r in resources]
-            sections.append(f"**{rtype}s ({len(resources)}):**\n" + "\n".join(lines))
+            pruned = [_prune_fhir_resource(r) for r in resources]
+            sections.append(f"**{rtype}s ({len(resources)}):**\n```json\n{json.dumps(pruned, indent=2)}\n```")
 
     return "\n\n".join(sections)
 
