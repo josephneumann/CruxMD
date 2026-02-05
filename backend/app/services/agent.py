@@ -258,6 +258,89 @@ def _format_retrieved_resource_line(resource: dict[str, Any]) -> str:
     elif resource_type == "Procedure":
         date = resource.get("performedDateTime", resource.get("performedPeriod", {}).get("start", ""))
         return f"- {display}" + (f" ({date[:10]})" if date else "")
+    elif resource_type == "CareTeam":
+        reason = _get_display_name(resource, "reasonCode") if resource.get("reasonCode") else None
+        parts = []
+        for p in resource.get("participant", []):
+            member_name = p.get("member", {}).get("display")
+            role_codings = p.get("role", [{}])[0].get("coding", [])
+            role = role_codings[0].get("display") if role_codings else None
+            if member_name:
+                parts.append(f"{member_name} ({role})" if role else member_name)
+        status = resource.get("status")
+        header = f"- Care Team" + (f" for {reason}" if reason else "")
+        if status:
+            header += f" [{status}]"
+        if parts:
+            header += f": {', '.join(parts)}"
+        return header
+    elif resource_type == "DocumentReference":
+        type_display = _get_display_name(resource, "type") or "Document"
+        date = resource.get("date", "")[:10]
+        authors = [a.get("display") for a in resource.get("author", []) if a.get("display")]
+        line = f"- {type_display}"
+        if date:
+            line += f" ({date})"
+        if authors:
+            line += f" by {', '.join(authors)}"
+        return line
+    elif resource_type == "ImagingStudy":
+        proc_codes = resource.get("procedureCode", [])
+        proc = proc_codes[0].get("coding", [{}])[0].get("display") if proc_codes else None
+        series = resource.get("series", [{}])
+        modality = series[0].get("modality", {}).get("display") if series else None
+        body_site = series[0].get("bodySite", {}).get("display") if series else None
+        date = (resource.get("started") or "")[:10]
+        line = f"- {proc or 'Imaging Study'}"
+        details = [d for d in [modality, body_site] if d]
+        if details:
+            line += f" ({', '.join(details)})"
+        if date:
+            line += f" [{date}]"
+        return line
+    elif resource_type == "Device":
+        status = resource.get("status")
+        return f"- {display}" + (f" [{status}]" if status else "")
+    elif resource_type == "MedicationAdministration":
+        med_display = _get_display_name(resource, "medicationCodeableConcept") or display
+        status = resource.get("status")
+        date = (resource.get("effectiveDateTime") or "")[:10]
+        line = f"- {med_display}"
+        if status:
+            line += f" [{status}]"
+        if date:
+            line += f" ({date})"
+        return line
+    elif resource_type == "Claim":
+        type_code = resource.get("type", {}).get("coding", [{}])[0].get("code", "")
+        items = resource.get("item", [])
+        service = items[0].get("productOrService", {}).get("coding", [{}])[0].get("display") if items else None
+        date = (resource.get("created") or "")[:10]
+        line = f"- Claim ({type_code})"
+        if service:
+            line += f": {service}"
+        if date:
+            line += f" [{date}]"
+        return line
+    elif resource_type == "ExplanationOfBenefit":
+        type_code = resource.get("type", {}).get("coding", [{}])[0].get("code", "")
+        totals = resource.get("total", [])
+        total_amt = totals[0].get("amount", {}).get("value") if totals else None
+        payment_amt = resource.get("payment", {}).get("amount", {}).get("value")
+        line = f"- EOB ({type_code})"
+        if total_amt is not None:
+            line += f": total ${total_amt:,.2f}"
+        if payment_amt is not None:
+            line += f", payment ${payment_amt:,.2f}"
+        return line
+    elif resource_type == "SupplyDelivery":
+        item = resource.get("suppliedItem", {}).get("itemCodeableConcept", {})
+        item_display = item.get("coding", [{}])[0].get("display") if item.get("coding") else item.get("text")
+        status = resource.get("status")
+        line = f"- {item_display or 'Supply Delivery'}"
+        if status:
+            line += f" [{status}]"
+        return line
     else:
         return f"- [{resource_type}] {display}"
 
