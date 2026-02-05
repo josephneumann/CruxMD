@@ -370,6 +370,309 @@ def _template_care_plan(resource: dict[str, Any]) -> str:
     return ". ".join(parts)
 
 
+def _template_immunization(resource: dict[str, Any]) -> str:
+    """
+    Generate embeddable text from a FHIR Immunization resource.
+
+    Extracts: vaccine display, status, occurrence date.
+    """
+    vaccine = resource.get("vaccineCode", {})
+    codings = vaccine.get("coding", [])
+    display = codings[0].get("display", "") if codings else vaccine.get("text", "")
+
+    status = resource.get("status", "")
+    occurrence = resource.get("occurrenceDateTime", "")
+
+    parts = [f"Immunization: {display}"]
+    if status:
+        parts.append(f"Status: {status}")
+    if occurrence:
+        parts.append(f"Date: {occurrence}")
+
+    return ". ".join(parts)
+
+
+def _template_imaging_study(resource: dict[str, Any]) -> str:
+    """
+    Generate embeddable text from a FHIR ImagingStudy resource.
+
+    Extracts: procedure display, modality, body site, started date.
+    """
+    # Procedure code
+    procedure_display = ""
+    procedure_codes = resource.get("procedureCode", [])
+    if procedure_codes:
+        codings = procedure_codes[0].get("coding", [])
+        if codings:
+            procedure_display = codings[0].get("display", "")
+
+    # Modality and body site from first series
+    modality = ""
+    body_site = ""
+    series = resource.get("series", [])
+    if series:
+        first_series = series[0]
+        modality_obj = first_series.get("modality", {})
+        modality = modality_obj.get("display", "") or modality_obj.get("code", "")
+        body_site_obj = first_series.get("bodySite", {})
+        body_site = body_site_obj.get("display", "")
+
+    started = resource.get("started", "")
+
+    parts = [f"Imaging Study: {procedure_display or 'Unknown'}"]
+    if modality:
+        parts.append(f"Modality: {modality}")
+    if body_site:
+        parts.append(f"Body site: {body_site}")
+    if started:
+        parts.append(f"Date: {started}")
+
+    return ". ".join(parts)
+
+
+def _template_medication_administration(resource: dict[str, Any]) -> str:
+    """
+    Generate embeddable text from a FHIR MedicationAdministration resource.
+
+    Extracts: medication display, status, effective date.
+    """
+    med_code = resource.get("medicationCodeableConcept", {})
+    codings = med_code.get("coding", [])
+    display = codings[0].get("display", "") if codings else med_code.get("text", "")
+
+    status = resource.get("status", "")
+    effective = resource.get("effectiveDateTime", "")
+    if not effective:
+        effective_period = resource.get("effectivePeriod", {})
+        effective = effective_period.get("start", "")
+
+    parts = [f"Medication Administration: {display}"]
+    if status:
+        parts.append(f"Status: {status}")
+    if effective:
+        parts.append(f"Date: {effective}")
+
+    return ". ".join(parts)
+
+
+def _template_medication(resource: dict[str, Any]) -> str:
+    """
+    Generate embeddable text from a FHIR Medication resource.
+
+    Extracts: code display, status.
+    """
+    code = resource.get("code", {})
+    codings = code.get("coding", [])
+    display = codings[0].get("display", "") if codings else code.get("text", "")
+
+    status = resource.get("status", "")
+
+    parts = [f"Medication: {display}"]
+    if status:
+        parts.append(f"Status: {status}")
+
+    return ". ".join(parts)
+
+
+def _template_device(resource: dict[str, Any]) -> str:
+    """
+    Generate embeddable text from a FHIR Device resource.
+
+    Extracts: type display, status, manufacture date, expiration date.
+    """
+    type_obj = resource.get("type", {})
+    type_codings = type_obj.get("coding", [])
+    display = type_codings[0].get("display", "") if type_codings else type_obj.get("text", "")
+
+    status = resource.get("status", "")
+    manufacture_date = resource.get("manufactureDate", "")
+    expiration_date = resource.get("expirationDate", "")
+
+    parts = [f"Device: {display}"]
+    if status:
+        parts.append(f"Status: {status}")
+    if manufacture_date:
+        parts.append(f"Manufactured: {manufacture_date}")
+    if expiration_date:
+        parts.append(f"Expires: {expiration_date}")
+
+    return ". ".join(parts)
+
+
+def _template_care_team(resource: dict[str, Any]) -> str:
+    """
+    Generate embeddable text from a FHIR CareTeam resource.
+
+    Extracts: reason display, status, period start, participant names.
+    """
+    # Reason
+    reason_display = ""
+    reason_codes = resource.get("reasonCode", [])
+    if reason_codes:
+        codings = reason_codes[0].get("coding", [])
+        if codings:
+            reason_display = codings[0].get("display", "")
+
+    status = resource.get("status", "")
+    period = resource.get("period", {})
+    period_start = period.get("start", "")
+
+    # Participant names (first 3)
+    participant_names = []
+    for p in resource.get("participant", [])[:3]:
+        member = p.get("member", {})
+        name = member.get("display", "")
+        if name:
+            participant_names.append(name)
+
+    parts = [f"Care Team: {reason_display or 'Care Team'}"]
+    if status:
+        parts.append(f"Status: {status}")
+    if period_start:
+        parts.append(f"Start: {period_start}")
+    if participant_names:
+        parts.append(f"Members: {', '.join(participant_names)}")
+
+    return ". ".join(parts)
+
+
+def _template_claim(resource: dict[str, Any]) -> str:
+    """
+    Generate embeddable text from a FHIR Claim resource.
+
+    Extracts: type code, status, created, first item service display.
+    """
+    type_obj = resource.get("type", {})
+    type_codings = type_obj.get("coding", [])
+    type_code = type_codings[0].get("code", "") if type_codings else ""
+
+    status = resource.get("status", "")
+    created = resource.get("created", "")
+
+    # First item service display
+    service_display = ""
+    items = resource.get("item", [])
+    if items:
+        service_obj = items[0].get("productOrService", {})
+        service_codings = service_obj.get("coding", [])
+        if service_codings:
+            service_display = service_codings[0].get("display", "")
+
+    parts = [f"Claim: Type: {type_code}"]
+    if status:
+        parts.append(f"Status: {status}")
+    if created:
+        parts.append(f"Created: {created}")
+    if service_display:
+        parts.append(f"Service: {service_display}")
+
+    return ". ".join(parts)
+
+
+def _template_explanation_of_benefit(resource: dict[str, Any]) -> str:
+    """
+    Generate embeddable text from a FHIR ExplanationOfBenefit resource.
+
+    Extracts: type code, status, total amount, payment amount.
+    """
+    type_obj = resource.get("type", {})
+    type_codings = type_obj.get("coding", [])
+    type_code = type_codings[0].get("code", "") if type_codings else ""
+
+    status = resource.get("status", "")
+
+    # Total amount
+    total_amount = ""
+    total_currency = ""
+    totals = resource.get("total", [])
+    if totals:
+        amount_obj = totals[0].get("amount", {})
+        total_amount = amount_obj.get("value", "")
+        total_currency = amount_obj.get("currency", "USD")
+
+    # Payment amount
+    payment_amount = ""
+    payment = resource.get("payment", {})
+    payment_amount_obj = payment.get("amount", {})
+    if payment_amount_obj:
+        payment_amount = payment_amount_obj.get("value", "")
+
+    parts = [f"EOB: Type: {type_code}"]
+    if status:
+        parts.append(f"Status: {status}")
+    if total_amount != "":
+        parts.append(f"Total: ${total_amount}")
+    if payment_amount != "":
+        parts.append(f"Payment: ${payment_amount}")
+
+    return ". ".join(parts)
+
+
+def _template_supply_delivery(resource: dict[str, Any]) -> str:
+    """
+    Generate embeddable text from a FHIR SupplyDelivery resource.
+
+    Extracts: supplied item display, type display, status, occurrence date.
+    """
+    # Supplied item
+    item_display = ""
+    supplied_item = resource.get("suppliedItem", {})
+    item_cc = supplied_item.get("itemCodeableConcept", {})
+    item_codings = item_cc.get("coding", [])
+    if item_codings:
+        item_display = item_codings[0].get("display", "")
+
+    # Type
+    type_obj = resource.get("type", {})
+    type_codings = type_obj.get("coding", [])
+    type_display = type_codings[0].get("display", "") if type_codings else ""
+
+    status = resource.get("status", "")
+    occurrence = resource.get("occurrenceDateTime", "")
+
+    parts = [f"Supply Delivery: {item_display or 'Supply'}"]
+    if type_display:
+        parts.append(f"Type: {type_display}")
+    if status:
+        parts.append(f"Status: {status}")
+    if occurrence:
+        parts.append(f"Date: {occurrence}")
+
+    return ". ".join(parts)
+
+
+def _template_patient(resource: dict[str, Any]) -> str:
+    """
+    Generate embeddable text from a FHIR Patient resource.
+
+    Extracts: name, gender, birth date, marital status.
+    """
+    # Name
+    name_parts = resource.get("name", [{}])[0] if resource.get("name") else {}
+    given = " ".join(name_parts.get("given", []))
+    family = name_parts.get("family", "")
+    full_name = f"{given} {family}".strip()
+
+    gender = resource.get("gender", "")
+    birth_date = resource.get("birthDate", "")
+
+    marital_status = ""
+    marital_obj = resource.get("maritalStatus", {})
+    marital_codings = marital_obj.get("coding", [])
+    if marital_codings:
+        marital_status = marital_codings[0].get("display", "")
+
+    parts = [f"Patient: {full_name or 'Unknown'}"]
+    if gender:
+        parts.append(f"Gender: {gender}")
+    if birth_date:
+        parts.append(f"Birth date: {birth_date}")
+    if marital_status:
+        parts.append(f"Marital status: {marital_status}")
+
+    return ". ".join(parts)
+
+
 # Mapping of FHIR resource types to their template functions
 RESOURCE_TEMPLATES: dict[str, Callable[[dict[str, Any]], str]] = {
     "Condition": _template_condition,
@@ -381,6 +684,16 @@ RESOURCE_TEMPLATES: dict[str, Callable[[dict[str, Any]], str]] = {
     "DiagnosticReport": _template_diagnostic_report,
     "DocumentReference": _template_document_reference,
     "CarePlan": _template_care_plan,
+    "Immunization": _template_immunization,
+    "ImagingStudy": _template_imaging_study,
+    "MedicationAdministration": _template_medication_administration,
+    "Medication": _template_medication,
+    "Device": _template_device,
+    "CareTeam": _template_care_team,
+    "Claim": _template_claim,
+    "ExplanationOfBenefit": _template_explanation_of_benefit,
+    "SupplyDelivery": _template_supply_delivery,
+    "Patient": _template_patient,
 }
 
 # Resource types that support embedding

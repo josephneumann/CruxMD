@@ -172,6 +172,14 @@ RESOURCE_TYPE_SYNONYMS: dict[str, list[str]] = {
     "Encounter": ["encounters", "visits", "appointments"],
     "DiagnosticReport": ["reports", "diagnostic reports"],
     "CarePlan": ["care plans", "treatment plans"],
+    "DocumentReference": ["documents", "notes", "clinical notes", "discharge summary"],
+    "ImagingStudy": ["imaging", "x-ray", "xray", "scan", "radiology", "mri", "ct scan"],
+    "Device": ["device", "implant", "equipment", "pacemaker"],
+    "CareTeam": ["care team", "team", "providers"],
+    "MedicationAdministration": ["administered", "given medication", "infusion"],
+    "SupplyDelivery": ["supply", "delivery", "supplies"],
+    "Claim": ["claim", "billing", "charges"],
+    "ExplanationOfBenefit": ["benefits", "eob", "insurance", "coverage"],
 }
 
 # Maps Observation.category codes to common English synonyms

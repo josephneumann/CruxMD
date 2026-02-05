@@ -418,6 +418,10 @@ class ContextEngine:
                 ("diagnostic_reports", "DiagnosticReport"),
                 ("immunizations", "Immunization"),
                 ("care_plans", "CarePlan"),
+                ("document_references", "DocumentReference"),
+                ("imaging_studies", "ImagingStudy"),
+                ("care_teams", "CareTeam"),
+                ("medication_administrations", "MedicationAdministration"),
             ]:
                 for resource in events[resource_type_key]:
                     fhir_id = resource.get("id")

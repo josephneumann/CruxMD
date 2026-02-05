@@ -565,11 +565,16 @@ class TestGenerateEmbeddings:
             assert "Observation:" in observation_resource.embedding_text
 
     @pytest.mark.asyncio
-    async def test_generate_embeddings_skips_non_embeddable(self, sample_patient):
+    async def test_generate_embeddings_skips_non_embeddable(self):
         """Test that _generate_embeddings skips non-embeddable resource types."""
-        # Patient is not an embeddable type
-        patient_resource = self._create_mock_fhir_resource(
-            "Patient", "pat-1", sample_patient
+        # Provenance is not an embeddable type
+        provenance_data = {
+            "resourceType": "Provenance",
+            "id": "prov-1",
+            "target": [{"reference": "Patient/pat-1"}],
+        }
+        provenance_resource = self._create_mock_fhir_resource(
+            "Provenance", "prov-1", provenance_data
         )
 
         with patch(
@@ -580,14 +585,14 @@ class TestGenerateEmbeddings:
             mock_service.close = AsyncMock()
             mock_service_class.return_value = mock_service
 
-            await _generate_embeddings([patient_resource])
+            await _generate_embeddings([provenance_resource])
 
-            # embed_texts should not be called since Patient is not embeddable
+            # embed_texts should not be called since Provenance is not embeddable
             mock_service.embed_texts.assert_not_called()
 
-            # Patient should not have embedding
-            assert patient_resource.embedding is None
-            assert patient_resource.embedding_text is None
+            # Provenance should not have embedding
+            assert provenance_resource.embedding is None
+            assert provenance_resource.embedding_text is None
 
     @pytest.mark.asyncio
     async def test_generate_embeddings_handles_empty_list(self):

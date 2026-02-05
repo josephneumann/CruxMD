@@ -842,6 +842,401 @@ def sample_careplan_with_addresses() -> dict:
 
 
 # =============================================================================
+# New resource type fixtures (expanded FHIR pipeline)
+# =============================================================================
+
+
+@pytest.fixture
+def sample_document_reference() -> dict:
+    """Sample FHIR DocumentReference resource for testing."""
+    return {
+        "resourceType": "DocumentReference",
+        "id": "docref-test-001",
+        "subject": {"reference": "Patient/patient-test-123"},
+        "type": {
+            "coding": [
+                {
+                    "system": "http://loinc.org",
+                    "code": "34133-9",
+                    "display": "Summary of episode note",
+                }
+            ]
+        },
+        "status": "current",
+        "date": "2024-01-15T09:30:00Z",
+        "description": "Encounter Summary",
+        "category": [
+            {
+                "coding": [
+                    {
+                        "system": "http://hl7.org/fhir/us/core/CodeSystem/us-core-documentreference-category",
+                        "code": "clinical-note",
+                        "display": "Clinical Note",
+                    }
+                ]
+            }
+        ],
+    }
+
+
+@pytest.fixture
+def sample_document_reference_with_encounter() -> dict:
+    """Sample FHIR DocumentReference with encounter reference."""
+    return {
+        "resourceType": "DocumentReference",
+        "id": "docref-with-encounter",
+        "subject": {"reference": "Patient/patient-test-123"},
+        "type": {
+            "coding": [
+                {
+                    "system": "http://loinc.org",
+                    "code": "34133-9",
+                    "display": "Summary of episode note",
+                }
+            ]
+        },
+        "status": "current",
+        "date": "2024-01-15T09:30:00Z",
+        "context": {
+            "encounter": [
+                {"reference": "Encounter/encounter-test-ghi"}
+            ],
+        },
+    }
+
+
+@pytest.fixture
+def sample_imaging_study() -> dict:
+    """Sample FHIR ImagingStudy resource for testing."""
+    return {
+        "resourceType": "ImagingStudy",
+        "id": "imaging-test-001",
+        "subject": {"reference": "Patient/patient-test-123"},
+        "status": "available",
+        "started": "2024-01-15T10:00:00Z",
+        "procedureCode": [
+            {
+                "coding": [
+                    {
+                        "system": "http://snomed.info/sct",
+                        "code": "71651007",
+                        "display": "Mammography",
+                    }
+                ]
+            }
+        ],
+        "series": [
+            {
+                "modality": {"code": "DX", "display": "Digital Radiography"},
+                "bodySite": {"display": "Breast"},
+            }
+        ],
+    }
+
+
+@pytest.fixture
+def sample_imaging_study_with_encounter() -> dict:
+    """Sample FHIR ImagingStudy with encounter reference."""
+    return {
+        "resourceType": "ImagingStudy",
+        "id": "imaging-with-encounter",
+        "subject": {"reference": "Patient/patient-test-123"},
+        "encounter": {"reference": "Encounter/encounter-test-ghi"},
+        "status": "available",
+        "started": "2024-01-15T10:00:00Z",
+        "procedureCode": [
+            {
+                "coding": [
+                    {
+                        "system": "http://snomed.info/sct",
+                        "code": "71651007",
+                        "display": "Mammography",
+                    }
+                ]
+            }
+        ],
+        "series": [
+            {
+                "modality": {"code": "DX", "display": "Digital Radiography"},
+                "bodySite": {"display": "Breast"},
+            }
+        ],
+    }
+
+
+@pytest.fixture
+def sample_device() -> dict:
+    """Sample FHIR Device resource for testing."""
+    return {
+        "resourceType": "Device",
+        "id": "device-test-001",
+        "patient": {"reference": "Patient/patient-test-123"},
+        "type": {
+            "coding": [
+                {
+                    "system": "http://snomed.info/sct",
+                    "code": "14106009",
+                    "display": "Cardiac pacemaker",
+                }
+            ]
+        },
+        "status": "active",
+        "manufactureDate": "2020-06-01",
+        "expirationDate": "2030-06-01",
+    }
+
+
+@pytest.fixture
+def sample_care_team() -> dict:
+    """Sample FHIR CareTeam resource for testing."""
+    return {
+        "resourceType": "CareTeam",
+        "id": "careteam-test-001",
+        "subject": {"reference": "Patient/patient-test-123"},
+        "status": "active",
+        "reasonCode": [
+            {
+                "coding": [
+                    {
+                        "system": "http://snomed.info/sct",
+                        "code": "38341003",
+                        "display": "Essential hypertension",
+                    }
+                ]
+            }
+        ],
+        "period": {"start": "2024-01-15T09:00:00Z"},
+        "participant": [
+            {"member": {"display": "Dr. Smith"}},
+            {"member": {"display": "Nurse Jones"}},
+        ],
+    }
+
+
+@pytest.fixture
+def sample_care_team_with_encounter() -> dict:
+    """Sample FHIR CareTeam with encounter reference."""
+    return {
+        "resourceType": "CareTeam",
+        "id": "careteam-with-encounter",
+        "subject": {"reference": "Patient/patient-test-123"},
+        "encounter": {"reference": "Encounter/encounter-test-ghi"},
+        "status": "active",
+        "reasonCode": [
+            {
+                "coding": [
+                    {
+                        "system": "http://snomed.info/sct",
+                        "code": "38341003",
+                        "display": "Essential hypertension",
+                    }
+                ]
+            }
+        ],
+        "period": {"start": "2024-01-15T09:00:00Z"},
+    }
+
+
+@pytest.fixture
+def sample_medication_administration() -> dict:
+    """Sample FHIR MedicationAdministration resource for testing."""
+    return {
+        "resourceType": "MedicationAdministration",
+        "id": "medadmin-test-001",
+        "subject": {"reference": "Patient/patient-test-123"},
+        "medicationCodeableConcept": {
+            "coding": [
+                {
+                    "system": "http://www.nlm.nih.gov/research/umls/rxnorm",
+                    "code": "997223",
+                    "display": "sodium fluoride 0.0272 MG/MG Oral Gel",
+                }
+            ]
+        },
+        "status": "completed",
+        "effectiveDateTime": "2024-01-15T09:30:00Z",
+    }
+
+
+@pytest.fixture
+def sample_medication_administration_with_encounter() -> dict:
+    """Sample FHIR MedicationAdministration with encounter (context) reference."""
+    return {
+        "resourceType": "MedicationAdministration",
+        "id": "medadmin-with-encounter",
+        "subject": {"reference": "Patient/patient-test-123"},
+        "context": {"reference": "Encounter/encounter-test-ghi"},
+        "medicationCodeableConcept": {
+            "coding": [
+                {
+                    "system": "http://www.nlm.nih.gov/research/umls/rxnorm",
+                    "code": "997223",
+                    "display": "sodium fluoride 0.0272 MG/MG Oral Gel",
+                }
+            ]
+        },
+        "status": "completed",
+        "effectiveDateTime": "2024-01-15T09:30:00Z",
+    }
+
+
+@pytest.fixture
+def sample_medication_administration_with_reason() -> dict:
+    """Sample FHIR MedicationAdministration with reasonReference."""
+    return {
+        "resourceType": "MedicationAdministration",
+        "id": "medadmin-with-reason",
+        "subject": {"reference": "Patient/patient-test-123"},
+        "context": {"reference": "Encounter/encounter-test-ghi"},
+        "reasonReference": [
+            {"reference": "Condition/condition-with-encounter"}
+        ],
+        "medicationCodeableConcept": {
+            "coding": [
+                {
+                    "system": "http://www.nlm.nih.gov/research/umls/rxnorm",
+                    "code": "997223",
+                    "display": "sodium fluoride 0.0272 MG/MG Oral Gel",
+                }
+            ]
+        },
+        "status": "completed",
+        "effectiveDateTime": "2024-01-15T09:30:00Z",
+    }
+
+
+@pytest.fixture
+def sample_medication_catalog() -> dict:
+    """Sample FHIR Medication (catalog) resource for testing."""
+    return {
+        "resourceType": "Medication",
+        "id": "medication-catalog-001",
+        "code": {
+            "coding": [
+                {
+                    "system": "http://www.nlm.nih.gov/research/umls/rxnorm",
+                    "code": "997223",
+                    "display": "sodium fluoride 0.0272 MG/MG Oral Gel",
+                }
+            ]
+        },
+        "status": "active",
+    }
+
+
+@pytest.fixture
+def sample_claim() -> dict:
+    """Sample FHIR Claim resource for testing."""
+    return {
+        "resourceType": "Claim",
+        "id": "claim-test-001",
+        "patient": {"reference": "Patient/patient-test-123"},
+        "type": {
+            "coding": [
+                {
+                    "system": "http://terminology.hl7.org/CodeSystem/claim-type",
+                    "code": "professional",
+                }
+            ]
+        },
+        "status": "active",
+        "use": "claim",
+        "created": "2024-01-15",
+        "billablePeriod": {
+            "start": "2024-01-15T09:00:00Z",
+            "end": "2024-01-15T09:30:00Z",
+        },
+        "item": [
+            {
+                "productOrService": {
+                    "coding": [
+                        {
+                            "system": "http://snomed.info/sct",
+                            "code": "185349003",
+                            "display": "Well child visit",
+                        }
+                    ]
+                },
+                "encounter": [
+                    {"reference": "Encounter/encounter-test-ghi"}
+                ],
+            }
+        ],
+        "diagnosis": [
+            {
+                "sequence": 1,
+                "diagnosisReference": {
+                    "reference": "Condition/condition-with-encounter",
+                },
+            }
+        ],
+    }
+
+
+@pytest.fixture
+def sample_eob() -> dict:
+    """Sample FHIR ExplanationOfBenefit resource for testing."""
+    return {
+        "resourceType": "ExplanationOfBenefit",
+        "id": "eob-test-001",
+        "patient": {"reference": "Patient/patient-test-123"},
+        "type": {
+            "coding": [
+                {
+                    "system": "http://terminology.hl7.org/CodeSystem/claim-type",
+                    "code": "professional",
+                }
+            ]
+        },
+        "status": "active",
+        "use": "claim",
+        "created": "2024-01-15",
+        "claim": {"reference": "Claim/claim-test-001"},
+        "total": [
+            {
+                "category": {"coding": [{"code": "submitted"}]},
+                "amount": {"value": 704.20, "currency": "USD"},
+            }
+        ],
+        "payment": {
+            "amount": {"value": 0.00, "currency": "USD"},
+        },
+    }
+
+
+@pytest.fixture
+def sample_supply_delivery() -> dict:
+    """Sample FHIR SupplyDelivery resource for testing."""
+    return {
+        "resourceType": "SupplyDelivery",
+        "id": "supply-test-001",
+        "patient": {"reference": "Patient/patient-test-123"},
+        "type": {
+            "coding": [
+                {
+                    "system": "http://terminology.hl7.org/CodeSystem/supply-item-type",
+                    "code": "device",
+                    "display": "Device",
+                }
+            ]
+        },
+        "status": "completed",
+        "suppliedItem": {
+            "itemCodeableConcept": {
+                "coding": [
+                    {
+                        "system": "http://snomed.info/sct",
+                        "code": "272181003",
+                        "display": "Dental impression material",
+                    }
+                ]
+            }
+        },
+        "occurrenceDateTime": "2024-01-15T10:00:00Z",
+    }
+
+
+# =============================================================================
 # Helper Functions (available to tests)
 # =============================================================================
 

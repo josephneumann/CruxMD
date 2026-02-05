@@ -467,14 +467,24 @@ class TestResourceToText:
             "DiagnosticReport",
             "DocumentReference",
             "CarePlan",
+            "Immunization",
+            "ImagingStudy",
+            "MedicationAdministration",
+            "Medication",
+            "Device",
+            "CareTeam",
+            "Claim",
+            "ExplanationOfBenefit",
+            "SupplyDelivery",
+            "Patient",
         }
         assert EMBEDDABLE_TYPES == expected_types
 
     def test_returns_none_for_unsupported_type(self):
         """Test that unsupported types return None."""
         resource = {
-            "resourceType": "Patient",
-            "name": [{"given": ["John"], "family": "Doe"}],
+            "resourceType": "Organization",
+            "name": "Hospital",
         }
         result = resource_to_text(resource)
         assert result is None
@@ -595,8 +605,8 @@ class TestEmbeddingService:
         service = EmbeddingService(client=mock_client)
 
         resource = {
-            "resourceType": "Patient",
-            "name": [{"given": ["John"], "family": "Doe"}],
+            "resourceType": "Organization",
+            "name": "Hospital",
         }
 
         result = await service.embed_resource(resource)
@@ -637,8 +647,8 @@ class TestEmbeddingService:
 
         resources = [
             {
-                "resourceType": "Patient",  # Unsupported
-                "name": [{"given": ["John"]}],
+                "resourceType": "Provenance",  # Unsupported
+                "target": [{"reference": "Patient/pat-1"}],
             },
             {
                 "resourceType": "Condition",  # Supported
@@ -674,7 +684,7 @@ class TestEmbeddingService:
         service = EmbeddingService(client=mock_client)
 
         resources = [
-            {"resourceType": "Patient", "name": [{"given": ["John"]}]},
+            {"resourceType": "Provenance", "target": [{"reference": "Patient/pat-1"}]},
             {"resourceType": "Organization", "name": "Hospital"},
         ]
 

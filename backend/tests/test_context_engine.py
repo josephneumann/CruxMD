@@ -143,6 +143,10 @@ def mock_graph():
         "diagnostic_reports": [],
         "immunizations": [],
         "care_plans": [],
+        "document_references": [],
+        "imaging_studies": [],
+        "care_teams": [],
+        "medication_administrations": [],
     })
     return graph
 
@@ -466,6 +470,10 @@ class TestBuildGraphTraversalLayer:
             "diagnostic_reports": [],
             "immunizations": [],
             "care_plans": [],
+            "document_references": [],
+            "imaging_studies": [],
+            "care_teams": [],
+            "medication_administrations": [],
         }
 
         result = await context_engine._build_graph_traversal_layer(
@@ -495,6 +503,10 @@ class TestBuildGraphTraversalLayer:
             "diagnostic_reports": [],
             "immunizations": [],
             "care_plans": [],
+            "document_references": [],
+            "imaging_studies": [],
+            "care_teams": [],
+            "medication_administrations": [],
         }
 
         result = await context_engine._build_graph_traversal_layer(
@@ -522,6 +534,10 @@ class TestBuildGraphTraversalLayer:
             "diagnostic_reports": [],
             "immunizations": [],
             "care_plans": [],
+            "document_references": [],
+            "imaging_studies": [],
+            "care_teams": [],
+            "medication_administrations": [],
         }
 
         result = await context_engine._build_graph_traversal_layer(
@@ -571,6 +587,7 @@ class TestBuildGraphTraversalLayer:
         mock_graph.get_encounter_events.return_value = {
             "conditions": [], "medications": [], "observations": [],
             "procedures": [], "diagnostic_reports": [], "immunizations": [], "care_plans": [],
+            "document_references": [], "imaging_studies": [], "care_teams": [], "medication_administrations": [],
         }
 
         await context_engine._build_graph_traversal_layer(patient_id, "show me meds")
@@ -596,6 +613,7 @@ class TestBuildGraphTraversalLayer:
             "conditions": [], "medications": [],
             "observations": [sample_observation],
             "procedures": [], "diagnostic_reports": [], "immunizations": [], "care_plans": [],
+            "document_references": [], "imaging_studies": [], "care_teams": [], "medication_administrations": [],
         }
 
         result = await context_engine._build_graph_traversal_layer(patient_id, "show me labs")
@@ -771,6 +789,10 @@ class TestBuildContext:
             "diagnostic_reports": [],
             "immunizations": [],
             "care_plans": [],
+            "document_references": [],
+            "imaging_studies": [],
+            "care_teams": [],
+            "medication_administrations": [],
         }
 
         context = await context_engine.build_context(
@@ -806,6 +828,10 @@ class TestBuildContext:
             "diagnostic_reports": [],
             "immunizations": [],
             "care_plans": [],
+            "document_references": [],
+            "imaging_studies": [],
+            "care_teams": [],
+            "medication_administrations": [],
         }
         # Vector search returns the same observation
         mock_vector_search.search_by_text.return_value = [
