@@ -189,16 +189,23 @@ OBSERVATION_CATEGORY_SYNONYMS: dict[str, list[str]] = {
     "survey": ["surveys", "questionnaires", "assessments", "screening"],
 }
 
-# Pre-built reverse lookups: synonym -> value
-_RESOURCE_TYPE_LOOKUP: dict[str, str] = {}
-for _rtype, _synonyms in RESOURCE_TYPE_SYNONYMS.items():
-    for _syn in _synonyms:
-        _RESOURCE_TYPE_LOOKUP[_syn] = _rtype
+# Pre-built reverse lookups: synonym -> value (with collision detection)
+def _build_reverse_lookup(synonym_map: dict[str, list[str]], map_name: str) -> dict[str, str]:
+    """Build reverse lookup from synonym map, raising on collisions."""
+    lookup: dict[str, str] = {}
+    for value, synonyms in synonym_map.items():
+        for syn in synonyms:
+            if syn in lookup:
+                raise ValueError(
+                    f"Synonym collision in {map_name}: '{syn}' maps to both "
+                    f"'{lookup[syn]}' and '{value}'"
+                )
+            lookup[syn] = value
+    return lookup
 
-_CATEGORY_LOOKUP: dict[str, str] = {}
-for _cat, _synonyms in OBSERVATION_CATEGORY_SYNONYMS.items():
-    for _syn in _synonyms:
-        _CATEGORY_LOOKUP[_syn] = _cat
+
+_RESOURCE_TYPE_LOOKUP = _build_reverse_lookup(RESOURCE_TYPE_SYNONYMS, "RESOURCE_TYPE_SYNONYMS")
+_CATEGORY_LOOKUP = _build_reverse_lookup(OBSERVATION_CATEGORY_SYNONYMS, "OBSERVATION_CATEGORY_SYNONYMS")
 
 
 def expand_synonyms(terms: list[str]) -> SynonymExpansion:

@@ -503,7 +503,7 @@ def _template_care_team(resource: dict[str, Any]) -> str:
     """
     Generate embeddable text from a FHIR CareTeam resource.
 
-    Extracts: reason display, status, period start, participant names.
+    Extracts: reason display, status, period start, participant roles (no names — PHI protection).
     """
     # Reason
     reason_display = ""
@@ -517,21 +517,24 @@ def _template_care_team(resource: dict[str, Any]) -> str:
     period = resource.get("period", {})
     period_start = period.get("start", "")
 
-    # Participant names (first 3)
-    participant_names = []
+    # Participant roles (no names — PHI protection)
+    participant_roles = []
     for p in resource.get("participant", [])[:3]:
-        member = p.get("member", {})
-        name = member.get("display", "")
-        if name:
-            participant_names.append(name)
+        roles = p.get("role", [])
+        if roles:
+            role_codings = roles[0].get("coding", [])
+            if role_codings:
+                role_display = role_codings[0].get("display", "")
+                if role_display:
+                    participant_roles.append(role_display)
 
     parts = [f"Care Team: {reason_display or 'Care Team'}"]
     if status:
         parts.append(f"Status: {status}")
     if period_start:
         parts.append(f"Start: {period_start}")
-    if participant_names:
-        parts.append(f"Members: {', '.join(participant_names)}")
+    if participant_roles:
+        parts.append(f"Roles: {', '.join(participant_roles)}")
 
     return ". ".join(parts)
 
@@ -645,14 +648,8 @@ def _template_patient(resource: dict[str, Any]) -> str:
     """
     Generate embeddable text from a FHIR Patient resource.
 
-    Extracts: name, gender, birth date, marital status.
+    Extracts: demographics (no names — PHI protection).
     """
-    # Name
-    name_parts = resource.get("name", [{}])[0] if resource.get("name") else {}
-    given = " ".join(name_parts.get("given", []))
-    family = name_parts.get("family", "")
-    full_name = f"{given} {family}".strip()
-
     gender = resource.get("gender", "")
     birth_date = resource.get("birthDate", "")
 
@@ -662,7 +659,7 @@ def _template_patient(resource: dict[str, Any]) -> str:
     if marital_codings:
         marital_status = marital_codings[0].get("display", "")
 
-    parts = [f"Patient: {full_name or 'Unknown'}"]
+    parts = ["Patient: Demographics"]
     if gender:
         parts.append(f"Gender: {gender}")
     if birth_date:

@@ -2,7 +2,7 @@
 
 import json
 import logging
-from typing import Any, TypedDict
+from typing import Any, NamedTuple, TypedDict
 
 from neo4j import AsyncGraphDatabase, AsyncDriver, AsyncSession
 
@@ -274,21 +274,41 @@ class KnowledgeGraph:
     - ExplanationOfBenefit EXPLAINS Claim
     """
 
-    # Relationship configuration for encounter-centric edges
-    # Format: (node_label, patient_relationship, encounter_relationship, alias)
+    class _EncounterRel(NamedTuple):
+        node_label: str
+        patient_rel: str
+        encounter_rel: str
+        alias: str
+
     _ENCOUNTER_RELATIONSHIPS = [
-        ("Condition", "HAS_CONDITION", "DIAGNOSED", "c"),
-        ("MedicationRequest", "HAS_MEDICATION_REQUEST", "PRESCRIBED", "m"),
-        ("Observation", "HAS_OBSERVATION", "RECORDED", "o"),
-        ("Procedure", "HAS_PROCEDURE", "PERFORMED", "pr"),
-        ("DiagnosticReport", "HAS_DIAGNOSTIC_REPORT", "REPORTED", "dr"),
-        ("Immunization", "HAS_IMMUNIZATION", "ADMINISTERED", "im"),
-        ("CarePlan", "HAS_CARE_PLAN", "CREATED_DURING", "cp"),
-        ("DocumentReference", "HAS_DOCUMENT_REFERENCE", "DOCUMENTED", "docr"),
-        ("ImagingStudy", "HAS_IMAGING_STUDY", "IMAGED", "img"),
-        ("CareTeam", "HAS_CARE_TEAM", "ASSEMBLED", "ct"),
-        ("MedicationAdministration", "HAS_MEDICATION_ADMINISTRATION", "GIVEN", "ma"),
+        _EncounterRel("Condition", "HAS_CONDITION", "DIAGNOSED", "c"),
+        _EncounterRel("MedicationRequest", "HAS_MEDICATION_REQUEST", "PRESCRIBED", "m"),
+        _EncounterRel("Observation", "HAS_OBSERVATION", "RECORDED", "o"),
+        _EncounterRel("Procedure", "HAS_PROCEDURE", "PERFORMED", "pr"),
+        _EncounterRel("DiagnosticReport", "HAS_DIAGNOSTIC_REPORT", "REPORTED", "dr"),
+        _EncounterRel("Immunization", "HAS_IMMUNIZATION", "ADMINISTERED", "im"),
+        _EncounterRel("CarePlan", "HAS_CARE_PLAN", "CREATED_DURING", "cp"),
+        _EncounterRel("DocumentReference", "HAS_DOCUMENT_REFERENCE", "DOCUMENTED", "docr"),
+        _EncounterRel("ImagingStudy", "HAS_IMAGING_STUDY", "IMAGED", "img"),
+        _EncounterRel("CareTeam", "HAS_CARE_TEAM", "ASSEMBLED", "ct"),
+        _EncounterRel("MedicationAdministration", "HAS_MEDICATION_ADMINISTRATION", "GIVEN", "ma"),
     ]
+
+    # Frozen whitelist for Cypher injection protection: only these values
+    # may appear in dynamically constructed Cypher queries.
+    _VALID_LABELS = frozenset(
+        r.node_label for r in _ENCOUNTER_RELATIONSHIPS
+    ) | {"Patient", "Encounter", "Medication", "AllergyIntolerance",
+         "Claim", "ExplanationOfBenefit", "SupplyDelivery", "Device"}
+    _VALID_RELATIONSHIPS = frozenset(
+        r.patient_rel for r in _ENCOUNTER_RELATIONSHIPS
+    ) | frozenset(
+        r.encounter_rel for r in _ENCOUNTER_RELATIONSHIPS
+    ) | {"HAS_ALLERGY_INTOLERANCE", "HAS_ENCOUNTER", "HAS_DEVICE",
+         "HAS_CLAIM", "HAS_EOB", "HAS_SUPPLY_DELIVERY"}
+    _VALID_DISPLAY_PROPS = frozenset([
+        "display", "type_display", "procedure_display", "item_display",
+    ])
 
     def __init__(self, driver: AsyncDriver | None = None):
         """
@@ -422,7 +442,7 @@ class KnowledgeGraph:
             return record is not None
 
     # =========================================================================
-    # Node Upsert Methods (with session parameter for batching)
+    # Patient Node Upsert
     # =========================================================================
 
     async def _upsert_patient(
@@ -451,688 +471,6 @@ class KnowledgeGraph:
             fhir_id=resource.get("id"),
         )
 
-    async def _upsert_condition(
-        self, session: AsyncSession, patient_id: str, resource: dict[str, Any]
-    ) -> None:
-        """Create or update Condition node and HAS_CONDITION relationship."""
-        first_coding = _extract_first_coding(resource.get("code", {}))
-        status_code = _extract_clinical_status(resource)
-        encounter_fhir_id = _extract_encounter_fhir_id(resource)
-
-        await session.run(
-            """
-            MATCH (p:Patient {id: $patient_id})
-            MERGE (c:Condition {fhir_id: $fhir_id})
-            SET c.code = $code,
-                c.display = $display,
-                c.system = $system,
-                c.clinical_status = $clinical_status,
-                c.onset_date = $onset_date,
-                c.abatement_date = $abatement_date,
-                c.encounter_fhir_id = $encounter_fhir_id,
-                c.fhir_resource = $fhir_resource,
-                c.updated_at = datetime()
-            MERGE (p)-[:HAS_CONDITION]->(c)
-            """,
-            patient_id=patient_id,
-            fhir_id=resource.get("id"),
-            code=first_coding.get("code"),
-            display=first_coding.get("display"),
-            system=first_coding.get("system"),
-            clinical_status=status_code,
-            onset_date=resource.get("onsetDateTime"),
-            abatement_date=resource.get("abatementDateTime"),
-            encounter_fhir_id=encounter_fhir_id,
-            fhir_resource=json.dumps(resource),
-        )
-
-    async def _upsert_medication_request(
-        self, session: AsyncSession, patient_id: str, resource: dict[str, Any]
-    ) -> None:
-        """Create or update MedicationRequest node and HAS_MEDICATION_REQUEST relationship."""
-        first_coding = _extract_first_coding(resource.get("medicationCodeableConcept", {}))
-        encounter_fhir_id = _extract_encounter_fhir_id(resource)
-        reason_fhir_ids = _extract_reference_ids(resource.get("reasonReference", []))
-
-        await session.run(
-            """
-            MATCH (p:Patient {id: $patient_id})
-            MERGE (m:MedicationRequest {fhir_id: $fhir_id})
-            SET m.code = $code,
-                m.display = $display,
-                m.system = $system,
-                m.status = $status,
-                m.authored_on = $authored_on,
-                m.encounter_fhir_id = $encounter_fhir_id,
-                m.reason_fhir_ids = $reason_fhir_ids,
-                m.fhir_resource = $fhir_resource,
-                m.updated_at = datetime()
-            MERGE (p)-[:HAS_MEDICATION_REQUEST]->(m)
-            """,
-            patient_id=patient_id,
-            fhir_id=resource.get("id"),
-            code=first_coding.get("code"),
-            display=first_coding.get("display"),
-            system=first_coding.get("system"),
-            status=resource.get("status"),
-            authored_on=resource.get("authoredOn"),
-            encounter_fhir_id=encounter_fhir_id,
-            reason_fhir_ids=reason_fhir_ids,
-            fhir_resource=json.dumps(resource),
-        )
-
-    async def _upsert_allergy_intolerance(
-        self, session: AsyncSession, patient_id: str, resource: dict[str, Any]
-    ) -> None:
-        """Create or update AllergyIntolerance node and HAS_ALLERGY_INTOLERANCE relationship."""
-        first_coding = _extract_first_coding(resource.get("code", {}))
-        status_code = _extract_clinical_status(resource)
-
-        await session.run(
-            """
-            MATCH (p:Patient {id: $patient_id})
-            MERGE (a:AllergyIntolerance {fhir_id: $fhir_id})
-            SET a.code = $code,
-                a.display = $display,
-                a.system = $system,
-                a.clinical_status = $clinical_status,
-                a.category = $category,
-                a.criticality = $criticality,
-                a.fhir_resource = $fhir_resource,
-                a.updated_at = datetime()
-            MERGE (p)-[:HAS_ALLERGY_INTOLERANCE]->(a)
-            """,
-            patient_id=patient_id,
-            fhir_id=resource.get("id"),
-            code=first_coding.get("code"),
-            display=first_coding.get("display"),
-            system=first_coding.get("system"),
-            clinical_status=status_code,
-            category=resource.get("category", [None])[0],
-            criticality=resource.get("criticality"),
-            fhir_resource=json.dumps(resource),
-        )
-
-    async def _upsert_observation(
-        self, session: AsyncSession, patient_id: str, resource: dict[str, Any]
-    ) -> None:
-        """Create or update Observation node and HAS_OBSERVATION relationship."""
-        first_coding = _extract_first_coding(resource.get("code", {}))
-        value, value_unit = _extract_observation_value(resource)
-        encounter_fhir_id = _extract_encounter_fhir_id(resource)
-        category_coding = _extract_first_coding(
-            resource.get("category", [{}])[0] if resource.get("category") else {}
-        )
-
-        await session.run(
-            """
-            MATCH (p:Patient {id: $patient_id})
-            MERGE (o:Observation {fhir_id: $fhir_id})
-            SET o.code = $code,
-                o.display = $display,
-                o.system = $system,
-                o.status = $status,
-                o.effective_date = $effective_date,
-                o.value = $value,
-                o.value_unit = $value_unit,
-                o.category = $category,
-                o.encounter_fhir_id = $encounter_fhir_id,
-                o.fhir_resource = $fhir_resource,
-                o.updated_at = datetime()
-            MERGE (p)-[:HAS_OBSERVATION]->(o)
-            """,
-            patient_id=patient_id,
-            fhir_id=resource.get("id"),
-            code=first_coding.get("code"),
-            display=first_coding.get("display"),
-            system=first_coding.get("system"),
-            status=resource.get("status"),
-            effective_date=resource.get("effectiveDateTime"),
-            value=value,
-            value_unit=value_unit,
-            category=category_coding.get("code"),
-            encounter_fhir_id=encounter_fhir_id,
-            fhir_resource=json.dumps(resource),
-        )
-
-    async def _upsert_encounter(
-        self, session: AsyncSession, patient_id: str, resource: dict[str, Any]
-    ) -> None:
-        """Create or update Encounter node and HAS_ENCOUNTER relationship."""
-        types = resource.get("type", [{}])
-        first_type = types[0] if types else {}
-        first_coding = _extract_first_coding(first_type)
-        period = resource.get("period", {})
-        reason_coding = _extract_first_coding(
-            resource.get("reasonCode", [{}])[0] if resource.get("reasonCode") else {}
-        )
-
-        await session.run(
-            """
-            MATCH (p:Patient {id: $patient_id})
-            MERGE (e:Encounter {fhir_id: $fhir_id})
-            SET e.type_code = $type_code,
-                e.type_display = $type_display,
-                e.status = $status,
-                e.class_code = $class_code,
-                e.period_start = $period_start,
-                e.period_end = $period_end,
-                e.reason_display = $reason_display,
-                e.reason_code = $reason_code,
-                e.fhir_resource = $fhir_resource,
-                e.updated_at = datetime()
-            MERGE (p)-[:HAS_ENCOUNTER]->(e)
-            """,
-            patient_id=patient_id,
-            fhir_id=resource.get("id"),
-            type_code=first_coding.get("code"),
-            type_display=first_coding.get("display"),
-            status=resource.get("status"),
-            class_code=resource.get("class", {}).get("code"),
-            period_start=period.get("start"),
-            period_end=period.get("end"),
-            reason_display=reason_coding.get("display"),
-            reason_code=reason_coding.get("code"),
-            fhir_resource=json.dumps(resource),
-        )
-
-    async def _upsert_procedure(
-        self, session: AsyncSession, patient_id: str, resource: dict[str, Any]
-    ) -> None:
-        """Create or update Procedure node and HAS_PROCEDURE relationship."""
-        first_coding = _extract_first_coding(resource.get("code", {}))
-        encounter_fhir_id = _extract_encounter_fhir_id(resource)
-        reason_fhir_ids = _extract_reference_ids(resource.get("reasonReference", []))
-        performed = resource.get("performedDateTime") or resource.get("performedPeriod", {}).get("start")
-
-        await session.run(
-            """
-            MATCH (p:Patient {id: $patient_id})
-            MERGE (pr:Procedure {fhir_id: $fhir_id})
-            SET pr.code = $code,
-                pr.display = $display,
-                pr.system = $system,
-                pr.status = $status,
-                pr.performed_date = $performed_date,
-                pr.encounter_fhir_id = $encounter_fhir_id,
-                pr.reason_fhir_ids = $reason_fhir_ids,
-                pr.fhir_resource = $fhir_resource,
-                pr.updated_at = datetime()
-            MERGE (p)-[:HAS_PROCEDURE]->(pr)
-            """,
-            patient_id=patient_id,
-            fhir_id=resource.get("id"),
-            code=first_coding.get("code"),
-            display=first_coding.get("display"),
-            system=first_coding.get("system"),
-            status=resource.get("status"),
-            performed_date=performed,
-            encounter_fhir_id=encounter_fhir_id,
-            reason_fhir_ids=reason_fhir_ids,
-            fhir_resource=json.dumps(resource),
-        )
-
-    async def _upsert_diagnostic_report(
-        self, session: AsyncSession, patient_id: str, resource: dict[str, Any]
-    ) -> None:
-        """Create or update DiagnosticReport node and HAS_DIAGNOSTIC_REPORT relationship."""
-        first_coding = _extract_first_coding(resource.get("code", {}))
-        encounter_fhir_id = _extract_encounter_fhir_id(resource)
-        result_fhir_ids = _extract_reference_ids(resource.get("result", []))
-
-        await session.run(
-            """
-            MATCH (p:Patient {id: $patient_id})
-            MERGE (dr:DiagnosticReport {fhir_id: $fhir_id})
-            SET dr.code = $code,
-                dr.display = $display,
-                dr.system = $system,
-                dr.status = $status,
-                dr.effective_date = $effective_date,
-                dr.issued = $issued,
-                dr.encounter_fhir_id = $encounter_fhir_id,
-                dr.result_fhir_ids = $result_fhir_ids,
-                dr.fhir_resource = $fhir_resource,
-                dr.updated_at = datetime()
-            MERGE (p)-[:HAS_DIAGNOSTIC_REPORT]->(dr)
-            """,
-            patient_id=patient_id,
-            fhir_id=resource.get("id"),
-            code=first_coding.get("code"),
-            display=first_coding.get("display"),
-            system=first_coding.get("system"),
-            status=resource.get("status"),
-            effective_date=resource.get("effectiveDateTime"),
-            issued=resource.get("issued"),
-            encounter_fhir_id=encounter_fhir_id,
-            result_fhir_ids=result_fhir_ids,
-            fhir_resource=json.dumps(resource),
-        )
-
-    async def _upsert_immunization(
-        self, session: AsyncSession, patient_id: str, resource: dict[str, Any]
-    ) -> None:
-        """Create or update Immunization node and HAS_IMMUNIZATION relationship."""
-        first_coding = _extract_first_coding(resource.get("vaccineCode", {}))
-        encounter_fhir_id = _extract_encounter_fhir_id(resource)
-
-        await session.run(
-            """
-            MATCH (p:Patient {id: $patient_id})
-            MERGE (im:Immunization {fhir_id: $fhir_id})
-            SET im.code = $code,
-                im.display = $display,
-                im.system = $system,
-                im.status = $status,
-                im.occurrence_date = $occurrence_date,
-                im.encounter_fhir_id = $encounter_fhir_id,
-                im.fhir_resource = $fhir_resource,
-                im.updated_at = datetime()
-            MERGE (p)-[:HAS_IMMUNIZATION]->(im)
-            """,
-            patient_id=patient_id,
-            fhir_id=resource.get("id"),
-            code=first_coding.get("code"),
-            display=first_coding.get("display"),
-            system=first_coding.get("system"),
-            status=resource.get("status"),
-            occurrence_date=resource.get("occurrenceDateTime"),
-            encounter_fhir_id=encounter_fhir_id,
-            fhir_resource=json.dumps(resource),
-        )
-
-    async def _upsert_careplan(
-        self, session: AsyncSession, patient_id: str, resource: dict[str, Any]
-    ) -> None:
-        """Create or update CarePlan node and HAS_CARE_PLAN relationship."""
-        display = resource.get("title")
-        if not display:
-            for cat in resource.get("category", []):
-                coding = _extract_first_coding(cat)
-                if coding.get("display"):
-                    display = coding["display"]
-                    break
-
-        encounter_fhir_id = _extract_encounter_fhir_id(resource)
-        period = resource.get("period", {})
-        addresses_fhir_ids = _extract_reference_ids(resource.get("addresses", []))
-
-        await session.run(
-            """
-            MATCH (p:Patient {id: $patient_id})
-            MERGE (cp:CarePlan {fhir_id: $fhir_id})
-            SET cp.display = $display,
-                cp.status = $status,
-                cp.period_start = $period_start,
-                cp.period_end = $period_end,
-                cp.encounter_fhir_id = $encounter_fhir_id,
-                cp.addresses_fhir_ids = $addresses_fhir_ids,
-                cp.fhir_resource = $fhir_resource,
-                cp.updated_at = datetime()
-            MERGE (p)-[:HAS_CARE_PLAN]->(cp)
-            """,
-            patient_id=patient_id,
-            fhir_id=resource.get("id"),
-            display=display,
-            status=resource.get("status"),
-            period_start=period.get("start"),
-            period_end=period.get("end"),
-            encounter_fhir_id=encounter_fhir_id,
-            addresses_fhir_ids=addresses_fhir_ids,
-            fhir_resource=json.dumps(resource),
-        )
-
-    async def _upsert_document_reference(
-        self, session: AsyncSession, patient_id: str, resource: dict[str, Any]
-    ) -> None:
-        """Create or update DocumentReference node and HAS_DOCUMENT_REFERENCE relationship."""
-        type_coding = _extract_first_coding(resource.get("type", {}))
-        category_coding = _extract_first_coding(
-            resource.get("category", [{}])[0] if resource.get("category") else {}
-        )
-        encounter_fhir_id = _extract_doc_ref_encounter_fhir_id(resource)
-
-        await session.run(
-            """
-            MATCH (p:Patient {id: $patient_id})
-            MERGE (d:DocumentReference {fhir_id: $fhir_id})
-            SET d.type_code = $type_code,
-                d.type_display = $type_display,
-                d.status = $status,
-                d.date = $date,
-                d.description = $description,
-                d.category = $category,
-                d.encounter_fhir_id = $encounter_fhir_id,
-                d.fhir_resource = $fhir_resource,
-                d.updated_at = datetime()
-            MERGE (p)-[:HAS_DOCUMENT_REFERENCE]->(d)
-            """,
-            patient_id=patient_id,
-            fhir_id=resource.get("id"),
-            type_code=type_coding.get("code"),
-            type_display=type_coding.get("display"),
-            status=resource.get("status"),
-            date=resource.get("date"),
-            description=resource.get("description"),
-            category=category_coding.get("display"),
-            encounter_fhir_id=encounter_fhir_id,
-            fhir_resource=json.dumps(resource),
-        )
-
-    async def _upsert_imaging_study(
-        self, session: AsyncSession, patient_id: str, resource: dict[str, Any]
-    ) -> None:
-        """Create or update ImagingStudy node and HAS_IMAGING_STUDY relationship."""
-        procedure_display = ""
-        procedure_codes = resource.get("procedureCode", [])
-        if procedure_codes:
-            coding = _extract_first_coding(procedure_codes[0])
-            procedure_display = coding.get("display", "")
-
-        modality = ""
-        body_site = ""
-        series = resource.get("series", [])
-        if series:
-            first_series = series[0]
-            modality_obj = first_series.get("modality", {})
-            modality = modality_obj.get("display", "") or modality_obj.get("code", "")
-            body_site_obj = first_series.get("bodySite", {})
-            body_site = body_site_obj.get("display", "")
-
-        encounter_fhir_id = _extract_encounter_fhir_id(resource)
-
-        await session.run(
-            """
-            MATCH (p:Patient {id: $patient_id})
-            MERGE (i:ImagingStudy {fhir_id: $fhir_id})
-            SET i.status = $status,
-                i.started = $started,
-                i.procedure_display = $procedure_display,
-                i.modality = $modality,
-                i.body_site = $body_site,
-                i.encounter_fhir_id = $encounter_fhir_id,
-                i.fhir_resource = $fhir_resource,
-                i.updated_at = datetime()
-            MERGE (p)-[:HAS_IMAGING_STUDY]->(i)
-            """,
-            patient_id=patient_id,
-            fhir_id=resource.get("id"),
-            status=resource.get("status"),
-            started=resource.get("started"),
-            procedure_display=procedure_display,
-            modality=modality,
-            body_site=body_site,
-            encounter_fhir_id=encounter_fhir_id,
-            fhir_resource=json.dumps(resource),
-        )
-
-    async def _upsert_device(
-        self, session: AsyncSession, patient_id: str, resource: dict[str, Any]
-    ) -> None:
-        """Create or update Device node and HAS_DEVICE relationship."""
-        type_coding = _extract_first_coding(resource.get("type", {}))
-
-        await session.run(
-            """
-            MATCH (p:Patient {id: $patient_id})
-            MERGE (d:Device {fhir_id: $fhir_id})
-            SET d.type_code = $type_code,
-                d.type_display = $type_display,
-                d.status = $status,
-                d.manufacture_date = $manufacture_date,
-                d.expiration_date = $expiration_date,
-                d.fhir_resource = $fhir_resource,
-                d.updated_at = datetime()
-            MERGE (p)-[:HAS_DEVICE]->(d)
-            """,
-            patient_id=patient_id,
-            fhir_id=resource.get("id"),
-            type_code=type_coding.get("code"),
-            type_display=type_coding.get("display"),
-            status=resource.get("status"),
-            manufacture_date=resource.get("manufactureDate"),
-            expiration_date=resource.get("expirationDate"),
-            fhir_resource=json.dumps(resource),
-        )
-
-    async def _upsert_care_team(
-        self, session: AsyncSession, patient_id: str, resource: dict[str, Any]
-    ) -> None:
-        """Create or update CareTeam node and HAS_CARE_TEAM relationship."""
-        reason_coding = _extract_first_coding(
-            resource.get("reasonCode", [{}])[0] if resource.get("reasonCode") else {}
-        )
-        encounter_fhir_id = _extract_encounter_fhir_id(resource)
-        period = resource.get("period", {})
-
-        await session.run(
-            """
-            MATCH (p:Patient {id: $patient_id})
-            MERGE (ct:CareTeam {fhir_id: $fhir_id})
-            SET ct.status = $status,
-                ct.display = $display,
-                ct.period_start = $period_start,
-                ct.period_end = $period_end,
-                ct.encounter_fhir_id = $encounter_fhir_id,
-                ct.fhir_resource = $fhir_resource,
-                ct.updated_at = datetime()
-            MERGE (p)-[:HAS_CARE_TEAM]->(ct)
-            """,
-            patient_id=patient_id,
-            fhir_id=resource.get("id"),
-            status=resource.get("status"),
-            display=reason_coding.get("display"),
-            period_start=period.get("start"),
-            period_end=period.get("end"),
-            encounter_fhir_id=encounter_fhir_id,
-            fhir_resource=json.dumps(resource),
-        )
-
-    async def _upsert_medication_administration(
-        self, session: AsyncSession, patient_id: str, resource: dict[str, Any]
-    ) -> None:
-        """Create or update MedicationAdministration node and HAS_MEDICATION_ADMINISTRATION relationship."""
-        first_coding = _extract_first_coding(resource.get("medicationCodeableConcept", {}))
-        encounter_fhir_id = _extract_context_encounter_fhir_id(resource)
-        reason_fhir_ids = _extract_reference_ids(resource.get("reasonReference", []))
-        medication_fhir_id = _extract_reference_id(
-            resource.get("medicationReference", {}).get("reference")
-        )
-        effective = resource.get("effectiveDateTime")
-        if not effective:
-            effective = resource.get("effectivePeriod", {}).get("start")
-
-        await session.run(
-            """
-            MATCH (p:Patient {id: $patient_id})
-            MERGE (ma:MedicationAdministration {fhir_id: $fhir_id})
-            SET ma.code = $code,
-                ma.display = $display,
-                ma.system = $system,
-                ma.status = $status,
-                ma.effective_date = $effective_date,
-                ma.encounter_fhir_id = $encounter_fhir_id,
-                ma.reason_fhir_ids = $reason_fhir_ids,
-                ma.medication_fhir_id = $medication_fhir_id,
-                ma.fhir_resource = $fhir_resource,
-                ma.updated_at = datetime()
-            MERGE (p)-[:HAS_MEDICATION_ADMINISTRATION]->(ma)
-            """,
-            patient_id=patient_id,
-            fhir_id=resource.get("id"),
-            code=first_coding.get("code"),
-            display=first_coding.get("display"),
-            system=first_coding.get("system"),
-            status=resource.get("status"),
-            effective_date=effective,
-            encounter_fhir_id=encounter_fhir_id,
-            reason_fhir_ids=reason_fhir_ids,
-            medication_fhir_id=medication_fhir_id,
-            fhir_resource=json.dumps(resource),
-        )
-
-    async def _upsert_medication(
-        self, session: AsyncSession, resource: dict[str, Any]
-    ) -> None:
-        """Create or update Medication node (no patient edge — standalone catalog entry)."""
-        first_coding = _extract_first_coding(resource.get("code", {}))
-
-        await session.run(
-            """
-            MERGE (med:Medication {fhir_id: $fhir_id})
-            SET med.code = $code,
-                med.display = $display,
-                med.system = $system,
-                med.status = $status,
-                med.fhir_resource = $fhir_resource,
-                med.updated_at = datetime()
-            """,
-            fhir_id=resource.get("id"),
-            code=first_coding.get("code"),
-            display=first_coding.get("display"),
-            system=first_coding.get("system"),
-            status=resource.get("status"),
-            fhir_resource=json.dumps(resource),
-        )
-
-    async def _upsert_claim(
-        self, session: AsyncSession, patient_id: str, resource: dict[str, Any]
-    ) -> None:
-        """Create or update Claim node and HAS_CLAIM relationship."""
-        type_coding = _extract_first_coding(resource.get("type", {}))
-
-        # Primary service display from first item
-        primary_service_display = ""
-        items = resource.get("item", [])
-        if items:
-            service_coding = _extract_first_coding(items[0].get("productOrService", {}))
-            primary_service_display = service_coding.get("display", "")
-
-        encounter_fhir_ids = _extract_claim_encounter_fhir_ids(resource)
-        diagnosis_fhir_ids = _extract_claim_diagnosis_fhir_ids(resource)
-
-        period = resource.get("billablePeriod", {})
-
-        await session.run(
-            """
-            MATCH (p:Patient {id: $patient_id})
-            MERGE (cl:Claim {fhir_id: $fhir_id})
-            SET cl.status = $status,
-                cl.type_code = $type_code,
-                cl.use = $use,
-                cl.created = $created,
-                cl.billable_period_start = $billable_period_start,
-                cl.billable_period_end = $billable_period_end,
-                cl.primary_service_display = $primary_service_display,
-                cl.encounter_fhir_ids = $encounter_fhir_ids,
-                cl.diagnosis_fhir_ids = $diagnosis_fhir_ids,
-                cl.fhir_resource = $fhir_resource,
-                cl.updated_at = datetime()
-            MERGE (p)-[:HAS_CLAIM]->(cl)
-            """,
-            patient_id=patient_id,
-            fhir_id=resource.get("id"),
-            status=resource.get("status"),
-            type_code=type_coding.get("code"),
-            use=resource.get("use"),
-            created=resource.get("created"),
-            billable_period_start=period.get("start"),
-            billable_period_end=period.get("end"),
-            primary_service_display=primary_service_display,
-            encounter_fhir_ids=encounter_fhir_ids,
-            diagnosis_fhir_ids=diagnosis_fhir_ids,
-            fhir_resource=json.dumps(resource),
-        )
-
-    async def _upsert_eob(
-        self, session: AsyncSession, patient_id: str, resource: dict[str, Any]
-    ) -> None:
-        """Create or update ExplanationOfBenefit node and HAS_EOB relationship."""
-        type_coding = _extract_first_coding(resource.get("type", {}))
-
-        # Total amount
-        total_amount = None
-        total_currency = None
-        totals = resource.get("total", [])
-        if totals:
-            amount_obj = totals[0].get("amount", {})
-            total_amount = amount_obj.get("value")
-            total_currency = amount_obj.get("currency")
-
-        # Payment amount
-        payment_amount = None
-        payment = resource.get("payment", {})
-        payment_amount_obj = payment.get("amount", {})
-        if payment_amount_obj:
-            payment_amount = payment_amount_obj.get("value")
-
-        # Claim reference
-        claim_fhir_id = _extract_reference_id(resource.get("claim", {}).get("reference"))
-
-        await session.run(
-            """
-            MATCH (p:Patient {id: $patient_id})
-            MERGE (eob:ExplanationOfBenefit {fhir_id: $fhir_id})
-            SET eob.status = $status,
-                eob.type_code = $type_code,
-                eob.use = $use,
-                eob.created = $created,
-                eob.total_amount = $total_amount,
-                eob.total_currency = $total_currency,
-                eob.payment_amount = $payment_amount,
-                eob.claim_fhir_id = $claim_fhir_id,
-                eob.fhir_resource = $fhir_resource,
-                eob.updated_at = datetime()
-            MERGE (p)-[:HAS_EOB]->(eob)
-            """,
-            patient_id=patient_id,
-            fhir_id=resource.get("id"),
-            status=resource.get("status"),
-            type_code=type_coding.get("code"),
-            use=resource.get("use"),
-            created=resource.get("created"),
-            total_amount=total_amount,
-            total_currency=total_currency,
-            payment_amount=payment_amount,
-            claim_fhir_id=claim_fhir_id,
-            fhir_resource=json.dumps(resource),
-        )
-
-    async def _upsert_supply_delivery(
-        self, session: AsyncSession, patient_id: str, resource: dict[str, Any]
-    ) -> None:
-        """Create or update SupplyDelivery node and HAS_SUPPLY_DELIVERY relationship."""
-        type_coding = _extract_first_coding(resource.get("type", {}))
-
-        # Supplied item
-        supplied_item = resource.get("suppliedItem", {})
-        item_coding = _extract_first_coding(supplied_item.get("itemCodeableConcept", {}))
-
-        await session.run(
-            """
-            MATCH (p:Patient {id: $patient_id})
-            MERGE (sd:SupplyDelivery {fhir_id: $fhir_id})
-            SET sd.status = $status,
-                sd.type_code = $type_code,
-                sd.type_display = $type_display,
-                sd.item_code = $item_code,
-                sd.item_display = $item_display,
-                sd.occurrence_date = $occurrence_date,
-                sd.fhir_resource = $fhir_resource,
-                sd.updated_at = datetime()
-            MERGE (p)-[:HAS_SUPPLY_DELIVERY]->(sd)
-            """,
-            patient_id=patient_id,
-            fhir_id=resource.get("id"),
-            status=resource.get("status"),
-            type_code=type_coding.get("code"),
-            type_display=type_coding.get("display"),
-            item_code=item_coding.get("code"),
-            item_display=item_coding.get("display"),
-            occurrence_date=resource.get("occurrenceDateTime"),
-            fhir_resource=json.dumps(resource),
-        )
-
     # =========================================================================
     # Relationship Building (patient-scoped, optimized queries)
     # =========================================================================
@@ -1153,15 +491,22 @@ class KnowledgeGraph:
         - Encounter -[:PERFORMED]-> Procedure
         - Encounter -[:REPORTED]-> DiagnosticReport
         """
-        for node_label, patient_rel, encounter_rel, alias in self._ENCOUNTER_RELATIONSHIPS:
-            # Optimized query: starts from patient, uses indexed encounter_fhir_id
+        for rel in self._ENCOUNTER_RELATIONSHIPS:
+            # Validate against frozen whitelists to prevent Cypher injection
+            if rel.node_label not in self._VALID_LABELS:
+                raise ValueError(f"Invalid label: {rel.node_label}")
+            if rel.patient_rel not in self._VALID_RELATIONSHIPS:
+                raise ValueError(f"Invalid rel: {rel.patient_rel}")
+            if rel.encounter_rel not in self._VALID_RELATIONSHIPS:
+                raise ValueError(f"Invalid rel: {rel.encounter_rel}")
+
             await session.run(
                 f"""
                 MATCH (p:Patient {{id: $patient_id}})-[:HAS_ENCOUNTER]->(e:Encounter)
-                MATCH (p)-[:{patient_rel}]->({alias}:{node_label})
-                WHERE {alias}.encounter_fhir_id IS NOT NULL
-                  AND {alias}.encounter_fhir_id = e.fhir_id
-                MERGE (e)-[:{encounter_rel}]->({alias})
+                MATCH (p)-[:{rel.patient_rel}]->({rel.alias}:{rel.node_label})
+                WHERE {rel.alias}.encounter_fhir_id IS NOT NULL
+                  AND {rel.alias}.encounter_fhir_id = e.fhir_id
+                MERGE (e)-[:{rel.encounter_rel}]->({rel.alias})
                 """,
                 patient_id=patient_id,
             )
@@ -1667,6 +1012,14 @@ class KnowledgeGraph:
         results: list[dict[str, str]] = []
         async with self._driver.session() as session:
             for label, rel, display_prop in searchable:
+                # Validate against frozen whitelists to prevent Cypher injection
+                if label not in self._VALID_LABELS:
+                    raise ValueError(f"Invalid label: {label}")
+                if rel not in self._VALID_RELATIONSHIPS:
+                    raise ValueError(f"Invalid rel: {rel}")
+                if display_prop not in self._VALID_DISPLAY_PROPS:
+                    raise ValueError(f"Invalid prop: {display_prop}")
+
                 params: dict[str, Any] = {"patient_id": patient_id}
 
                 # Build WHERE clause: if terms present, filter by display name
@@ -1787,6 +1140,534 @@ class KnowledgeGraph:
             return [record.data() async for record in result]
 
     # =========================================================================
+    # Batch Property Extractors — prep FHIR resources for UNWIND queries.
+    # Each returns a dict of Neo4j-ready params for one resource.
+    # =========================================================================
+
+    @staticmethod
+    def _extract_condition_params(resource: dict[str, Any]) -> dict[str, Any]:
+        first_coding = _extract_first_coding(resource.get("code", {}))
+        return {
+            "fhir_id": resource.get("id"),
+            "code": first_coding.get("code"),
+            "display": first_coding.get("display"),
+            "system": first_coding.get("system"),
+            "clinical_status": _extract_clinical_status(resource),
+            "onset_date": resource.get("onsetDateTime"),
+            "abatement_date": resource.get("abatementDateTime"),
+            "encounter_fhir_id": _extract_encounter_fhir_id(resource),
+            "fhir_resource": json.dumps(resource),
+        }
+
+    @staticmethod
+    def _extract_medication_request_params(resource: dict[str, Any]) -> dict[str, Any]:
+        first_coding = _extract_first_coding(resource.get("medicationCodeableConcept", {}))
+        return {
+            "fhir_id": resource.get("id"),
+            "code": first_coding.get("code"),
+            "display": first_coding.get("display"),
+            "system": first_coding.get("system"),
+            "status": resource.get("status"),
+            "authored_on": resource.get("authoredOn"),
+            "encounter_fhir_id": _extract_encounter_fhir_id(resource),
+            "reason_fhir_ids": _extract_reference_ids(resource.get("reasonReference", [])),
+            "fhir_resource": json.dumps(resource),
+        }
+
+    @staticmethod
+    def _extract_allergy_params(resource: dict[str, Any]) -> dict[str, Any]:
+        first_coding = _extract_first_coding(resource.get("code", {}))
+        return {
+            "fhir_id": resource.get("id"),
+            "code": first_coding.get("code"),
+            "display": first_coding.get("display"),
+            "system": first_coding.get("system"),
+            "clinical_status": _extract_clinical_status(resource),
+            "category": resource.get("category", [None])[0],
+            "criticality": resource.get("criticality"),
+            "fhir_resource": json.dumps(resource),
+        }
+
+    @staticmethod
+    def _extract_observation_params(resource: dict[str, Any]) -> dict[str, Any]:
+        first_coding = _extract_first_coding(resource.get("code", {}))
+        value, value_unit = _extract_observation_value(resource)
+        category_coding = _extract_first_coding(
+            resource.get("category", [{}])[0] if resource.get("category") else {}
+        )
+        return {
+            "fhir_id": resource.get("id"),
+            "code": first_coding.get("code"),
+            "display": first_coding.get("display"),
+            "system": first_coding.get("system"),
+            "status": resource.get("status"),
+            "effective_date": resource.get("effectiveDateTime"),
+            "value": value,
+            "value_unit": value_unit,
+            "category": category_coding.get("code"),
+            "encounter_fhir_id": _extract_encounter_fhir_id(resource),
+            "fhir_resource": json.dumps(resource),
+        }
+
+    @staticmethod
+    def _extract_encounter_params(resource: dict[str, Any]) -> dict[str, Any]:
+        types = resource.get("type", [{}])
+        first_type = types[0] if types else {}
+        first_coding = _extract_first_coding(first_type)
+        period = resource.get("period", {})
+        reason_coding = _extract_first_coding(
+            resource.get("reasonCode", [{}])[0] if resource.get("reasonCode") else {}
+        )
+        return {
+            "fhir_id": resource.get("id"),
+            "type_code": first_coding.get("code"),
+            "type_display": first_coding.get("display"),
+            "status": resource.get("status"),
+            "class_code": resource.get("class", {}).get("code"),
+            "period_start": period.get("start"),
+            "period_end": period.get("end"),
+            "reason_display": reason_coding.get("display"),
+            "reason_code": reason_coding.get("code"),
+            "fhir_resource": json.dumps(resource),
+        }
+
+    @staticmethod
+    def _extract_procedure_params(resource: dict[str, Any]) -> dict[str, Any]:
+        first_coding = _extract_first_coding(resource.get("code", {}))
+        performed = resource.get("performedDateTime") or resource.get("performedPeriod", {}).get("start")
+        return {
+            "fhir_id": resource.get("id"),
+            "code": first_coding.get("code"),
+            "display": first_coding.get("display"),
+            "system": first_coding.get("system"),
+            "status": resource.get("status"),
+            "performed_date": performed,
+            "encounter_fhir_id": _extract_encounter_fhir_id(resource),
+            "reason_fhir_ids": _extract_reference_ids(resource.get("reasonReference", [])),
+            "fhir_resource": json.dumps(resource),
+        }
+
+    @staticmethod
+    def _extract_diagnostic_report_params(resource: dict[str, Any]) -> dict[str, Any]:
+        first_coding = _extract_first_coding(resource.get("code", {}))
+        return {
+            "fhir_id": resource.get("id"),
+            "code": first_coding.get("code"),
+            "display": first_coding.get("display"),
+            "system": first_coding.get("system"),
+            "status": resource.get("status"),
+            "effective_date": resource.get("effectiveDateTime"),
+            "issued": resource.get("issued"),
+            "encounter_fhir_id": _extract_encounter_fhir_id(resource),
+            "result_fhir_ids": _extract_reference_ids(resource.get("result", [])),
+            "fhir_resource": json.dumps(resource),
+        }
+
+    @staticmethod
+    def _extract_immunization_params(resource: dict[str, Any]) -> dict[str, Any]:
+        first_coding = _extract_first_coding(resource.get("vaccineCode", {}))
+        return {
+            "fhir_id": resource.get("id"),
+            "code": first_coding.get("code"),
+            "display": first_coding.get("display"),
+            "system": first_coding.get("system"),
+            "status": resource.get("status"),
+            "occurrence_date": resource.get("occurrenceDateTime"),
+            "encounter_fhir_id": _extract_encounter_fhir_id(resource),
+            "fhir_resource": json.dumps(resource),
+        }
+
+    @staticmethod
+    def _extract_careplan_params(resource: dict[str, Any]) -> dict[str, Any]:
+        display = resource.get("title")
+        if not display:
+            for cat in resource.get("category", []):
+                coding = _extract_first_coding(cat)
+                if coding.get("display"):
+                    display = coding["display"]
+                    break
+        period = resource.get("period", {})
+        return {
+            "fhir_id": resource.get("id"),
+            "display": display,
+            "status": resource.get("status"),
+            "period_start": period.get("start"),
+            "period_end": period.get("end"),
+            "encounter_fhir_id": _extract_encounter_fhir_id(resource),
+            "addresses_fhir_ids": _extract_reference_ids(resource.get("addresses", [])),
+            "fhir_resource": json.dumps(resource),
+        }
+
+    @staticmethod
+    def _extract_document_reference_params(resource: dict[str, Any]) -> dict[str, Any]:
+        type_coding = _extract_first_coding(resource.get("type", {}))
+        category_coding = _extract_first_coding(
+            resource.get("category", [{}])[0] if resource.get("category") else {}
+        )
+        return {
+            "fhir_id": resource.get("id"),
+            "type_code": type_coding.get("code"),
+            "type_display": type_coding.get("display"),
+            "status": resource.get("status"),
+            "date": resource.get("date"),
+            "description": resource.get("description"),
+            "category": category_coding.get("display"),
+            "encounter_fhir_id": _extract_doc_ref_encounter_fhir_id(resource),
+            "fhir_resource": json.dumps(resource),
+        }
+
+    @staticmethod
+    def _extract_imaging_study_params(resource: dict[str, Any]) -> dict[str, Any]:
+        procedure_display = ""
+        procedure_codes = resource.get("procedureCode", [])
+        if procedure_codes:
+            coding = _extract_first_coding(procedure_codes[0])
+            procedure_display = coding.get("display", "")
+        modality = ""
+        body_site = ""
+        series = resource.get("series", [])
+        if series:
+            first_series = series[0]
+            modality_obj = first_series.get("modality", {})
+            modality = modality_obj.get("display", "") or modality_obj.get("code", "")
+            body_site_obj = first_series.get("bodySite", {})
+            body_site = body_site_obj.get("display", "")
+        return {
+            "fhir_id": resource.get("id"),
+            "status": resource.get("status"),
+            "started": resource.get("started"),
+            "procedure_display": procedure_display,
+            "modality": modality,
+            "body_site": body_site,
+            "encounter_fhir_id": _extract_encounter_fhir_id(resource),
+            "fhir_resource": json.dumps(resource),
+        }
+
+    @staticmethod
+    def _extract_device_params(resource: dict[str, Any]) -> dict[str, Any]:
+        type_coding = _extract_first_coding(resource.get("type", {}))
+        return {
+            "fhir_id": resource.get("id"),
+            "type_code": type_coding.get("code"),
+            "type_display": type_coding.get("display"),
+            "status": resource.get("status"),
+            "manufacture_date": resource.get("manufactureDate"),
+            "expiration_date": resource.get("expirationDate"),
+            "fhir_resource": json.dumps(resource),
+        }
+
+    @staticmethod
+    def _extract_care_team_params(resource: dict[str, Any]) -> dict[str, Any]:
+        reason_coding = _extract_first_coding(
+            resource.get("reasonCode", [{}])[0] if resource.get("reasonCode") else {}
+        )
+        period = resource.get("period", {})
+        return {
+            "fhir_id": resource.get("id"),
+            "status": resource.get("status"),
+            "display": reason_coding.get("display"),
+            "period_start": period.get("start"),
+            "period_end": period.get("end"),
+            "encounter_fhir_id": _extract_encounter_fhir_id(resource),
+            "fhir_resource": json.dumps(resource),
+        }
+
+    @staticmethod
+    def _extract_medication_administration_params(resource: dict[str, Any]) -> dict[str, Any]:
+        first_coding = _extract_first_coding(resource.get("medicationCodeableConcept", {}))
+        effective = resource.get("effectiveDateTime")
+        if not effective:
+            effective = resource.get("effectivePeriod", {}).get("start")
+        return {
+            "fhir_id": resource.get("id"),
+            "code": first_coding.get("code"),
+            "display": first_coding.get("display"),
+            "system": first_coding.get("system"),
+            "status": resource.get("status"),
+            "effective_date": effective,
+            "encounter_fhir_id": _extract_context_encounter_fhir_id(resource),
+            "reason_fhir_ids": _extract_reference_ids(resource.get("reasonReference", [])),
+            "medication_fhir_id": _extract_reference_id(
+                resource.get("medicationReference", {}).get("reference")
+            ),
+            "fhir_resource": json.dumps(resource),
+        }
+
+    @staticmethod
+    def _extract_medication_params(resource: dict[str, Any]) -> dict[str, Any]:
+        first_coding = _extract_first_coding(resource.get("code", {}))
+        return {
+            "fhir_id": resource.get("id"),
+            "code": first_coding.get("code"),
+            "display": first_coding.get("display"),
+            "system": first_coding.get("system"),
+            "status": resource.get("status"),
+            "fhir_resource": json.dumps(resource),
+        }
+
+    @staticmethod
+    def _extract_claim_params(resource: dict[str, Any]) -> dict[str, Any]:
+        type_coding = _extract_first_coding(resource.get("type", {}))
+        primary_service_display = ""
+        items = resource.get("item", [])
+        if items:
+            service_coding = _extract_first_coding(items[0].get("productOrService", {}))
+            primary_service_display = service_coding.get("display", "")
+        period = resource.get("billablePeriod", {})
+        return {
+            "fhir_id": resource.get("id"),
+            "status": resource.get("status"),
+            "type_code": type_coding.get("code"),
+            "use": resource.get("use"),
+            "created": resource.get("created"),
+            "billable_period_start": period.get("start"),
+            "billable_period_end": period.get("end"),
+            "primary_service_display": primary_service_display,
+            "encounter_fhir_ids": _extract_claim_encounter_fhir_ids(resource),
+            "diagnosis_fhir_ids": _extract_claim_diagnosis_fhir_ids(resource),
+            "fhir_resource": json.dumps(resource),
+        }
+
+    @staticmethod
+    def _extract_eob_params(resource: dict[str, Any]) -> dict[str, Any]:
+        type_coding = _extract_first_coding(resource.get("type", {}))
+        total_amount = None
+        total_currency = None
+        totals = resource.get("total", [])
+        if totals:
+            amount_obj = totals[0].get("amount", {})
+            total_amount = amount_obj.get("value")
+            total_currency = amount_obj.get("currency")
+        payment_amount = None
+        payment = resource.get("payment", {})
+        payment_amount_obj = payment.get("amount", {})
+        if payment_amount_obj:
+            payment_amount = payment_amount_obj.get("value")
+        return {
+            "fhir_id": resource.get("id"),
+            "status": resource.get("status"),
+            "type_code": type_coding.get("code"),
+            "use": resource.get("use"),
+            "created": resource.get("created"),
+            "total_amount": total_amount,
+            "total_currency": total_currency,
+            "payment_amount": payment_amount,
+            "claim_fhir_id": _extract_reference_id(resource.get("claim", {}).get("reference")),
+            "fhir_resource": json.dumps(resource),
+        }
+
+    @staticmethod
+    def _extract_supply_delivery_params(resource: dict[str, Any]) -> dict[str, Any]:
+        type_coding = _extract_first_coding(resource.get("type", {}))
+        supplied_item = resource.get("suppliedItem", {})
+        item_coding = _extract_first_coding(supplied_item.get("itemCodeableConcept", {}))
+        return {
+            "fhir_id": resource.get("id"),
+            "status": resource.get("status"),
+            "type_code": type_coding.get("code"),
+            "type_display": type_coding.get("display"),
+            "item_code": item_coding.get("code"),
+            "item_display": item_coding.get("display"),
+            "occurrence_date": resource.get("occurrenceDateTime"),
+            "fhir_resource": json.dumps(resource),
+        }
+
+    # =========================================================================
+    # Batch UNWIND Queries — one query per resource type, processes all
+    # resources of that type in a single round trip to Neo4j.
+    # =========================================================================
+
+    # Maps resource type -> (extractor, UNWIND Cypher query)
+    _BATCH_QUERIES: dict[str, tuple[Any, str]] = {
+        "Condition": (_extract_condition_params, """
+            UNWIND $batch AS r
+            MATCH (p:Patient {id: $patient_id})
+            MERGE (n:Condition {fhir_id: r.fhir_id})
+            SET n.code = r.code, n.display = r.display, n.system = r.system,
+                n.clinical_status = r.clinical_status, n.onset_date = r.onset_date,
+                n.abatement_date = r.abatement_date, n.encounter_fhir_id = r.encounter_fhir_id,
+                n.fhir_resource = r.fhir_resource, n.updated_at = datetime()
+            MERGE (p)-[:HAS_CONDITION]->(n)
+        """),
+        "MedicationRequest": (_extract_medication_request_params, """
+            UNWIND $batch AS r
+            MATCH (p:Patient {id: $patient_id})
+            MERGE (n:MedicationRequest {fhir_id: r.fhir_id})
+            SET n.code = r.code, n.display = r.display, n.system = r.system,
+                n.status = r.status, n.authored_on = r.authored_on,
+                n.encounter_fhir_id = r.encounter_fhir_id, n.reason_fhir_ids = r.reason_fhir_ids,
+                n.fhir_resource = r.fhir_resource, n.updated_at = datetime()
+            MERGE (p)-[:HAS_MEDICATION_REQUEST]->(n)
+        """),
+        "AllergyIntolerance": (_extract_allergy_params, """
+            UNWIND $batch AS r
+            MATCH (p:Patient {id: $patient_id})
+            MERGE (n:AllergyIntolerance {fhir_id: r.fhir_id})
+            SET n.code = r.code, n.display = r.display, n.system = r.system,
+                n.clinical_status = r.clinical_status, n.category = r.category,
+                n.criticality = r.criticality,
+                n.fhir_resource = r.fhir_resource, n.updated_at = datetime()
+            MERGE (p)-[:HAS_ALLERGY_INTOLERANCE]->(n)
+        """),
+        "Observation": (_extract_observation_params, """
+            UNWIND $batch AS r
+            MATCH (p:Patient {id: $patient_id})
+            MERGE (n:Observation {fhir_id: r.fhir_id})
+            SET n.code = r.code, n.display = r.display, n.system = r.system,
+                n.status = r.status, n.effective_date = r.effective_date,
+                n.value = r.value, n.value_unit = r.value_unit, n.category = r.category,
+                n.encounter_fhir_id = r.encounter_fhir_id,
+                n.fhir_resource = r.fhir_resource, n.updated_at = datetime()
+            MERGE (p)-[:HAS_OBSERVATION]->(n)
+        """),
+        "Encounter": (_extract_encounter_params, """
+            UNWIND $batch AS r
+            MATCH (p:Patient {id: $patient_id})
+            MERGE (n:Encounter {fhir_id: r.fhir_id})
+            SET n.type_code = r.type_code, n.type_display = r.type_display,
+                n.status = r.status, n.class_code = r.class_code,
+                n.period_start = r.period_start, n.period_end = r.period_end,
+                n.reason_display = r.reason_display, n.reason_code = r.reason_code,
+                n.fhir_resource = r.fhir_resource, n.updated_at = datetime()
+            MERGE (p)-[:HAS_ENCOUNTER]->(n)
+        """),
+        "Procedure": (_extract_procedure_params, """
+            UNWIND $batch AS r
+            MATCH (p:Patient {id: $patient_id})
+            MERGE (n:Procedure {fhir_id: r.fhir_id})
+            SET n.code = r.code, n.display = r.display, n.system = r.system,
+                n.status = r.status, n.performed_date = r.performed_date,
+                n.encounter_fhir_id = r.encounter_fhir_id, n.reason_fhir_ids = r.reason_fhir_ids,
+                n.fhir_resource = r.fhir_resource, n.updated_at = datetime()
+            MERGE (p)-[:HAS_PROCEDURE]->(n)
+        """),
+        "DiagnosticReport": (_extract_diagnostic_report_params, """
+            UNWIND $batch AS r
+            MATCH (p:Patient {id: $patient_id})
+            MERGE (n:DiagnosticReport {fhir_id: r.fhir_id})
+            SET n.code = r.code, n.display = r.display, n.system = r.system,
+                n.status = r.status, n.effective_date = r.effective_date, n.issued = r.issued,
+                n.encounter_fhir_id = r.encounter_fhir_id, n.result_fhir_ids = r.result_fhir_ids,
+                n.fhir_resource = r.fhir_resource, n.updated_at = datetime()
+            MERGE (p)-[:HAS_DIAGNOSTIC_REPORT]->(n)
+        """),
+        "Immunization": (_extract_immunization_params, """
+            UNWIND $batch AS r
+            MATCH (p:Patient {id: $patient_id})
+            MERGE (n:Immunization {fhir_id: r.fhir_id})
+            SET n.code = r.code, n.display = r.display, n.system = r.system,
+                n.status = r.status, n.occurrence_date = r.occurrence_date,
+                n.encounter_fhir_id = r.encounter_fhir_id,
+                n.fhir_resource = r.fhir_resource, n.updated_at = datetime()
+            MERGE (p)-[:HAS_IMMUNIZATION]->(n)
+        """),
+        "CarePlan": (_extract_careplan_params, """
+            UNWIND $batch AS r
+            MATCH (p:Patient {id: $patient_id})
+            MERGE (n:CarePlan {fhir_id: r.fhir_id})
+            SET n.display = r.display, n.status = r.status,
+                n.period_start = r.period_start, n.period_end = r.period_end,
+                n.encounter_fhir_id = r.encounter_fhir_id,
+                n.addresses_fhir_ids = r.addresses_fhir_ids,
+                n.fhir_resource = r.fhir_resource, n.updated_at = datetime()
+            MERGE (p)-[:HAS_CARE_PLAN]->(n)
+        """),
+        "DocumentReference": (_extract_document_reference_params, """
+            UNWIND $batch AS r
+            MATCH (p:Patient {id: $patient_id})
+            MERGE (n:DocumentReference {fhir_id: r.fhir_id})
+            SET n.type_code = r.type_code, n.type_display = r.type_display,
+                n.status = r.status, n.date = r.date, n.description = r.description,
+                n.category = r.category, n.encounter_fhir_id = r.encounter_fhir_id,
+                n.fhir_resource = r.fhir_resource, n.updated_at = datetime()
+            MERGE (p)-[:HAS_DOCUMENT_REFERENCE]->(n)
+        """),
+        "ImagingStudy": (_extract_imaging_study_params, """
+            UNWIND $batch AS r
+            MATCH (p:Patient {id: $patient_id})
+            MERGE (n:ImagingStudy {fhir_id: r.fhir_id})
+            SET n.status = r.status, n.started = r.started,
+                n.procedure_display = r.procedure_display, n.modality = r.modality,
+                n.body_site = r.body_site, n.encounter_fhir_id = r.encounter_fhir_id,
+                n.fhir_resource = r.fhir_resource, n.updated_at = datetime()
+            MERGE (p)-[:HAS_IMAGING_STUDY]->(n)
+        """),
+        "Device": (_extract_device_params, """
+            UNWIND $batch AS r
+            MATCH (p:Patient {id: $patient_id})
+            MERGE (n:Device {fhir_id: r.fhir_id})
+            SET n.type_code = r.type_code, n.type_display = r.type_display,
+                n.status = r.status, n.manufacture_date = r.manufacture_date,
+                n.expiration_date = r.expiration_date,
+                n.fhir_resource = r.fhir_resource, n.updated_at = datetime()
+            MERGE (p)-[:HAS_DEVICE]->(n)
+        """),
+        "CareTeam": (_extract_care_team_params, """
+            UNWIND $batch AS r
+            MATCH (p:Patient {id: $patient_id})
+            MERGE (n:CareTeam {fhir_id: r.fhir_id})
+            SET n.status = r.status, n.display = r.display,
+                n.period_start = r.period_start, n.period_end = r.period_end,
+                n.encounter_fhir_id = r.encounter_fhir_id,
+                n.fhir_resource = r.fhir_resource, n.updated_at = datetime()
+            MERGE (p)-[:HAS_CARE_TEAM]->(n)
+        """),
+        "MedicationAdministration": (_extract_medication_administration_params, """
+            UNWIND $batch AS r
+            MATCH (p:Patient {id: $patient_id})
+            MERGE (n:MedicationAdministration {fhir_id: r.fhir_id})
+            SET n.code = r.code, n.display = r.display, n.system = r.system,
+                n.status = r.status, n.effective_date = r.effective_date,
+                n.encounter_fhir_id = r.encounter_fhir_id,
+                n.reason_fhir_ids = r.reason_fhir_ids,
+                n.medication_fhir_id = r.medication_fhir_id,
+                n.fhir_resource = r.fhir_resource, n.updated_at = datetime()
+            MERGE (p)-[:HAS_MEDICATION_ADMINISTRATION]->(n)
+        """),
+        "Medication": (_extract_medication_params, """
+            UNWIND $batch AS r
+            MERGE (n:Medication {fhir_id: r.fhir_id})
+            SET n.code = r.code, n.display = r.display, n.system = r.system,
+                n.status = r.status,
+                n.fhir_resource = r.fhir_resource, n.updated_at = datetime()
+        """),
+        "Claim": (_extract_claim_params, """
+            UNWIND $batch AS r
+            MATCH (p:Patient {id: $patient_id})
+            MERGE (n:Claim {fhir_id: r.fhir_id})
+            SET n.status = r.status, n.type_code = r.type_code, n.use = r.use,
+                n.created = r.created, n.billable_period_start = r.billable_period_start,
+                n.billable_period_end = r.billable_period_end,
+                n.primary_service_display = r.primary_service_display,
+                n.encounter_fhir_ids = r.encounter_fhir_ids,
+                n.diagnosis_fhir_ids = r.diagnosis_fhir_ids,
+                n.fhir_resource = r.fhir_resource, n.updated_at = datetime()
+            MERGE (p)-[:HAS_CLAIM]->(n)
+        """),
+        "ExplanationOfBenefit": (_extract_eob_params, """
+            UNWIND $batch AS r
+            MATCH (p:Patient {id: $patient_id})
+            MERGE (n:ExplanationOfBenefit {fhir_id: r.fhir_id})
+            SET n.status = r.status, n.type_code = r.type_code, n.use = r.use,
+                n.created = r.created, n.total_amount = r.total_amount,
+                n.total_currency = r.total_currency, n.payment_amount = r.payment_amount,
+                n.claim_fhir_id = r.claim_fhir_id,
+                n.fhir_resource = r.fhir_resource, n.updated_at = datetime()
+            MERGE (p)-[:HAS_EOB]->(n)
+        """),
+        "SupplyDelivery": (_extract_supply_delivery_params, """
+            UNWIND $batch AS r
+            MATCH (p:Patient {id: $patient_id})
+            MERGE (n:SupplyDelivery {fhir_id: r.fhir_id})
+            SET n.status = r.status, n.type_code = r.type_code,
+                n.type_display = r.type_display, n.item_code = r.item_code,
+                n.item_display = r.item_display, n.occurrence_date = r.occurrence_date,
+                n.fhir_resource = r.fhir_resource, n.updated_at = datetime()
+            MERGE (p)-[:HAS_SUPPLY_DELIVERY]->(n)
+        """),
+    }
+
+    # =========================================================================
     # Main Entry Points
     # =========================================================================
 
@@ -1796,16 +1677,16 @@ class KnowledgeGraph:
         """
         Build graph nodes and relationships from FHIR resources.
 
-        Uses two-pass approach within an explicit write transaction for atomicity:
-        1. First pass: Create all nodes with Patient relationships
+        Uses batched UNWIND queries for performance: resources are grouped by type
+        and each group is processed in a single Cypher query instead of individual
+        MERGE statements per resource.
+
+        Two-pass approach within an explicit write transaction for atomicity:
+        1. First pass: Batch-create all nodes with Patient relationships (UNWIND)
         2. Second pass: Build inter-resource relationships (Encounter-centric, TREATS, etc.)
 
         The explicit transaction ensures all-or-nothing semantics — if any write
-        fails, the entire patient's graph changes are rolled back. This prevents
-        partially-seeded graphs that cause missing data in queries.
-
-        All operations are scoped to the specific patient for correctness
-        and performance (avoids global graph scans).
+        fails, the entire patient's graph changes are rolled back.
 
         Args:
             patient_id: The canonical patient UUID (PostgreSQL-generated).
@@ -1824,46 +1705,18 @@ class KnowledgeGraph:
                 if patient_resource:
                     await self._upsert_patient(tx, patient_id, patient_resource)
 
-                # First pass: create all resource nodes with Patient relationships
+                # Group resources by type for batch processing
+                grouped: dict[str, list[dict[str, Any]]] = {}
                 for resource in resources:
-                    resource_type = resource.get("resourceType")
+                    rtype = resource.get("resourceType")
+                    if rtype and rtype != "Patient" and rtype in self._BATCH_QUERIES:
+                        grouped.setdefault(rtype, []).append(resource)
 
-                    if resource_type == "Condition":
-                        await self._upsert_condition(tx, patient_id, resource)
-                    elif resource_type == "MedicationRequest":
-                        await self._upsert_medication_request(tx, patient_id, resource)
-                    elif resource_type == "AllergyIntolerance":
-                        await self._upsert_allergy_intolerance(tx, patient_id, resource)
-                    elif resource_type == "Observation":
-                        await self._upsert_observation(tx, patient_id, resource)
-                    elif resource_type == "Encounter":
-                        await self._upsert_encounter(tx, patient_id, resource)
-                    elif resource_type == "Procedure":
-                        await self._upsert_procedure(tx, patient_id, resource)
-                    elif resource_type == "DiagnosticReport":
-                        await self._upsert_diagnostic_report(tx, patient_id, resource)
-                    elif resource_type == "Immunization":
-                        await self._upsert_immunization(tx, patient_id, resource)
-                    elif resource_type == "CarePlan":
-                        await self._upsert_careplan(tx, patient_id, resource)
-                    elif resource_type == "DocumentReference":
-                        await self._upsert_document_reference(tx, patient_id, resource)
-                    elif resource_type == "ImagingStudy":
-                        await self._upsert_imaging_study(tx, patient_id, resource)
-                    elif resource_type == "Device":
-                        await self._upsert_device(tx, patient_id, resource)
-                    elif resource_type == "CareTeam":
-                        await self._upsert_care_team(tx, patient_id, resource)
-                    elif resource_type == "MedicationAdministration":
-                        await self._upsert_medication_administration(tx, patient_id, resource)
-                    elif resource_type == "Medication":
-                        await self._upsert_medication(tx, resource)
-                    elif resource_type == "Claim":
-                        await self._upsert_claim(tx, patient_id, resource)
-                    elif resource_type == "ExplanationOfBenefit":
-                        await self._upsert_eob(tx, patient_id, resource)
-                    elif resource_type == "SupplyDelivery":
-                        await self._upsert_supply_delivery(tx, patient_id, resource)
+                # Batch upsert: one UNWIND query per resource type
+                for rtype, rtype_resources in grouped.items():
+                    extractor, query = self._BATCH_QUERIES[rtype]
+                    batch = [extractor(r) for r in rtype_resources]
+                    await tx.run(query, patient_id=patient_id, batch=batch)
 
                 # Second pass: build inter-resource relationships (patient-scoped)
                 await self._build_encounter_relationships(tx, patient_id)
