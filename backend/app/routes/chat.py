@@ -20,7 +20,7 @@ from app.database import async_session_maker, get_db
 from app.models import FhirResource
 from app.models.session import Session
 from app.schemas import AgentResponse
-from app.services.agent import AgentService, build_system_prompt_fast, build_system_prompt_v2
+from app.services.agent import AgentService, build_system_prompt_fast, build_system_prompt_lightning, build_system_prompt_v2
 from app.services.compiler import compile_and_store, get_compiled_summary
 from app.services.fhir_loader import get_patient_profile
 from app.services.graph import KnowledgeGraph
@@ -181,7 +181,9 @@ async def _prepare_chat_context(
     # Classify query and choose prompt mode
     query_profile = classify_query(request.message)
 
-    if query_profile.system_prompt_mode == "fast":
+    if query_profile.system_prompt_mode == "lightning":
+        system_prompt = build_system_prompt_lightning(compiled_summary, patient_profile=profile_summary)
+    elif query_profile.system_prompt_mode == "fast":
         system_prompt = build_system_prompt_fast(compiled_summary, patient_profile=profile_summary)
     else:
         system_prompt = build_system_prompt_v2(compiled_summary, patient_profile=profile_summary)

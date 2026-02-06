@@ -21,6 +21,7 @@ from sqlalchemy.ext.asyncio import AsyncSession
 
 from app.config import settings
 from app.schemas import AgentResponse
+from app.schemas.agent import LightningResponse
 from app.services.agent_tools import TOOL_SCHEMAS, execute_tool
 from app.services.graph import KnowledgeGraph
 from app.services.query_classifier import QueryProfile
@@ -618,6 +619,48 @@ def _build_safety_section(compiled_summary: dict[str, Any]) -> str:
     )
 
 
+def build_system_prompt_lightning(
+    compiled_summary: dict[str, Any],
+    patient_profile: str | None = None,
+) -> str:
+    """Build a minimal system prompt for Lightning-tier fact extraction.
+
+    Even more trimmed than the fast prompt: concise role, shared patient
+    summary, shared safety, brief format section. No reasoning directives,
+    no tool descriptions, no insight/viz/table instructions.
+
+    Args:
+        compiled_summary: Dict from compile_patient_summary().
+        patient_profile: Optional non-clinical patient profile narrative.
+
+    Returns:
+        Formatted system prompt string.
+    """
+    role_section = (
+        "You are a clinical chart assistant. Extract and present the requested data "
+        "from the patient summary below. Cite specific values and dates. "
+        "Never fabricate clinical data. If the data isn't in the summary, say so."
+    )
+
+    summary_section = _build_patient_summary_section(compiled_summary, patient_profile)
+
+    safety_section = _build_safety_section(compiled_summary)
+
+    format_section = (
+        "## Response Format\n"
+        "Respond with a JSON object containing:\n"
+        "- narrative: Your answer in concise markdown. Use bullet lists for multiple items.\n"
+        "- follow_ups: 2-3 short follow-up questions (under 80 chars each)"
+    )
+
+    return "\n\n".join([
+        role_section,
+        summary_section,
+        safety_section,
+        format_section,
+    ])
+
+
 def build_system_prompt_fast(
     compiled_summary: dict[str, Any],
     patient_profile: str | None = None,
@@ -1045,27 +1088,35 @@ class AgentService:
 
         # Resolution: explicit param > query_profile > instance default
         effective_effort = reasoning_effort or (query_profile.reasoning_effort if query_profile else None) or self._reasoning_effort
+        effective_model = (query_profile.model if query_profile else None) or self._model
         effective_max_tokens = (query_profile.max_output_tokens if query_profile else None) or self._max_output_tokens
+        use_reasoning = query_profile.reasoning if query_profile else True
         tools_available = graph is not None and db is not None
         include_tools = tools_available and (query_profile.include_tools if query_profile else True)
+        response_schema_class = LightningResponse if (query_profile and query_profile.response_schema == "lightning") else AgentResponse
         prompt_chars = sum(len(m.get("content", "")) for m in input_messages)
 
         logger.info(
-            "generate_response: model=%s, effort=%s, tools=%s, "
-            "tier=%s, messages=%d, prompt_chars=%d (~%d tokens)",
-            self._model, effective_effort,
+            "generate_response: model=%s, effort=%s, reasoning=%s, tools=%s, "
+            "tier=%s, schema=%s, messages=%d, prompt_chars=%d (~%d tokens)",
+            effective_model, effective_effort,
+            "enabled" if use_reasoning else "disabled",
             "enabled" if include_tools else "disabled",
             query_profile.tier.value if query_profile else "default",
+            response_schema_class.__name__,
             len(input_messages), prompt_chars, prompt_chars // 4,
         )
 
         kwargs: dict[str, Any] = {
-            "model": self._model,
+            "model": effective_model,
             "input": input_messages,
-            "text_format": AgentResponse,
+            "text_format": response_schema_class,
             "max_output_tokens": effective_max_tokens,
-            "reasoning": Reasoning(effort=effective_effort, summary="concise"),
         }
+        # Only add reasoning for reasoning-capable models (gpt-4o-mini rejects it)
+        if use_reasoning:
+            kwargs["reasoning"] = Reasoning(effort=effective_effort, summary="concise")
+
         if include_tools:
             kwargs["tools"] = TOOL_SCHEMAS
 
@@ -1083,19 +1134,28 @@ class AgentService:
         if response is None:
             response = await self._client.responses.parse(**kwargs)
 
-        agent_response = response.output_parsed
+        parsed_response = response.output_parsed
 
-        if agent_response is None:
+        if parsed_response is None:
             # Fallback: try to parse from raw output if structured parsing failed
             logger.warning("Structured parsing returned None, attempting fallback")
             raw_output = getattr(response, "output_text", None)
             if raw_output:
-                agent_response = AgentResponse.model_validate_json(raw_output)
+                parsed_response = response_schema_class.model_validate_json(raw_output)
             else:
                 raise RuntimeError(
                     "LLM response could not be parsed. "
                     "Neither structured output nor raw text was available."
                 )
+
+        # Wrap LightningResponse into AgentResponse for uniform return type
+        if isinstance(parsed_response, LightningResponse):
+            agent_response = AgentResponse(
+                narrative=parsed_response.narrative,
+                follow_ups=parsed_response.follow_ups,
+            )
+        else:
+            agent_response = parsed_response
 
         elapsed = time.perf_counter() - t0
         usage = _extract_usage(response)
@@ -1150,27 +1210,35 @@ class AgentService:
 
         # Resolution: explicit param > query_profile > instance default
         effective_effort = reasoning_effort or (query_profile.reasoning_effort if query_profile else None) or self._reasoning_effort
+        effective_model = (query_profile.model if query_profile else None) or self._model
         effective_max_tokens = (query_profile.max_output_tokens if query_profile else None) or self._max_output_tokens
+        use_reasoning = query_profile.reasoning if query_profile else True
         tools_available = graph is not None and db is not None
         include_tools = tools_available and (query_profile.include_tools if query_profile else True)
+        response_schema_class = LightningResponse if (query_profile and query_profile.response_schema == "lightning") else AgentResponse
         prompt_chars = sum(len(m.get("content", "")) for m in input_messages)
 
         logger.info(
-            "stream_response: model=%s, effort=%s, tools=%s, "
-            "tier=%s, messages=%d, prompt_chars=%d (~%d tokens)",
-            self._model, effective_effort,
+            "stream_response: model=%s, effort=%s, reasoning=%s, tools=%s, "
+            "tier=%s, schema=%s, messages=%d, prompt_chars=%d (~%d tokens)",
+            effective_model, effective_effort,
+            "enabled" if use_reasoning else "disabled",
             "enabled" if include_tools else "disabled",
             query_profile.tier.value if query_profile else "default",
+            response_schema_class.__name__,
             len(input_messages), prompt_chars, prompt_chars // 4,
         )
 
         kwargs: dict[str, Any] = {
-            "model": self._model,
+            "model": effective_model,
             "input": input_messages,
-            "text_format": AgentResponse,
+            "text_format": response_schema_class,
             "max_output_tokens": effective_max_tokens,
-            "reasoning": Reasoning(effort=effective_effort, summary="concise"),
         }
+        # Only add reasoning for reasoning-capable models (gpt-4o-mini rejects it)
+        if use_reasoning:
+            kwargs["reasoning"] = Reasoning(effort=effective_effort, summary="concise")
+
         if include_tools:
             kwargs["tools"] = TOOL_SCHEMAS
 
@@ -1212,16 +1280,25 @@ class AgentService:
                     _round + 1, api_ms / 1000, usage or "no usage",
                 )
 
-                agent_response = final.output_parsed
-                if agent_response is None:
+                parsed_response = final.output_parsed
+                if parsed_response is None:
                     raw_output = getattr(final, "output_text", None)
                     if raw_output:
-                        agent_response = AgentResponse.model_validate_json(raw_output)
+                        parsed_response = response_schema_class.model_validate_json(raw_output)
                     else:
                         raise RuntimeError(
                             "LLM response could not be parsed. "
                             "Neither structured output nor raw text was available."
                         )
+
+                # Wrap LightningResponse into AgentResponse for uniform return type
+                if isinstance(parsed_response, LightningResponse):
+                    agent_response = AgentResponse(
+                        narrative=parsed_response.narrative,
+                        follow_ups=parsed_response.follow_ups,
+                    )
+                else:
+                    agent_response = parsed_response
 
                 total_elapsed = time.perf_counter() - t0
                 ttft = ((first_token_time - t0) * 1000) if first_token_time else None
@@ -1300,16 +1377,25 @@ class AgentService:
 
             final = await stream.get_final_response()
 
-        agent_response = final.output_parsed
-        if agent_response is None:
+        parsed_response = final.output_parsed
+        if parsed_response is None:
             raw_output = getattr(final, "output_text", None)
             if raw_output:
-                agent_response = AgentResponse.model_validate_json(raw_output)
+                parsed_response = response_schema_class.model_validate_json(raw_output)
             else:
                 raise RuntimeError(
                     "LLM response could not be parsed. "
                     "Neither structured output nor raw text was available."
                 )
+
+        # Wrap LightningResponse into AgentResponse for uniform return type
+        if isinstance(parsed_response, LightningResponse):
+            agent_response = AgentResponse(
+                narrative=parsed_response.narrative,
+                follow_ups=parsed_response.follow_ups,
+            )
+        else:
+            agent_response = parsed_response
 
         total_elapsed = time.perf_counter() - t0
         ttft = ((first_token_time - t0) * 1000) if first_token_time else None
