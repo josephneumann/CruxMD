@@ -12,6 +12,7 @@ from typing import Sequence, Union
 
 from alembic import op
 import sqlalchemy as sa
+from sqlalchemy import text
 from sqlalchemy.dialects.postgresql import JSONB
 
 
@@ -32,9 +33,16 @@ def upgrade() -> None:
         "fhir_resources",
         sa.Column("compiled_at", sa.DateTime(timezone=True), nullable=True),
     )
+    op.create_index(
+        "idx_fhir_compiled_at_patients",
+        "fhir_resources",
+        ["compiled_at"],
+        postgresql_where=text("resource_type = 'Patient'"),
+    )
 
 
 def downgrade() -> None:
     """Remove compiled_summary and compiled_at columns."""
+    op.drop_index("idx_fhir_compiled_at_patients", table_name="fhir_resources")
     op.drop_column("fhir_resources", "compiled_at")
     op.drop_column("fhir_resources", "compiled_summary")
