@@ -25,12 +25,14 @@ from app.services.graph import KnowledgeGraph
 from app.services.compiler import (
     OBSERVATION_CATEGORIES,
     TREND_THRESHOLD,  # noqa: F401 — used by TestComputeTrend for threshold assertions
+    _build_patient_orientation,
     _compute_trend,
     _extract_dosage_text,
     _extract_loinc_code,
     _extract_med_display,
     _parse_fhir_datetime,
     compile_node_context,
+    compile_patient_summary,
     compute_dose_history,
     compute_medication_recency,
     compute_observation_trends,
@@ -1927,3 +1929,1071 @@ class TestInferMedicationConditionLinks:
 
         assert "unlinked" in result
         assert len(result["unlinked"]) == 1
+
+
+# =============================================================================
+# Helper factories for compile_patient_summary tests
+# =============================================================================
+
+
+def _make_patient_resource(
+    fhir_id: str = "patient-1",
+    given: str = "Jane",
+    family: str = "Doe",
+    gender: str = "female",
+    birth_date: str = "1985-03-15",
+) -> dict:
+    """Build a minimal FHIR Patient dict."""
+    return {
+        "resourceType": "Patient",
+        "id": fhir_id,
+        "name": [{"given": [given], "family": family}],
+        "gender": gender,
+        "birthDate": birth_date,
+    }
+
+
+def _make_condition(
+    fhir_id: str = "cond-1",
+    display: str = "Hypertension",
+    clinical_status: str = "active",
+    abatement_dt: str | None = None,
+) -> dict:
+    """Build a minimal FHIR Condition dict."""
+    cond: dict = {
+        "resourceType": "Condition",
+        "id": fhir_id,
+        "code": {
+            "coding": [{"system": "http://snomed.info/sct", "code": "38341003", "display": display}],
+        },
+        "clinicalStatus": {
+            "coding": [{"code": clinical_status}],
+        },
+    }
+    if abatement_dt:
+        cond["abatementDateTime"] = abatement_dt
+    return cond
+
+
+def _make_allergy(
+    fhir_id: str = "allergy-1",
+    display: str = "Penicillin",
+    clinical_status: str = "active",
+) -> dict:
+    """Build a minimal FHIR AllergyIntolerance dict."""
+    return {
+        "resourceType": "AllergyIntolerance",
+        "id": fhir_id,
+        "code": {
+            "coding": [{"display": display}],
+        },
+        "clinicalStatus": {
+            "coding": [{"code": clinical_status}],
+        },
+    }
+
+
+def _make_immunization(
+    fhir_id: str = "imm-1",
+    display: str = "Influenza",
+    status: str = "completed",
+) -> dict:
+    """Build a minimal FHIR Immunization dict."""
+    return {
+        "resourceType": "Immunization",
+        "id": fhir_id,
+        "vaccineCode": {
+            "coding": [{"display": display}],
+        },
+        "status": status,
+        "occurrenceDateTime": "2025-10-01",
+    }
+
+
+def _make_encounter(
+    fhir_id: str = "enc-1",
+    class_code: str = "AMB",
+    period_start: str = "2026-01-15T10:00:00Z",
+    period_end: str = "2026-01-15T11:00:00Z",
+    type_display: str = "Office Visit",
+) -> dict:
+    """Build a minimal FHIR Encounter dict."""
+    return {
+        "resourceType": "Encounter",
+        "id": fhir_id,
+        "status": "finished",
+        "class": {"code": class_code},
+        "type": [{"coding": [{"display": type_display}]}],
+        "period": {"start": period_start, "end": period_end},
+    }
+
+
+def _make_care_plan(
+    fhir_id: str = "cp-1",
+    status: str = "active",
+    title: str = "Diabetes self management plan",
+    addresses_ids: list[str] | None = None,
+) -> dict:
+    """Build a minimal FHIR CarePlan dict."""
+    cp: dict = {
+        "resourceType": "CarePlan",
+        "id": fhir_id,
+        "status": status,
+        "title": title,
+    }
+    if addresses_ids:
+        cp["addresses"] = [{"reference": f"Condition/{aid}"} for aid in addresses_ids]
+    return cp
+
+
+def _make_document_reference(
+    fhir_id: str = "doc-1",
+    note_text: str = "Patient presents with stable vitals.",
+) -> dict:
+    """Build a minimal FHIR DocumentReference with base64 note."""
+    import base64
+    encoded = base64.b64encode(note_text.encode()).decode()
+    return {
+        "resourceType": "DocumentReference",
+        "id": fhir_id,
+        "status": "current",
+        "content": [
+            {
+                "attachment": {
+                    "contentType": "text/plain",
+                    "data": encoded,
+                }
+            }
+        ],
+    }
+
+
+def _setup_mock_graph(
+    conditions: list[dict] | None = None,
+    medications: list[dict] | None = None,
+    allergies: list[dict] | None = None,
+    immunizations: list[dict] | None = None,
+    encounters: list[dict] | None = None,
+    encounter_events: dict | None = None,
+    treating_meds: dict[str, list[dict]] | None = None,
+    care_plans_for_cond: dict[str, list[dict]] | None = None,
+    procedures_for_cond: dict[str, list[dict]] | None = None,
+    infer_connections: list | None = None,
+) -> AsyncMock:
+    """Set up a fully mocked KnowledgeGraph for compile_patient_summary tests."""
+    mock_graph = AsyncMock(spec=KnowledgeGraph)
+    mock_graph.get_verified_conditions.return_value = conditions or []
+    mock_graph.get_verified_medications.return_value = medications or []
+    mock_graph.get_verified_allergies.return_value = allergies or []
+    mock_graph.get_verified_immunizations.return_value = immunizations or []
+
+    # Encounters returned from get_patient_encounters
+    enc_records = []
+    for enc in (encounters or []):
+        period = enc.get("period", {})
+        enc_records.append({
+            "fhir_id": enc["id"],
+            "type_display": enc.get("type", [{}])[0].get("coding", [{}])[0].get("display", ""),
+            "period_start": period.get("start", ""),
+            "period_end": period.get("end", ""),
+        })
+    mock_graph.get_patient_encounters.return_value = enc_records
+
+    # get_encounter_events returns per-encounter events
+    _default_events = {
+        "conditions": [], "medications": [], "observations": [],
+        "procedures": [], "diagnostic_reports": [], "immunizations": [],
+        "care_plans": [], "document_references": [], "imaging_studies": [],
+        "care_teams": [], "medication_administrations": [],
+    }
+    if encounter_events:
+        mock_graph.get_encounter_events.side_effect = lambda fhir_id: encounter_events.get(
+            fhir_id, _default_events
+        )
+    else:
+        mock_graph.get_encounter_events.return_value = _default_events
+
+    # Condition-linked queries
+    treating_meds = treating_meds or {}
+    care_plans_for_cond = care_plans_for_cond or {}
+    procedures_for_cond = procedures_for_cond or {}
+
+    mock_graph.get_medications_treating_condition.side_effect = (
+        lambda cond_id: treating_meds.get(cond_id, [])
+    )
+    mock_graph.get_care_plans_for_condition.side_effect = (
+        lambda cond_id: care_plans_for_cond.get(cond_id, [])
+    )
+    mock_graph.get_procedures_for_condition.side_effect = (
+        lambda cond_id: procedures_for_cond.get(cond_id, [])
+    )
+
+    # For infer_medication_condition_links
+    if infer_connections is not None:
+        mock_graph.get_all_connections.side_effect = infer_connections
+    else:
+        mock_graph.get_all_connections.return_value = []
+
+    return mock_graph
+
+
+def _setup_mock_db(
+    patient_data: dict | None = None,
+    resolved_conditions: list[dict] | None = None,
+    care_plans: list[dict] | None = None,
+    encounters: list[dict] | None = None,
+    observations: dict[str, list[dict]] | None = None,
+    dose_history_meds: list[dict] | None = None,
+) -> AsyncMock:
+    """Set up a fully mocked AsyncSession for compile_patient_summary tests.
+
+    Because compile_patient_summary issues multiple different queries, we
+    use side_effect to return different results based on call order is fragile.
+    Instead, we'll use a real DB session via the db_session fixture for
+    integration-style tests when needed, or keep tests focused on specific
+    aspects with targeted mocks.
+    """
+    mock_db = AsyncMock(spec=AsyncSession)
+    # This is a simplified mock; most tests will use the real db_session
+    return mock_db
+
+
+# =============================================================================
+# Tests for _build_patient_orientation
+# =============================================================================
+
+
+class TestBuildPatientOrientation:
+    """Tests for the patient orientation narrative builder."""
+
+    def test_full_patient_data(self):
+        patient = _make_patient_resource()
+        result = _build_patient_orientation(patient, date(2026, 2, 5))
+        assert "Jane Doe" in result
+        assert "Female" in result
+        assert "DOB 1985-03-15" in result
+        assert "age 40" in result
+
+    def test_age_calculation_before_birthday(self):
+        patient = _make_patient_resource(birth_date="1985-12-25")
+        result = _build_patient_orientation(patient, date(2026, 2, 5))
+        assert "age 40" in result
+
+    def test_age_calculation_after_birthday(self):
+        patient = _make_patient_resource(birth_date="1985-01-01")
+        result = _build_patient_orientation(patient, date(2026, 2, 5))
+        assert "age 41" in result
+
+    def test_missing_name(self):
+        patient = {"resourceType": "Patient", "gender": "male", "birthDate": "1990-01-01"}
+        result = _build_patient_orientation(patient, date(2026, 2, 5))
+        assert "Unknown" in result
+
+    def test_missing_gender(self):
+        patient = _make_patient_resource(gender="unknown")
+        result = _build_patient_orientation(patient, date(2026, 2, 5))
+        # gender=unknown should be omitted
+        assert "Unknown" not in result.split(", ")[1:]  # not in any part after name
+
+    def test_missing_birth_date(self):
+        patient = {"resourceType": "Patient", "name": [{"given": ["Bob"], "family": "Smith"}]}
+        result = _build_patient_orientation(patient, date(2026, 2, 5))
+        assert "Bob Smith" in result
+        assert "DOB" not in result
+        assert "age" not in result
+
+    def test_empty_patient_data(self):
+        result = _build_patient_orientation({}, date(2026, 2, 5))
+        assert "Unknown" in result
+
+
+# =============================================================================
+# Tests for compile_patient_summary (integration with real DB + mocked graph)
+# =============================================================================
+
+
+class TestCompilePatientSummary:
+    """Tests for compile_patient_summary() — the 12-step pipeline."""
+
+    @pytest.mark.asyncio
+    async def test_full_summary_structure(self, db_session: AsyncSession):
+        """Summary contains all required top-level keys."""
+        patient_id = uuid.uuid4()
+        patient = _make_patient_resource()
+        db_session.add(FhirResource(
+            fhir_id="patient-1",
+            resource_type="Patient",
+            patient_id=patient_id,
+            data=patient,
+        ))
+        await db_session.flush()
+
+        mock_graph = _setup_mock_graph()
+        result = await compile_patient_summary(
+            patient_id, mock_graph, db_session, date(2026, 2, 5)
+        )
+
+        assert "patient_orientation" in result
+        assert "compilation_date" in result
+        assert result["compilation_date"] == "2026-02-05"
+        assert "tier1_active_conditions" in result
+        assert "tier1_unlinked_medications" in result
+        assert "tier1_allergies" in result
+        assert "tier1_immunizations" in result
+        assert "tier1_care_plans" in result
+        assert "tier2_recent_encounters" in result
+        assert "tier3_latest_observations" in result
+        assert "safety_constraints" in result
+
+    @pytest.mark.asyncio
+    async def test_patient_orientation_narrative(self, db_session: AsyncSession):
+        """Should produce a proper orientation narrative from patient data."""
+        patient_id = uuid.uuid4()
+        patient = _make_patient_resource(given="Alice", family="Johnson", birth_date="1990-05-20")
+        db_session.add(FhirResource(
+            fhir_id="patient-1",
+            resource_type="Patient",
+            patient_id=patient_id,
+            data=patient,
+        ))
+        await db_session.flush()
+
+        mock_graph = _setup_mock_graph()
+        result = await compile_patient_summary(
+            patient_id, mock_graph, db_session, date(2026, 2, 5)
+        )
+
+        assert "Alice Johnson" in result["patient_orientation"]
+        assert "Female" in result["patient_orientation"]
+        assert "1990-05-20" in result["patient_orientation"]
+
+    @pytest.mark.asyncio
+    async def test_empty_tiers_handled(self, db_session: AsyncSession):
+        """Should handle patient with no conditions, meds, allergies, etc."""
+        patient_id = uuid.uuid4()
+        patient = _make_patient_resource()
+        db_session.add(FhirResource(
+            fhir_id="patient-1",
+            resource_type="Patient",
+            patient_id=patient_id,
+            data=patient,
+        ))
+        await db_session.flush()
+
+        mock_graph = _setup_mock_graph()
+        result = await compile_patient_summary(
+            patient_id, mock_graph, db_session, date(2026, 2, 5)
+        )
+
+        assert result["tier1_active_conditions"] == []
+        assert result["tier1_unlinked_medications"] == []
+        assert result["tier1_immunizations"] == []
+        assert result["tier1_care_plans"] == []
+        assert result["tier2_recent_encounters"] == []
+        # Empty allergies shows "None recorded"
+        assert result["tier1_allergies"] == [{"note": "None recorded"}]
+        # recently_resolved should be omitted when empty
+        assert "tier1_recently_resolved" not in result
+
+    @pytest.mark.asyncio
+    async def test_allergies_none_recorded(self, db_session: AsyncSession):
+        """When no allergies, should show 'None recorded'."""
+        patient_id = uuid.uuid4()
+        patient = _make_patient_resource()
+        db_session.add(FhirResource(
+            fhir_id="patient-1",
+            resource_type="Patient",
+            patient_id=patient_id,
+            data=patient,
+        ))
+        await db_session.flush()
+
+        mock_graph = _setup_mock_graph(allergies=[])
+        result = await compile_patient_summary(
+            patient_id, mock_graph, db_session, date(2026, 2, 5)
+        )
+
+        assert result["tier1_allergies"] == [{"note": "None recorded"}]
+        assert result["safety_constraints"]["active_allergies"] == [{"note": "None recorded"}]
+
+    @pytest.mark.asyncio
+    async def test_allergies_present(self, db_session: AsyncSession):
+        """When allergies exist, should include them in tier1 and safety."""
+        patient_id = uuid.uuid4()
+        patient = _make_patient_resource()
+        db_session.add(FhirResource(
+            fhir_id="patient-1",
+            resource_type="Patient",
+            patient_id=patient_id,
+            data=patient,
+        ))
+        await db_session.flush()
+
+        allergy = _make_allergy(fhir_id="allergy-pen", display="Penicillin")
+        mock_graph = _setup_mock_graph(allergies=[allergy])
+
+        result = await compile_patient_summary(
+            patient_id, mock_graph, db_session, date(2026, 2, 5)
+        )
+
+        assert len(result["tier1_allergies"]) == 1
+        assert result["tier1_allergies"][0]["id"] == "allergy-pen"
+        # Safety should also include allergies
+        assert len(result["safety_constraints"]["active_allergies"]) == 1
+
+    @pytest.mark.asyncio
+    async def test_active_conditions_with_treating_meds(self, db_session: AsyncSession):
+        """Active conditions should include treating medications."""
+        patient_id = uuid.uuid4()
+        patient = _make_patient_resource()
+        db_session.add(FhirResource(
+            fhir_id="patient-1",
+            resource_type="Patient",
+            patient_id=patient_id,
+            data=patient,
+        ))
+        await db_session.flush()
+
+        condition = _make_condition(fhir_id="cond-htn", display="Hypertension")
+        med = _make_med_request(
+            fhir_id="med-lisinopril",
+            display="Lisinopril 10 MG",
+            authored_on="2025-06-01",
+            dose_value=10,
+            dose_unit="MG",
+        )
+
+        mock_graph = _setup_mock_graph(
+            conditions=[condition],
+            medications=[med],
+            treating_meds={"cond-htn": [med]},
+        )
+
+        result = await compile_patient_summary(
+            patient_id, mock_graph, db_session, date(2026, 2, 5)
+        )
+
+        assert len(result["tier1_active_conditions"]) == 1
+        cond_entry = result["tier1_active_conditions"][0]
+        assert cond_entry["condition"]["id"] == "cond-htn"
+        assert len(cond_entry["treating_medications"]) == 1
+        assert cond_entry["treating_medications"][0]["id"] == "med-lisinopril"
+
+    @pytest.mark.asyncio
+    async def test_medication_recency_enriched(self, db_session: AsyncSession):
+        """Medications should have _recency and _duration_days enrichments."""
+        patient_id = uuid.uuid4()
+        patient = _make_patient_resource()
+        db_session.add(FhirResource(
+            fhir_id="patient-1",
+            resource_type="Patient",
+            patient_id=patient_id,
+            data=patient,
+        ))
+        await db_session.flush()
+
+        condition = _make_condition(fhir_id="cond-1")
+        med = _make_med_request(
+            fhir_id="med-1",
+            display="Metformin 500 MG",
+            authored_on="2026-01-20",
+        )
+
+        mock_graph = _setup_mock_graph(
+            conditions=[condition],
+            medications=[med],
+            treating_meds={"cond-1": [med]},
+        )
+
+        result = await compile_patient_summary(
+            patient_id, mock_graph, db_session, date(2026, 2, 5)
+        )
+
+        treating_med = result["tier1_active_conditions"][0]["treating_medications"][0]
+        assert treating_med.get("_recency") == "new"
+        assert treating_med.get("_duration_days") == 16
+
+    @pytest.mark.asyncio
+    async def test_dose_history_enriched(self, db_session: AsyncSession):
+        """Active meds with prior dose changes should have _dose_history."""
+        patient_id = uuid.uuid4()
+        patient = _make_patient_resource()
+        db_session.add(FhirResource(
+            fhir_id="patient-1",
+            resource_type="Patient",
+            patient_id=patient_id,
+            data=patient,
+        ))
+
+        # Prior med with different dose
+        prior_med = _make_med_request(
+            fhir_id="med-old",
+            display="Lisinopril 10 MG",
+            status="stopped",
+            authored_on="2025-01-01",
+            dose_value=5,
+            dose_unit="MG",
+        )
+        db_session.add(FhirResource(
+            fhir_id="med-old",
+            resource_type="MedicationRequest",
+            patient_id=patient_id,
+            data=prior_med,
+        ))
+
+        # Active med
+        active_med = _make_med_request(
+            fhir_id="med-current",
+            display="Lisinopril 10 MG",
+            status="active",
+            authored_on="2025-06-01",
+            dose_value=10,
+            dose_unit="MG",
+        )
+        db_session.add(FhirResource(
+            fhir_id="med-current",
+            resource_type="MedicationRequest",
+            patient_id=patient_id,
+            data=active_med,
+        ))
+        await db_session.flush()
+
+        condition = _make_condition(fhir_id="cond-1")
+        mock_graph = _setup_mock_graph(
+            conditions=[condition],
+            medications=[active_med],
+            treating_meds={"cond-1": [active_med]},
+        )
+
+        result = await compile_patient_summary(
+            patient_id, mock_graph, db_session, date(2026, 2, 5)
+        )
+
+        treating_med = result["tier1_active_conditions"][0]["treating_medications"][0]
+        assert "_dose_history" in treating_med
+        assert len(treating_med["_dose_history"]) == 1
+        assert treating_med["_dose_history"][0]["dose"] == "5 MG"
+
+    @pytest.mark.asyncio
+    async def test_unlinked_medications(self, db_session: AsyncSession):
+        """Meds not linked to any condition should appear in unlinked list."""
+        patient_id = uuid.uuid4()
+        patient = _make_patient_resource()
+        db_session.add(FhirResource(
+            fhir_id="patient-1",
+            resource_type="Patient",
+            patient_id=patient_id,
+            data=patient,
+        ))
+        await db_session.flush()
+
+        med = _make_med_request(
+            fhir_id="med-orphan",
+            display="Aspirin 81 MG",
+            authored_on="2025-11-01",
+        )
+
+        mock_graph = _setup_mock_graph(
+            medications=[med],
+            # No conditions, no treating links
+            # get_all_connections returns empty => unlinked
+        )
+
+        result = await compile_patient_summary(
+            patient_id, mock_graph, db_session, date(2026, 2, 5)
+        )
+
+        assert len(result["tier1_unlinked_medications"]) == 1
+        assert result["tier1_unlinked_medications"][0]["id"] == "med-orphan"
+
+    @pytest.mark.asyncio
+    async def test_dedup_meds_tier2_vs_tier1(self, db_session: AsyncSession):
+        """Meds already in Tier 1 condition context should not repeat in Tier 2 PRESCRIBED."""
+        patient_id = uuid.uuid4()
+        patient = _make_patient_resource()
+        db_session.add(FhirResource(
+            fhir_id="patient-1",
+            resource_type="Patient",
+            patient_id=patient_id,
+            data=patient,
+        ))
+
+        encounter = _make_encounter(fhir_id="enc-1", period_start="2026-01-15T10:00:00Z")
+        db_session.add(FhirResource(
+            fhir_id="enc-1",
+            resource_type="Encounter",
+            patient_id=patient_id,
+            data=encounter,
+        ))
+        await db_session.flush()
+
+        condition = _make_condition(fhir_id="cond-1")
+        med = _make_med_request(fhir_id="med-1", display="Metformin", authored_on="2025-06-01")
+
+        # Med is linked to condition via TREATS
+        mock_graph = _setup_mock_graph(
+            conditions=[condition],
+            medications=[med],
+            treating_meds={"cond-1": [med]},
+            encounters=[encounter],
+            encounter_events={
+                "enc-1": {
+                    "conditions": [], "medications": [med], "observations": [],
+                    "procedures": [], "diagnostic_reports": [], "immunizations": [],
+                    "care_plans": [], "document_references": [], "imaging_studies": [],
+                    "care_teams": [], "medication_administrations": [],
+                },
+            },
+        )
+
+        result = await compile_patient_summary(
+            patient_id, mock_graph, db_session, date(2026, 2, 5)
+        )
+
+        # Med should be in Tier 1 condition
+        assert len(result["tier1_active_conditions"][0]["treating_medications"]) == 1
+
+        # Med should be REMOVED from Tier 2 PRESCRIBED (dedup)
+        if result["tier2_recent_encounters"]:
+            prescribed = result["tier2_recent_encounters"][0]["events"].get("PRESCRIBED", [])
+            med_ids = [m["id"] for m in prescribed]
+            assert "med-1" not in med_ids
+
+    @pytest.mark.asyncio
+    async def test_immunizations_included(self, db_session: AsyncSession):
+        """Completed immunizations should appear in tier1_immunizations."""
+        patient_id = uuid.uuid4()
+        patient = _make_patient_resource()
+        db_session.add(FhirResource(
+            fhir_id="patient-1",
+            resource_type="Patient",
+            patient_id=patient_id,
+            data=patient,
+        ))
+        await db_session.flush()
+
+        imm = _make_immunization(fhir_id="imm-flu", display="Influenza Vaccine")
+        mock_graph = _setup_mock_graph(immunizations=[imm])
+
+        result = await compile_patient_summary(
+            patient_id, mock_graph, db_session, date(2026, 2, 5)
+        )
+
+        assert len(result["tier1_immunizations"]) == 1
+        assert result["tier1_immunizations"][0]["id"] == "imm-flu"
+
+    @pytest.mark.asyncio
+    async def test_recently_resolved_included(self, db_session: AsyncSession):
+        """Recently resolved conditions should appear when present."""
+        patient_id = uuid.uuid4()
+        patient = _make_patient_resource()
+        db_session.add(FhirResource(
+            fhir_id="patient-1",
+            resource_type="Patient",
+            patient_id=patient_id,
+            data=patient,
+        ))
+
+        # Resolved condition within 6 months
+        resolved_cond = _make_condition(
+            fhir_id="cond-resolved",
+            display="Acute Bronchitis",
+            clinical_status="resolved",
+            abatement_dt="2025-12-01T00:00:00Z",
+        )
+        db_session.add(FhirResource(
+            fhir_id="cond-resolved",
+            resource_type="Condition",
+            patient_id=patient_id,
+            data=resolved_cond,
+        ))
+        await db_session.flush()
+
+        mock_graph = _setup_mock_graph()
+
+        result = await compile_patient_summary(
+            patient_id, mock_graph, db_session, date(2026, 2, 5)
+        )
+
+        assert "tier1_recently_resolved" in result
+        assert len(result["tier1_recently_resolved"]) == 1
+        assert result["tier1_recently_resolved"][0]["condition"]["id"] == "cond-resolved"
+
+    @pytest.mark.asyncio
+    async def test_old_resolved_conditions_excluded(self, db_session: AsyncSession):
+        """Conditions resolved more than 6 months ago should be excluded."""
+        patient_id = uuid.uuid4()
+        patient = _make_patient_resource()
+        db_session.add(FhirResource(
+            fhir_id="patient-1",
+            resource_type="Patient",
+            patient_id=patient_id,
+            data=patient,
+        ))
+
+        # Resolved condition > 6 months ago
+        old_resolved = _make_condition(
+            fhir_id="cond-old",
+            display="Old Condition",
+            clinical_status="resolved",
+            abatement_dt="2024-01-01T00:00:00Z",
+        )
+        db_session.add(FhirResource(
+            fhir_id="cond-old",
+            resource_type="Condition",
+            patient_id=patient_id,
+            data=old_resolved,
+        ))
+        await db_session.flush()
+
+        mock_graph = _setup_mock_graph()
+
+        result = await compile_patient_summary(
+            patient_id, mock_graph, db_session, date(2026, 2, 5)
+        )
+
+        assert "tier1_recently_resolved" not in result
+
+    @pytest.mark.asyncio
+    async def test_tier2_encounters_with_events(self, db_session: AsyncSession):
+        """Tier 2 should include encounter events grouped by relationship."""
+        patient_id = uuid.uuid4()
+        patient = _make_patient_resource()
+        db_session.add(FhirResource(
+            fhir_id="patient-1",
+            resource_type="Patient",
+            patient_id=patient_id,
+            data=patient,
+        ))
+
+        encounter = _make_encounter(fhir_id="enc-recent", period_start="2026-01-20T10:00:00Z")
+        db_session.add(FhirResource(
+            fhir_id="enc-recent",
+            resource_type="Encounter",
+            patient_id=patient_id,
+            data=encounter,
+        ))
+        await db_session.flush()
+
+        diagnosed_cond = _make_condition(fhir_id="cond-diagnosed")
+        encounter_events = {
+            "enc-recent": {
+                "conditions": [diagnosed_cond],
+                "medications": [],
+                "observations": [],
+                "procedures": [],
+                "diagnostic_reports": [],
+                "immunizations": [],
+                "care_plans": [],
+                "document_references": [],
+                "imaging_studies": [],
+                "care_teams": [],
+                "medication_administrations": [],
+            },
+        }
+
+        mock_graph = _setup_mock_graph(
+            encounters=[encounter],
+            encounter_events=encounter_events,
+        )
+
+        result = await compile_patient_summary(
+            patient_id, mock_graph, db_session, date(2026, 2, 5)
+        )
+
+        assert len(result["tier2_recent_encounters"]) == 1
+        enc_entry = result["tier2_recent_encounters"][0]
+        assert enc_entry["encounter"]["id"] == "enc-recent"
+        assert "DIAGNOSED" in enc_entry["events"]
+        assert len(enc_entry["events"]["DIAGNOSED"]) == 1
+
+    @pytest.mark.asyncio
+    async def test_clinical_notes_included(self, db_session: AsyncSession):
+        """Clinical notes from encounter DocumentReferences should be in Tier 2."""
+        patient_id = uuid.uuid4()
+        patient = _make_patient_resource()
+        db_session.add(FhirResource(
+            fhir_id="patient-1",
+            resource_type="Patient",
+            patient_id=patient_id,
+            data=patient,
+        ))
+
+        encounter = _make_encounter(fhir_id="enc-1", period_start="2026-01-20T10:00:00Z")
+        db_session.add(FhirResource(
+            fhir_id="enc-1",
+            resource_type="Encounter",
+            patient_id=patient_id,
+            data=encounter,
+        ))
+        await db_session.flush()
+
+        doc_ref = _make_document_reference(
+            fhir_id="doc-1",
+            note_text="Patient stable. Continue medications."
+        )
+
+        encounter_events = {
+            "enc-1": {
+                "conditions": [], "medications": [], "observations": [],
+                "procedures": [], "diagnostic_reports": [], "immunizations": [],
+                "care_plans": [],
+                "document_references": [doc_ref],
+                "imaging_studies": [], "care_teams": [], "medication_administrations": [],
+            },
+        }
+
+        mock_graph = _setup_mock_graph(
+            encounters=[encounter],
+            encounter_events=encounter_events,
+        )
+
+        result = await compile_patient_summary(
+            patient_id, mock_graph, db_session, date(2026, 2, 5)
+        )
+
+        enc_entry = result["tier2_recent_encounters"][0]
+        assert len(enc_entry["clinical_notes"]) == 1
+        assert "Patient stable" in enc_entry["clinical_notes"][0]
+
+    @pytest.mark.asyncio
+    async def test_tier3_observations(self, db_session: AsyncSession):
+        """Tier 3 should contain latest observations by category."""
+        patient_id = uuid.uuid4()
+        patient = _make_patient_resource()
+        db_session.add(FhirResource(
+            fhir_id="patient-1",
+            resource_type="Patient",
+            patient_id=patient_id,
+            data=patient,
+        ))
+
+        obs = make_observation(
+            "2345-7", "laboratory", "2024-06-15T10:00:00Z", 110.0, fhir_id="obs-glucose"
+        )
+        db_session.add(FhirResource(
+            fhir_id="obs-glucose",
+            resource_type="Observation",
+            patient_id=patient_id,
+            data=obs,
+        ))
+        await db_session.flush()
+
+        mock_graph = _setup_mock_graph()
+
+        result = await compile_patient_summary(
+            patient_id, mock_graph, db_session, date(2026, 2, 5)
+        )
+
+        assert "laboratory" in result["tier3_latest_observations"]
+        assert len(result["tier3_latest_observations"]["laboratory"]) == 1
+
+    @pytest.mark.asyncio
+    async def test_standalone_care_plans(self, db_session: AsyncSession):
+        """Care plans not linked to conditions should be standalone in tier1_care_plans."""
+        patient_id = uuid.uuid4()
+        patient = _make_patient_resource()
+        db_session.add(FhirResource(
+            fhir_id="patient-1",
+            resource_type="Patient",
+            patient_id=patient_id,
+            data=patient,
+        ))
+
+        care_plan = _make_care_plan(fhir_id="cp-standalone", title="Wellness Plan")
+        db_session.add(FhirResource(
+            fhir_id="cp-standalone",
+            resource_type="CarePlan",
+            patient_id=patient_id,
+            data=care_plan,
+        ))
+        await db_session.flush()
+
+        mock_graph = _setup_mock_graph()
+
+        result = await compile_patient_summary(
+            patient_id, mock_graph, db_session, date(2026, 2, 5)
+        )
+
+        assert len(result["tier1_care_plans"]) == 1
+        assert result["tier1_care_plans"][0]["id"] == "cp-standalone"
+
+    @pytest.mark.asyncio
+    async def test_care_plan_linked_to_condition_excluded_from_standalone(
+        self, db_session: AsyncSession
+    ):
+        """Care plans linked to conditions should NOT appear in standalone care plans."""
+        patient_id = uuid.uuid4()
+        patient = _make_patient_resource()
+        db_session.add(FhirResource(
+            fhir_id="patient-1",
+            resource_type="Patient",
+            patient_id=patient_id,
+            data=patient,
+        ))
+
+        # Care plan linked to condition
+        care_plan = _make_care_plan(
+            fhir_id="cp-linked", title="HTN Management", addresses_ids=["cond-1"]
+        )
+        db_session.add(FhirResource(
+            fhir_id="cp-linked",
+            resource_type="CarePlan",
+            patient_id=patient_id,
+            data=care_plan,
+        ))
+        await db_session.flush()
+
+        condition = _make_condition(fhir_id="cond-1", display="Hypertension")
+        mock_graph = _setup_mock_graph(
+            conditions=[condition],
+            care_plans_for_cond={"cond-1": [care_plan]},
+        )
+
+        result = await compile_patient_summary(
+            patient_id, mock_graph, db_session, date(2026, 2, 5)
+        )
+
+        # Linked care plan should be in condition context
+        assert len(result["tier1_active_conditions"][0]["care_plans"]) == 1
+        # But NOT in standalone care plans
+        standalone_ids = [cp["id"] for cp in result["tier1_care_plans"]]
+        assert "cp-linked" not in standalone_ids
+
+    @pytest.mark.asyncio
+    async def test_safety_constraints_present(self, db_session: AsyncSession):
+        """Safety constraints should always be present with allergies and drug note."""
+        patient_id = uuid.uuid4()
+        patient = _make_patient_resource()
+        db_session.add(FhirResource(
+            fhir_id="patient-1",
+            resource_type="Patient",
+            patient_id=patient_id,
+            data=patient,
+        ))
+        await db_session.flush()
+
+        allergy = _make_allergy(fhir_id="allergy-1", display="Penicillin")
+        mock_graph = _setup_mock_graph(allergies=[allergy])
+
+        result = await compile_patient_summary(
+            patient_id, mock_graph, db_session, date(2026, 2, 5)
+        )
+
+        assert "safety_constraints" in result
+        assert len(result["safety_constraints"]["active_allergies"]) == 1
+        assert "drug_interactions_note" in result["safety_constraints"]
+
+    @pytest.mark.asyncio
+    async def test_string_patient_id_accepted(self, db_session: AsyncSession):
+        """Should accept patient_id as a string."""
+        patient_id = uuid.uuid4()
+        patient = _make_patient_resource()
+        db_session.add(FhirResource(
+            fhir_id="patient-1",
+            resource_type="Patient",
+            patient_id=patient_id,
+            data=patient,
+        ))
+        await db_session.flush()
+
+        mock_graph = _setup_mock_graph()
+
+        result = await compile_patient_summary(
+            str(patient_id), mock_graph, db_session, date(2026, 2, 5)
+        )
+
+        assert "patient_orientation" in result
+
+    @pytest.mark.asyncio
+    async def test_multiple_encounters_clinical_notes(self, db_session: AsyncSession):
+        """Clinical notes for ALL Tier 2 encounters should be included, not just the last."""
+        patient_id = uuid.uuid4()
+        patient = _make_patient_resource()
+        db_session.add(FhirResource(
+            fhir_id="patient-1",
+            resource_type="Patient",
+            patient_id=patient_id,
+            data=patient,
+        ))
+
+        enc1 = _make_encounter(fhir_id="enc-1", period_start="2026-01-10T10:00:00Z")
+        enc2 = _make_encounter(fhir_id="enc-2", period_start="2026-01-20T10:00:00Z")
+        for enc in [enc1, enc2]:
+            db_session.add(FhirResource(
+                fhir_id=enc["id"],
+                resource_type="Encounter",
+                patient_id=patient_id,
+                data=enc,
+            ))
+        await db_session.flush()
+
+        doc1 = _make_document_reference(fhir_id="doc-1", note_text="Note from encounter 1.")
+        doc2 = _make_document_reference(fhir_id="doc-2", note_text="Note from encounter 2.")
+
+        encounter_events = {
+            "enc-1": {
+                "conditions": [], "medications": [], "observations": [],
+                "procedures": [], "diagnostic_reports": [], "immunizations": [],
+                "care_plans": [],
+                "document_references": [doc1],
+                "imaging_studies": [], "care_teams": [], "medication_administrations": [],
+            },
+            "enc-2": {
+                "conditions": [], "medications": [], "observations": [],
+                "procedures": [], "diagnostic_reports": [], "immunizations": [],
+                "care_plans": [],
+                "document_references": [doc2],
+                "imaging_studies": [], "care_teams": [], "medication_administrations": [],
+            },
+        }
+
+        mock_graph = _setup_mock_graph(
+            encounters=[enc2, enc1],  # desc order
+            encounter_events=encounter_events,
+        )
+
+        result = await compile_patient_summary(
+            patient_id, mock_graph, db_session, date(2026, 2, 5)
+        )
+
+        # Both encounters should have notes
+        all_notes = []
+        for enc_entry in result["tier2_recent_encounters"]:
+            all_notes.extend(enc_entry["clinical_notes"])
+        assert len(all_notes) == 2
+
+    @pytest.mark.asyncio
+    async def test_no_patient_resource_still_works(self, db_session: AsyncSession):
+        """Should still produce a summary even if Patient resource is missing."""
+        patient_id = uuid.uuid4()
+        # No Patient resource added
+
+        mock_graph = _setup_mock_graph()
+
+        result = await compile_patient_summary(
+            patient_id, mock_graph, db_session, date(2026, 2, 5)
+        )
+
+        assert result["patient_orientation"] == "Unknown"
+        assert result["compilation_date"] == "2026-02-05"
+
+    @pytest.mark.asyncio
+    async def test_defaults_to_today_compilation_date(self, db_session: AsyncSession):
+        """Should default to today's date when compilation_date is None."""
+        patient_id = uuid.uuid4()
+        patient = _make_patient_resource()
+        db_session.add(FhirResource(
+            fhir_id="patient-1",
+            resource_type="Patient",
+            patient_id=patient_id,
+            data=patient,
+        ))
+        await db_session.flush()
+
+        mock_graph = _setup_mock_graph()
+
+        result = await compile_patient_summary(patient_id, mock_graph, db_session)
+
+        # Should have today's date
+        assert result["compilation_date"] == date.today().isoformat()

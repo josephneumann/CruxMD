@@ -9,12 +9,13 @@ Provides functions to:
 6. Compute medication recency signals (_recency, _duration_days)
 7. Compute dose history for active medications (_dose_history)
 8. Infer medication-condition links via encounter traversal (_inferred)
+9. Compile full patient summary (12-step assembly pipeline)
 """
 
 import copy
 import logging
 import uuid
-from datetime import date, datetime
+from datetime import date, datetime, timedelta
 from typing import Any
 
 from sqlalchemy import DateTime, func, or_, select
@@ -738,3 +739,525 @@ async def infer_medication_condition_links(
             result.setdefault("unlinked", []).append(med)
 
     return result
+
+
+# =============================================================================
+# Patient Summary Compilation Pipeline
+# =============================================================================
+
+# Status filters
+_ACTIVE_CONDITION_STATUSES = frozenset(["active", "recurrence", "relapse"])
+_RESOLVED_CONDITION_STATUSES = frozenset(["resolved", "remission", "inactive"])
+_ACTIVE_CARE_PLAN_STATUSES = frozenset(["active", "on-hold"])
+_RECENTLY_RESOLVED_MONTHS = 6
+
+# Maps encounter event keys (from graph) to relationship type labels in the summary
+_EVENT_TYPE_MAP: dict[str, str] = {
+    "conditions": "DIAGNOSED",
+    "medications": "PRESCRIBED",
+    "observations": "RECORDED",
+    "procedures": "PERFORMED",
+    "diagnostic_reports": "REPORTED",
+    "immunizations": "ADMINISTERED",
+    "care_plans": "CREATED_DURING",
+    "document_references": "DOCUMENTED",
+    "imaging_studies": "IMAGED",
+    "care_teams": "ASSEMBLED",
+    "medication_administrations": "GIVEN",
+}
+
+
+def _build_patient_orientation(patient_data: dict[str, Any], compilation_date: date) -> str:
+    """Build a narrative orientation string from a Patient FHIR resource.
+
+    Args:
+        patient_data: FHIR Patient resource dict.
+        compilation_date: Date the summary is compiled.
+
+    Returns:
+        Narrative string like "John Smith, Male, DOB 1985-03-15 (age 40)".
+    """
+    names = patient_data.get("name", [])
+    if names:
+        first_name = names[0]
+        given = " ".join(first_name.get("given", []))
+        family = first_name.get("family", "")
+        full_name = f"{given} {family}".strip()
+    else:
+        full_name = "Unknown"
+
+    gender = patient_data.get("gender", "unknown")
+    birth_date_str = patient_data.get("birthDate", "")
+
+    age_str = ""
+    if birth_date_str:
+        try:
+            birth_date = datetime.fromisoformat(birth_date_str).date()
+            age = (
+                compilation_date.year - birth_date.year
+                - ((compilation_date.month, compilation_date.day) < (birth_date.month, birth_date.day))
+            )
+            age_str = f" (age {age})"
+        except (ValueError, TypeError):
+            pass
+
+    parts = [full_name]
+    if gender != "unknown":
+        parts.append(gender.capitalize())
+    if birth_date_str:
+        parts.append(f"DOB {birth_date_str}{age_str}")
+
+    return ", ".join(parts)
+
+
+def _extract_fhir_id(resource: dict[str, Any]) -> str:
+    """Extract the FHIR id from a resource dict."""
+    return resource.get("id", "")
+
+
+async def _fetch_recently_resolved_conditions(
+    db: AsyncSession,
+    patient_id: uuid.UUID,
+    compilation_date: date,
+) -> list[dict[str, Any]]:
+    """Fetch conditions resolved/remission/inactive within the last 6 months.
+
+    Args:
+        db: Async SQLAlchemy session.
+        patient_id: The canonical patient UUID.
+        compilation_date: Date to compute the 6-month window from.
+
+    Returns:
+        List of FHIR Condition dicts.
+    """
+    cutoff = compilation_date - timedelta(days=_RECENTLY_RESOLVED_MONTHS * 30)
+    cutoff_dt = datetime(cutoff.year, cutoff.month, cutoff.day)
+
+    clinical_status_expr = FhirResource.data["clinicalStatus"]["coding"][0]["code"].as_string()
+    abatement_expr = FhirResource.data["abatementDateTime"].as_string()
+
+    query = (
+        select(FhirResource.data)
+        .where(
+            FhirResource.patient_id == patient_id,
+            FhirResource.resource_type == "Condition",
+            clinical_status_expr.in_(_RESOLVED_CONDITION_STATUSES),
+            abatement_expr.isnot(None),
+            func.cast(abatement_expr, DateTime) >= cutoff_dt,
+        )
+    )
+
+    result = await db.execute(query)
+    return [row.data for row in result.all()]
+
+
+async def _fetch_active_care_plans(
+    db: AsyncSession,
+    patient_id: uuid.UUID,
+) -> list[dict[str, Any]]:
+    """Fetch active/on-hold care plans from Postgres.
+
+    Args:
+        db: Async SQLAlchemy session.
+        patient_id: The canonical patient UUID.
+
+    Returns:
+        List of FHIR CarePlan dicts.
+    """
+    status_expr = FhirResource.data["status"].as_string()
+
+    query = (
+        select(FhirResource.data)
+        .where(
+            FhirResource.patient_id == patient_id,
+            FhirResource.resource_type == "CarePlan",
+            status_expr.in_(_ACTIVE_CARE_PLAN_STATUSES),
+        )
+    )
+
+    result = await db.execute(query)
+    return [row.data for row in result.all()]
+
+
+async def _fetch_encounter_fhir_resources(
+    db: AsyncSession,
+    patient_id: uuid.UUID,
+    encounter_fhir_ids: list[str],
+) -> dict[str, dict[str, Any]]:
+    """Fetch full FHIR Encounter resources from Postgres.
+
+    Args:
+        db: Async SQLAlchemy session.
+        patient_id: The canonical patient UUID.
+        encounter_fhir_ids: List of encounter FHIR IDs.
+
+    Returns:
+        Dict mapping fhir_id to FHIR Encounter resource data.
+    """
+    if not encounter_fhir_ids:
+        return {}
+
+    query = select(FhirResource.fhir_id, FhirResource.data).where(
+        FhirResource.patient_id == patient_id,
+        FhirResource.resource_type == "Encounter",
+        FhirResource.fhir_id.in_(encounter_fhir_ids),
+    )
+
+    result = await db.execute(query)
+    return {row.fhir_id: row.data for row in result.all()}
+
+
+async def compile_patient_summary(
+    patient_id: uuid.UUID | str,
+    graph: KnowledgeGraph,
+    db: AsyncSession,
+    compilation_date: date | None = None,
+) -> dict[str, Any]:
+    """Compile a full patient summary via 12-step assembly pipeline.
+
+    Assembles a structured summary containing:
+    - Patient orientation narrative
+    - Tier 1: Active conditions with treating meds/care plans/procedures,
+              recently resolved conditions, unlinked medications, allergies,
+              immunizations, standalone care plans
+    - Tier 2: Recent encounters with events and clinical notes
+    - Tier 3: Latest observations by category with trends
+    - Safety constraints derived from Tier 1
+
+    Args:
+        patient_id: The canonical patient UUID.
+        graph: KnowledgeGraph instance for traversal.
+        db: Async SQLAlchemy session.
+        compilation_date: Date to compile against. Defaults to today.
+
+    Returns:
+        Complete patient summary dict.
+    """
+    if isinstance(patient_id, str):
+        patient_id = uuid.UUID(patient_id)
+
+    if compilation_date is None:
+        compilation_date = date.today()
+
+    patient_id_str = str(patient_id)
+
+    # =========================================================================
+    # Step 1: Patient orientation narrative
+    # =========================================================================
+    patient_query = select(FhirResource.data).where(
+        FhirResource.patient_id == patient_id,
+        FhirResource.resource_type == "Patient",
+    )
+    patient_result = await db.execute(patient_query)
+    patient_row = patient_result.first()
+    patient_data = patient_row.data if patient_row else {}
+    patient_orientation = _build_patient_orientation(patient_data, compilation_date)
+
+    # =========================================================================
+    # Step 2: Tier 1 — active conditions, meds, allergies, care plans, immunizations
+    # =========================================================================
+    active_conditions = await graph.get_verified_conditions(patient_id_str)
+    active_meds_raw = await graph.get_verified_medications(patient_id_str)
+    allergies_raw = await graph.get_verified_allergies(patient_id_str)
+    immunizations_raw = await graph.get_verified_immunizations(patient_id_str)
+    recently_resolved_raw = await _fetch_recently_resolved_conditions(
+        db, patient_id, compilation_date
+    )
+    care_plans_raw = await _fetch_active_care_plans(db, patient_id)
+
+    # For each active condition, compile_node_context to get treating meds,
+    # care plans, procedures
+    tier1_active_conditions: list[dict[str, Any]] = []
+    condition_linked_med_ids: set[str] = set()
+    condition_linked_cp_ids: set[str] = set()
+
+    for condition in active_conditions:
+        cond_fhir_id = _extract_fhir_id(condition)
+        if not cond_fhir_id:
+            continue
+
+        # Get treating meds, care plans, procedures via graph
+        treating_meds = await graph.get_medications_treating_condition(cond_fhir_id)
+        care_plans = await graph.get_care_plans_for_condition(cond_fhir_id)
+        procedures = await graph.get_procedures_for_condition(cond_fhir_id)
+
+        # Track linked med/care-plan IDs for dedup
+        for med in treating_meds:
+            mid = _extract_fhir_id(med)
+            if mid:
+                condition_linked_med_ids.add(mid)
+        for cp in care_plans:
+            cpid = _extract_fhir_id(cp)
+            if cpid:
+                condition_linked_cp_ids.add(cpid)
+
+        tier1_active_conditions.append({
+            "condition": prune_and_enrich(condition),
+            "treating_medications": [prune_and_enrich(m) for m in treating_meds],
+            "care_plans": [prune_and_enrich(cp) for cp in care_plans],
+            "related_procedures": [prune_and_enrich(p) for p in procedures],
+        })
+
+    # Recently resolved conditions (same structure)
+    tier1_recently_resolved: list[dict[str, Any]] = []
+    for condition in recently_resolved_raw:
+        cond_fhir_id = _extract_fhir_id(condition)
+        if not cond_fhir_id:
+            continue
+
+        treating_meds = await graph.get_medications_treating_condition(cond_fhir_id)
+        care_plans = await graph.get_care_plans_for_condition(cond_fhir_id)
+        procedures = await graph.get_procedures_for_condition(cond_fhir_id)
+
+        for med in treating_meds:
+            mid = _extract_fhir_id(med)
+            if mid:
+                condition_linked_med_ids.add(mid)
+        for cp in care_plans:
+            cpid = _extract_fhir_id(cp)
+            if cpid:
+                condition_linked_cp_ids.add(cpid)
+
+        tier1_recently_resolved.append({
+            "condition": prune_and_enrich(condition),
+            "treating_medications": [prune_and_enrich(m) for m in treating_meds],
+            "care_plans": [prune_and_enrich(cp) for cp in care_plans],
+            "related_procedures": [prune_and_enrich(p) for p in procedures],
+        })
+
+    # =========================================================================
+    # Step 3: Encounter-inferred medication links for unlinked meds
+    # =========================================================================
+    unlinked_meds = [
+        m for m in active_meds_raw
+        if _extract_fhir_id(m) not in condition_linked_med_ids
+    ]
+
+    inferred_links: dict[str, list[dict[str, Any]]] = {}
+    if unlinked_meds:
+        inferred_links = await infer_medication_condition_links(
+            unlinked_meds, graph, patient_id_str
+        )
+
+    # Merge inferred links into active conditions
+    for cond_entry in tier1_active_conditions:
+        cond_id = cond_entry["condition"].get("id", "")
+        if cond_id in inferred_links:
+            for med in inferred_links[cond_id]:
+                cond_entry["treating_medications"].append(prune_and_enrich(med))
+                mid = _extract_fhir_id(med)
+                if mid:
+                    condition_linked_med_ids.add(mid)
+
+    # Truly unlinked meds (no condition link at all)
+    truly_unlinked = inferred_links.get("unlinked", [])
+
+    # =========================================================================
+    # Step 4: Medication recency + dose history for all active meds
+    # =========================================================================
+    # Build lookup for raw meds by fhir_id (avoids O(n) scan per med)
+    raw_meds_by_id: dict[str, dict[str, Any]] = {
+        _extract_fhir_id(m): m for m in active_meds_raw if _extract_fhir_id(m)
+    }
+
+    # Build enriched meds for tier1 conditions
+    for cond_entry in tier1_active_conditions:
+        enriched_meds = []
+        for med_pruned in cond_entry["treating_medications"]:
+            recency = compute_medication_recency(med_pruned, compilation_date)
+            if recency:
+                med_pruned.update(recency)
+            # Dose history requires DB query on raw data
+            med_fhir_id = med_pruned.get("id", "")
+            raw_med = raw_meds_by_id.get(med_fhir_id)
+            if raw_med:
+                dose_history = await compute_dose_history(db, patient_id, raw_med)
+                if dose_history:
+                    med_pruned["_dose_history"] = dose_history
+            enriched_meds.append(med_pruned)
+        cond_entry["treating_medications"] = enriched_meds
+
+    # Enrich unlinked meds
+    enriched_unlinked: list[dict[str, Any]] = []
+    for med in truly_unlinked:
+        pruned = prune_and_enrich(med)
+        recency = compute_medication_recency(med, compilation_date)
+        if recency:
+            pruned.update(recency)
+        dose_history = await compute_dose_history(db, patient_id, med)
+        if dose_history:
+            pruned["_dose_history"] = dose_history
+        enriched_unlinked.append(pruned)
+
+    # =========================================================================
+    # Step 5: Tier 2 — recent encounters with events and clinical notes
+    # =========================================================================
+    six_months_ago = (compilation_date - timedelta(days=180)).isoformat()
+
+    # Get encounters sorted by date desc from graph
+    all_encounters = await graph.get_patient_encounters(patient_id_str)
+
+    # Fetch full encounter FHIR resources for recent window + last encounter
+    recent_enc_ids = []
+    for enc in all_encounters:
+        period_start = enc.get("period_start", "")
+        if period_start and period_start >= six_months_ago:
+            recent_enc_ids.append(enc["fhir_id"])
+
+    # Ensure we have at least the most recent encounter
+    if all_encounters and all_encounters[0]["fhir_id"] not in recent_enc_ids:
+        recent_enc_ids.insert(0, all_encounters[0]["fhir_id"])
+
+    encounter_resources = await _fetch_encounter_fhir_resources(
+        db, patient_id, recent_enc_ids
+    )
+
+    # Find the last AMB encounter, fall back to any class
+    last_amb_fhir_id = None
+    for enc_fhir_id in recent_enc_ids:
+        enc_data = encounter_resources.get(enc_fhir_id, {})
+        class_code = enc_data.get("class", {}).get("code", "")
+        if class_code == "AMB":
+            last_amb_fhir_id = enc_fhir_id
+            break
+
+    if not last_amb_fhir_id and recent_enc_ids:
+        last_amb_fhir_id = recent_enc_ids[0]
+
+    # Build Tier 2 encounter list (ordered by date desc)
+    tier2_enc_fhir_ids = []
+    if last_amb_fhir_id:
+        tier2_enc_fhir_ids.append(last_amb_fhir_id)
+    for enc_id in recent_enc_ids:
+        if enc_id != last_amb_fhir_id and enc_id not in tier2_enc_fhir_ids:
+            tier2_enc_fhir_ids.append(enc_id)
+
+    tier2_encounters: list[dict[str, Any]] = []
+    tier2_resource_fhir_ids: set[str] = set()
+
+    for enc_fhir_id in tier2_enc_fhir_ids:
+        enc_data = encounter_resources.get(enc_fhir_id)
+        if not enc_data:
+            continue
+
+        # Get encounter events via graph
+        events = await graph.get_encounter_events(enc_fhir_id)
+
+        # Track all resource IDs from events for dedup
+        for event_list in events.values():
+            for event_resource in event_list:
+                eid = _extract_fhir_id(event_resource)
+                if eid:
+                    tier2_resource_fhir_ids.add(eid)
+
+        # Compile events into pruned format grouped by relationship type
+        pruned_events: dict[str, list[dict[str, Any]]] = {}
+
+        for event_key, rel_type in _EVENT_TYPE_MAP.items():
+            event_resources = events.get(event_key, [])
+            if event_resources:
+                pruned_events[rel_type] = [
+                    prune_and_enrich(r) for r in event_resources
+                ]
+
+        # Clinical notes: reuse already-pruned document_references from events
+        clinical_notes: list[str] = []
+        for pruned_doc in pruned_events.get("DOCUMENTED", []):
+            note = pruned_doc.get("clinical_note")
+            if note:
+                clinical_notes.append(note)
+
+        tier2_encounters.append({
+            "encounter": prune_and_enrich(enc_data),
+            "events": pruned_events,
+            "clinical_notes": clinical_notes,
+        })
+
+    # =========================================================================
+    # Step 6: Tier 3 — latest observations by category
+    # =========================================================================
+    tier3_raw = await get_latest_observations_by_category(db, patient_id)
+
+    # =========================================================================
+    # Step 7: Observation trends
+    # =========================================================================
+    all_tier3_obs: list[dict[str, Any]] = []
+    for obs_list in tier3_raw.values():
+        all_tier3_obs.extend(obs_list)
+
+    enriched_obs = await compute_observation_trends(db, patient_id, all_tier3_obs)
+
+    # Rebuild tier3 with trends by category
+    enriched_obs_by_id: dict[str, dict[str, Any]] = {}
+    for obs in enriched_obs:
+        oid = _extract_fhir_id(obs)
+        if oid:
+            enriched_obs_by_id[oid] = obs
+
+    # =========================================================================
+    # Step 8: Dedup Tier 3 vs Tier 2 by fhir_id
+    # =========================================================================
+    tier3_by_category: dict[str, list[dict[str, Any]]] = {
+        cat: [] for cat in OBSERVATION_CATEGORIES
+    }
+    for cat, obs_list in tier3_raw.items():
+        for obs in obs_list:
+            obs_id = _extract_fhir_id(obs)
+            if obs_id and obs_id in tier2_resource_fhir_ids:
+                continue  # Already in Tier 2
+            enriched = enriched_obs_by_id.get(obs_id, obs)
+            tier3_by_category[cat].append(prune_and_enrich(enriched))
+
+    # =========================================================================
+    # Step 9: Dedup Tier 2 vs Tier 1 (meds only — condition-level takes precedence)
+    # =========================================================================
+    for enc_entry in tier2_encounters:
+        prescribed = enc_entry["events"].get("PRESCRIBED", [])
+        if prescribed:
+            enc_entry["events"]["PRESCRIBED"] = [
+                m for m in prescribed
+                if m.get("id", "") not in condition_linked_med_ids
+            ]
+
+    # =========================================================================
+    # Step 10: Safety constraints
+    # =========================================================================
+    safety_allergies = [prune_and_enrich(a) for a in allergies_raw]
+    safety_constraints: dict[str, Any] = {
+        "active_allergies": safety_allergies if safety_allergies else [{"note": "None recorded"}],
+        "drug_interactions_note": "Review active medications for potential interactions.",
+    }
+
+    # =========================================================================
+    # Step 11: Prune + enrich remaining resources
+    # =========================================================================
+    tier1_allergies = safety_allergies if safety_allergies else [{"note": "None recorded"}]
+    tier1_immunizations = [prune_and_enrich(im) for im in immunizations_raw]
+
+    # Standalone care plans not linked to any condition
+    tier1_care_plans = [
+        prune_and_enrich(cp) for cp in care_plans_raw
+        if _extract_fhir_id(cp) not in condition_linked_cp_ids
+    ]
+
+    # =========================================================================
+    # Step 12: Assemble final summary
+    # =========================================================================
+    summary: dict[str, Any] = {
+        "patient_orientation": patient_orientation,
+        "compilation_date": compilation_date.isoformat(),
+        "tier1_active_conditions": tier1_active_conditions,
+    }
+
+    if tier1_recently_resolved:
+        summary["tier1_recently_resolved"] = tier1_recently_resolved
+
+    summary["tier1_unlinked_medications"] = enriched_unlinked
+    summary["tier1_allergies"] = tier1_allergies
+    summary["tier1_immunizations"] = tier1_immunizations
+    summary["tier1_care_plans"] = tier1_care_plans
+    summary["tier2_recent_encounters"] = tier2_encounters
+    summary["tier3_latest_observations"] = tier3_by_category
+    summary["safety_constraints"] = safety_constraints
+
+    return summary
