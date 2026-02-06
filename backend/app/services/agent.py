@@ -19,7 +19,7 @@ from openai.types.shared_params import Reasoning
 from sqlalchemy.ext.asyncio import AsyncSession
 
 from app.config import settings
-from app.schemas import AgentResponse, PatientContext
+from app.schemas import AgentResponse
 from app.services.agent_tools import TOOL_SCHEMAS, execute_tool
 from app.services.graph import KnowledgeGraph
 
@@ -37,67 +37,6 @@ DEFAULT_MAX_OUTPUT_TOKENS = 16384
 # Maximum tool-calling rounds before forcing a final response
 MAX_TOOL_ROUNDS = 10
 
-# System prompt template for clinical reasoning
-SYSTEM_PROMPT_TEMPLATE = """You are a clinical reasoning assistant helping healthcare providers understand patient data.
-
-## Your Role
-- Analyze patient medical records and provide clinical insights
-- Answer questions about patient history, conditions, medications, and test results
-- Highlight important clinical findings and potential concerns
-- Suggest relevant follow-up questions to deepen understanding
-
-## Tools
-You have access to tools that let you search and retrieve additional patient data on demand.
-Use tools when the provided context doesn't contain enough detail to fully answer the question.
-You can call multiple tools and make multiple rounds of calls to gather all needed information.
-Do NOT guess or fabricate clinical data — if you need it, call a tool.
-
-## Response Guidelines
-1. Be accurate and evidence-based - cite specific data from the patient's records
-2. Use clear, professional medical language
-3. Highlight safety-critical information (allergies, drug interactions, critical values)
-4. Provide actionable insights when appropriate
-5. Suggest 2-3 relevant follow-up questions to help explore the patient's data
-
-## Patient Context
-
-### Patient Demographics
-{patient_info}
-
-{profile_section}
-
-### Verified Clinical Facts (HIGH CONFIDENCE)
-These facts are confirmed in the patient's medical record:
-
-**Active Conditions:**
-{conditions}
-
-**Current Medications:**
-{medications}
-
-**Known Allergies:**
-{allergies}
-
-### Retrieved Context (MEDIUM CONFIDENCE)
-Additional relevant information from semantic search:
-{retrieved_context}
-
-## Safety Constraints
-The following constraints MUST be respected in your response:
-{constraints}
-
-## Response Format
-Provide your response as a structured JSON object with:
-- thinking: Your reasoning process (optional, for transparency)
-- narrative: Main response in markdown format
-- insights: Important clinical insights to highlight (info, warning, critical, positive)
-- visualizations: Charts/graphs if data warrants visualization
-- tables: Structured data displays if helpful
-- actions: Suggested clinical actions if appropriate
-- follow_ups: 2-3 SHORT follow-up questions (under 80 chars each) displayed as clickable chips
-"""
-
-
 def _get_display_name(resource: dict[str, Any], code_field: str = "code") -> str | None:
     """Extract display name from a FHIR resource's code field.
 
@@ -113,97 +52,6 @@ def _get_display_name(resource: dict[str, Any], code_field: str = "code") -> str
     if codings:
         return codings[0].get("display")
     return code.get("text")
-
-
-def _format_patient_info(patient: dict[str, Any]) -> str:
-    """Format patient demographics from FHIR Patient resource."""
-    parts = []
-
-    names = patient.get("name", [])
-    if names:
-        name = names[0]
-        given = " ".join(name.get("given", []))
-        family = name.get("family", "")
-        if given or family:
-            parts.append(f"Name: {given} {family}".strip())
-
-    if birth_date := patient.get("birthDate"):
-        parts.append(f"Date of Birth: {birth_date}")
-
-    if gender := patient.get("gender"):
-        parts.append(f"Gender: {gender}")
-
-    if patient_id := patient.get("id"):
-        parts.append(f"Patient ID: {patient_id}")
-
-    return "\n".join(parts) if parts else "No demographic information available"
-
-
-def _format_resource_list(
-    resources: list[dict[str, Any]],
-    empty_message: str,
-    code_field: str = "code",
-    format_fn: callable = None,
-) -> str:
-    """Generic formatter for lists of FHIR resources.
-
-    Args:
-        resources: List of FHIR resources
-        empty_message: Message to return if list is empty
-        code_field: Field name containing the code (default: "code")
-        format_fn: Optional function to format each resource line
-
-    Returns:
-        Formatted string with one line per resource
-    """
-    if not resources:
-        return empty_message
-
-    lines = []
-    for resource in resources:
-        display = _get_display_name(resource, code_field)
-        if not display:
-            display = f"Unknown {resource.get('resourceType', 'resource')}"
-
-        if format_fn:
-            line = format_fn(resource, display)
-        else:
-            line = f"- {display}"
-        lines.append(line)
-
-    return "\n".join(lines)
-
-
-def _format_condition(resource: dict[str, Any], display: str) -> str:
-    """Format a single condition resource."""
-    clinical_status = resource.get("clinicalStatus", {})
-    status_codings = clinical_status.get("coding", [])
-    status = status_codings[0].get("code") if status_codings else "unknown"
-    return f"- {display} (status: {status})"
-
-
-def _format_medication(resource: dict[str, Any], display: str) -> str:
-    """Format a single medication resource."""
-    status = resource.get("status", "unknown")
-    return f"- {display} (status: {status})"
-
-
-def _format_allergy(resource: dict[str, Any], display: str) -> str:
-    """Format a single allergy resource."""
-    criticality = resource.get("criticality", "unknown")
-    categories = resource.get("category", [])
-    category = categories[0] if categories else "unknown"
-    return f"- {display} (criticality: {criticality}, category: {category})"
-
-
-def _get_observation_category(resource: dict[str, Any]) -> str:
-    """Extract the category code from a FHIR Observation resource."""
-    categories = resource.get("category", [])
-    if categories:
-        codings = categories[0].get("coding", [])
-        if codings:
-            return codings[0].get("code", "unknown")
-    return "unknown"
 
 
 # ── FHIR resource pruning ────────────────────────────────────────────────────
@@ -348,120 +196,6 @@ def _prune_fhir_resource(resource: dict[str, Any]) -> dict[str, Any]:
     pruned = _simplify_dict(filtered)
     pruned.update(extra)
     return pruned
-
-
-def _format_retrieved_context(retrieved_resources: list[dict[str, Any]]) -> str:
-    """Format retrieved resources grouped by type for the prompt.
-
-    Uses pruned JSON to give the LLM complete access to all clinically
-    relevant fields without FHIR boilerplate. Resources are grouped by type
-    with Observations sub-grouped by category.
-    """
-    if not retrieved_resources:
-        return "No additional context retrieved"
-
-    # Group by resource type
-    grouped: dict[str, list[dict[str, Any]]] = {}
-    for item in retrieved_resources:
-        resource = item.get("resource", item)
-        resource_type = resource.get("resourceType", "Unknown")
-        grouped.setdefault(resource_type, []).append(resource)
-
-    # Render groups with headers
-    sections = []
-    # Show Observations first (most commonly queried), then alphabetical
-    type_order = sorted(grouped.keys(), key=lambda t: (0 if t == "Observation" else 1, t))
-    for rtype in type_order:
-        resources = grouped[rtype]
-        if rtype == "Observation":
-            # Sub-group observations by category for clarity
-            by_category: dict[str, list[dict[str, Any]]] = {}
-            for r in resources:
-                cat = _get_observation_category(r)
-                by_category.setdefault(cat, []).append(r)
-            cat_order = ["laboratory", "vital-signs", "survey", "procedure", "unknown"]
-            cat_labels = {
-                "laboratory": "Lab Results",
-                "vital-signs": "Vital Signs",
-                "survey": "Surveys",
-                "procedure": "Procedure Results",
-                "unknown": "Other Observations",
-            }
-            for cat in cat_order:
-                if cat not in by_category:
-                    continue
-                cat_resources = by_category[cat]
-                label = cat_labels.get(cat, cat.title())
-                pruned = [_prune_fhir_resource(r) for r in cat_resources]
-                sections.append(f"**{label} ({len(cat_resources)}):**\n```json\n{json.dumps(pruned, indent=2)}\n```")
-            # Any categories not in cat_order
-            for cat, cat_resources in by_category.items():
-                if cat not in cat_order:
-                    pruned = [_prune_fhir_resource(r) for r in cat_resources]
-                    sections.append(f"**{cat.title()} Observations ({len(cat_resources)}):**\n```json\n{json.dumps(pruned, indent=2)}\n```")
-        else:
-            pruned = [_prune_fhir_resource(r) for r in resources]
-            sections.append(f"**{rtype}s ({len(resources)}):**\n```json\n{json.dumps(pruned, indent=2)}\n```")
-
-    return "\n\n".join(sections)
-
-
-def _format_constraints(constraints: list[str]) -> str:
-    """Format safety constraints for the prompt."""
-    if not constraints:
-        return "No specific safety constraints"
-    return "\n".join(f"- {constraint}" for constraint in constraints)
-
-
-def build_system_prompt(context: PatientContext) -> str:
-    """Build the system prompt from patient context.
-
-    Args:
-        context: PatientContext with verified facts and retrieved resources
-
-    Returns:
-        Formatted system prompt string
-    """
-    patient_info = _format_patient_info(context.patient)
-
-    profile_section = ""
-    if context.profile_summary:
-        profile_section = f"### Patient Profile\n{context.profile_summary}"
-
-    conditions = _format_resource_list(
-        context.verified.conditions,
-        "No active conditions recorded",
-        format_fn=_format_condition,
-    )
-    medications = _format_resource_list(
-        context.verified.medications,
-        "No active medications recorded",
-        code_field="medicationCodeableConcept",
-        format_fn=_format_medication,
-    )
-    allergies = _format_resource_list(
-        context.verified.allergies,
-        "No known allergies recorded",
-        format_fn=_format_allergy,
-    )
-
-    retrieved_dicts = [
-        {"resource": r.resource, "score": r.score}
-        for r in context.retrieved.resources
-    ]
-    retrieved_context = _format_retrieved_context(retrieved_dicts)
-
-    constraints = _format_constraints(context.constraints)
-
-    return SYSTEM_PROMPT_TEMPLATE.format(
-        patient_info=patient_info,
-        profile_section=profile_section,
-        conditions=conditions,
-        medications=medications,
-        allergies=allergies,
-        retrieved_context=retrieved_context,
-        constraints=constraints,
-    )
 
 
 def _format_tier1_conditions(conditions: list[dict[str, Any]]) -> str:
@@ -1000,7 +734,8 @@ class AgentService:
         agent = AgentService()
 
         response = await agent.generate_response(
-            context=patient_context,
+            system_prompt=compiled_prompt,
+            patient_id="uuid-here",
             message="What medications is this patient taking for diabetes?",
             history=[
                 {"role": "user", "content": "Tell me about this patient"},
@@ -1138,39 +873,8 @@ class AgentService:
         kwargs.pop("tools", None)
         kwargs["_last_response"] = None
 
-    def _build_input_messages(
-        self,
-        context: PatientContext,
-        message: str,
-        history: list[dict[str, str]] | None = None,
-    ) -> list[dict[str, str]]:
-        """Build input messages for the API call (v1, uses PatientContext).
-
-        Args:
-            context: Patient context for system prompt
-            message: Current user message
-            history: Optional conversation history
-
-        Returns:
-            List of message dicts for the API
-        """
-        messages = [
-            {"role": "system", "content": build_system_prompt(context)},
-        ]
-
-        if history:
-            for msg in history:
-                role = msg.get("role", "user")
-                content = msg.get("content", "")
-                if role in ("user", "assistant") and content:
-                    messages.append({"role": role, "content": content})
-
-        messages.append({"role": "user", "content": message})
-
-        return messages
-
     @staticmethod
-    def _build_input_messages_v2(
+    def _build_input_messages(
         system_prompt: str,
         message: str,
         history: list[dict[str, str]] | None = None,
@@ -1203,9 +907,8 @@ class AgentService:
     async def generate_response(
         self,
         message: str,
-        system_prompt: str | None = None,
-        patient_id: str | None = None,
-        context: PatientContext | None = None,
+        system_prompt: str,
+        patient_id: str,
         history: list[dict[str, str]] | None = None,
         reasoning_effort: Literal["low", "medium", "high"] | None = None,
         graph: KnowledgeGraph | None = None,
@@ -1213,15 +916,10 @@ class AgentService:
     ) -> AgentResponse:
         """Generate a structured response for a clinical question.
 
-        Supports two calling conventions:
-        - v2 (preferred): Pass system_prompt + patient_id from pre-compiled summary.
-        - v1 (legacy): Pass context (PatientContext) for backward compatibility.
-
         Args:
-            message: The user's question or message
-            system_prompt: Pre-built system prompt string (v2 path).
-            patient_id: Patient UUID string for tool execution (v2 path).
-            context: PatientContext with verified facts (v1 legacy path).
+            message: The user's question or message.
+            system_prompt: Pre-built system prompt string from compiled summary.
+            patient_id: Patient UUID string for tool execution.
             history: Optional list of previous messages in the conversation.
             reasoning_effort: Override default reasoning effort for this call.
             graph: KnowledgeGraph instance for tool execution.
@@ -1231,21 +929,12 @@ class AgentService:
             AgentResponse with narrative, insights, visualizations, and follow-ups
 
         Raises:
-            ValueError: If message is empty or neither system_prompt nor context provided.
+            ValueError: If message is empty.
         """
         if not message or not message.strip():
             raise ValueError("message cannot be empty")
 
-        if system_prompt is not None:
-            input_messages = self._build_input_messages_v2(system_prompt, message, history)
-            if not patient_id:
-                raise ValueError("patient_id is required when using system_prompt")
-            resolved_patient_id = patient_id
-        elif context is not None:
-            input_messages = self._build_input_messages(context, message, history)
-            resolved_patient_id = context.meta.patient_id
-        else:
-            raise ValueError("Either system_prompt or context must be provided")
+        input_messages = self._build_input_messages(system_prompt, message, history)
 
         effort = reasoning_effort or self._reasoning_effort
         tools_available = graph is not None and db is not None
@@ -1269,7 +958,7 @@ class AgentService:
             # Run tool rounds (discard SSE events — non-streaming path).
             # _execute_tool_calls stores the final non-tool response in kwargs.
             async for _ in self._execute_tool_calls(
-                kwargs, resolved_patient_id, graph, db
+                kwargs, patient_id, graph, db
             ):
                 pass
 
@@ -1303,9 +992,8 @@ class AgentService:
     async def generate_response_stream(
         self,
         message: str,
-        system_prompt: str | None = None,
-        patient_id: str | None = None,
-        context: PatientContext | None = None,
+        system_prompt: str,
+        patient_id: str,
         history: list[dict[str, str]] | None = None,
         reasoning_effort: Literal["low", "medium", "high"] | None = None,
         graph: KnowledgeGraph | None = None,
@@ -1319,36 +1007,22 @@ class AgentService:
 
         After all deltas, yields ("done", json) with the final parsed AgentResponse.
 
-        Supports two calling conventions:
-        - v2 (preferred): Pass system_prompt + patient_id from pre-compiled summary.
-        - v1 (legacy): Pass context (PatientContext) for backward compatibility.
-
         Args:
             message: The user's question or message.
-            system_prompt: Pre-built system prompt string (v2 path).
-            patient_id: Patient UUID string for tool execution (v2 path).
-            context: PatientContext with verified facts (v1 legacy path).
+            system_prompt: Pre-built system prompt string from compiled summary.
+            patient_id: Patient UUID string for tool execution.
             history: Optional conversation history.
             reasoning_effort: Override default reasoning effort for this call.
             graph: KnowledgeGraph instance for tool execution.
             db: AsyncSession for tool execution.
 
         Raises:
-            ValueError: If message is empty or neither system_prompt nor context provided.
+            ValueError: If message is empty.
         """
         if not message or not message.strip():
             raise ValueError("message cannot be empty")
 
-        if system_prompt is not None:
-            input_messages = self._build_input_messages_v2(system_prompt, message, history)
-            if not patient_id:
-                raise ValueError("patient_id is required when using system_prompt")
-            resolved_patient_id = patient_id
-        elif context is not None:
-            input_messages = self._build_input_messages(context, message, history)
-            resolved_patient_id = context.meta.patient_id
-        else:
-            raise ValueError("Either system_prompt or context must be provided")
+        input_messages = self._build_input_messages(system_prompt, message, history)
 
         effort = reasoning_effort or self._reasoning_effort
         tools_available = graph is not None and db is not None
@@ -1373,7 +1047,7 @@ class AgentService:
         # _execute_tool_calls leaves kwargs ready for the final streaming call.
         if tools_available:
             async for event in self._execute_tool_calls(
-                kwargs, resolved_patient_id, graph, db
+                kwargs, patient_id, graph, db
             ):
                 yield event
 

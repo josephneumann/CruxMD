@@ -96,7 +96,7 @@ cruxmd/
 │   │   │   ├── fhir_loader.py   # Bundle loading
 │   │   │   ├── embeddings.py    # Embedding generation
 │   │   │   ├── graph.py         # Neo4j knowledge graph
-│   │   │   ├── context_engine.py # Hybrid retrieval (graph + vector)
+│   │   │   ├── compiler.py      # Patient summary compilation
 │   │   │   └── agent.py         # LLM agent logic
 │   │   └── schemas/             # Pydantic schemas
 │   └── tests/

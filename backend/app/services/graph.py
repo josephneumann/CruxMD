@@ -946,32 +946,6 @@ class KnowledgeGraph:
                     care_plans.append(json.loads(record["resource"]))
             return care_plans
 
-    async def get_diagnostic_report_results(
-        self, report_fhir_id: str
-    ) -> list[dict[str, Any]]:
-        """
-        Get observations contained in a diagnostic report.
-
-        Args:
-            report_fhir_id: The FHIR ID of the diagnostic report.
-
-        Returns:
-            List of parsed FHIR Observation resources.
-        """
-        async with self._driver.session() as session:
-            result = await session.run(
-                """
-                MATCH (dr:DiagnosticReport {fhir_id: $report_id})-[:CONTAINS_RESULT]->(o:Observation)
-                RETURN o.fhir_resource as resource
-                """,
-                report_id=report_fhir_id,
-            )
-            observations = []
-            async for record in result:
-                if record["resource"]:
-                    observations.append(json.loads(record["resource"]))
-            return observations
-
     async def search_nodes_by_name(
         self,
         patient_id: str,
