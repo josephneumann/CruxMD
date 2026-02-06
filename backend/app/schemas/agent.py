@@ -157,6 +157,24 @@ class FollowUp(BaseModel):
     )
 
 
+class LightningResponse(BaseModel):
+    """Minimal response for Lightning-tier fact extraction.
+
+    Simpler schema for gpt-4o-mini structured output reliability.
+    Only includes narrative and optional follow-ups — no thinking,
+    insights, visualizations, tables, or actions.
+    """
+
+    narrative: str = Field(
+        min_length=1,
+        description="Direct answer in markdown format",
+    )
+    follow_ups: list[FollowUp] | None = Field(
+        default=None,
+        description="2-3 suggested follow-up questions",
+    )
+
+
 class AgentResponse(BaseModel):
     """Structured response from the clinical reasoning agent.
 
