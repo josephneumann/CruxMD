@@ -1,7 +1,9 @@
 """Tests for database setup and models."""
 
 import uuid
+from datetime import datetime, timezone
 
+import pytest
 
 from app.database import Base, async_session_maker, engine
 from app.models import FhirResource
@@ -26,6 +28,8 @@ class TestFhirResourceModel:
             "created_at",
             "embedding",
             "embedding_text",
+            "compiled_summary",
+            "compiled_at",
         }
         assert expected == column_names
 
@@ -72,6 +76,48 @@ class TestDatabaseSetup:
     def test_async_session_maker_configured(self):
         """Async session maker should be configured."""
         assert async_session_maker is not None
+
+
+class TestCompiledSummaryPersistence:
+    """Tests for compiled_summary and compiled_at column persistence."""
+
+    @pytest.mark.asyncio
+    async def test_compiled_fields_default_to_none(self, db_session):
+        """FhirResource without compiled fields should default to None."""
+        resource = FhirResource(
+            fhir_id="patient-no-summary",
+            resource_type="Patient",
+            data={"resourceType": "Patient", "id": "patient-no-summary"},
+        )
+        db_session.add(resource)
+        await db_session.commit()
+
+        reloaded = await db_session.get(FhirResource, resource.id)
+        assert reloaded.compiled_summary is None
+        assert reloaded.compiled_at is None
+
+    @pytest.mark.asyncio
+    async def test_compiled_fields_round_trip(self, db_session):
+        """compiled_summary and compiled_at should persist and reload correctly."""
+        summary = {
+            "demographics": {"name": "Jane Smith", "age": 41},
+            "conditions": ["Hypertension"],
+        }
+        compiled_time = datetime(2026, 2, 5, 12, 0, 0, tzinfo=timezone.utc)
+
+        resource = FhirResource(
+            fhir_id="patient-with-summary",
+            resource_type="Patient",
+            data={"resourceType": "Patient", "id": "patient-with-summary"},
+            compiled_summary=summary,
+            compiled_at=compiled_time,
+        )
+        db_session.add(resource)
+        await db_session.commit()
+
+        reloaded = await db_session.get(FhirResource, resource.id)
+        assert reloaded.compiled_summary == summary
+        assert reloaded.compiled_at == compiled_time
 
 
 class TestMigrationFile:
