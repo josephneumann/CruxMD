@@ -11,27 +11,12 @@ from unittest.mock import AsyncMock, MagicMock, patch
 import pytest
 
 from app.schemas import AgentResponse, FollowUp, Insight
-from app.schemas.context import (
-    ContextMeta,
-    PatientContext,
-    RetrievedLayer,
-    RetrievedResource,
-    VerifiedLayer,
-)
 from app.services.agent import (
     AgentService,
     DEFAULT_MODEL,
     DEFAULT_REASONING_EFFORT,
     DEFAULT_MAX_OUTPUT_TOKENS,
-    build_system_prompt,
     build_system_prompt_v2,
-    _format_patient_info,
-    _format_resource_list,
-    _format_condition,
-    _format_medication,
-    _format_allergy,
-    _format_retrieved_context,
-    _format_constraints,
     _format_tier1_conditions,
     _format_tier2_encounters,
     _format_tier3_observations,
@@ -144,52 +129,9 @@ def sample_observation() -> dict:
 
 
 @pytest.fixture
-def minimal_context(patient_id: str, sample_patient: dict) -> PatientContext:
-    """Minimal patient context for testing."""
-    return PatientContext(
-        meta=ContextMeta(patient_id=patient_id, query="test query"),
-        patient=sample_patient,
-        verified=VerifiedLayer(),
-        retrieved=RetrievedLayer(),
-        constraints=[],
-    )
-
-
-@pytest.fixture
-def full_context(
-    patient_id: str,
-    sample_patient: dict,
-    sample_condition: dict,
-    sample_medication: dict,
-    sample_allergy: dict,
-    sample_observation: dict,
-) -> PatientContext:
-    """Full patient context with all layers populated."""
-    return PatientContext(
-        meta=ContextMeta(patient_id=patient_id, query="diabetes management"),
-        patient=sample_patient,
-        profile_summary="Active retired teacher who enjoys gardening.",
-        verified=VerifiedLayer(
-            conditions=[sample_condition],
-            medications=[sample_medication],
-            allergies=[sample_allergy],
-        ),
-        retrieved=RetrievedLayer(
-            resources=[
-                RetrievedResource(
-                    resource=sample_observation,
-                    resource_type="Observation",
-                    score=0.92,
-                    reason="semantic_match",
-                )
-            ]
-        ),
-        constraints=[
-            "CRITICAL ALLERGY: Patient has HIGH criticality allergy to Penicillin (medication)",
-            "ACTIVE MEDICATION: Patient is taking Metformin 500 MG",
-            "CONDITION: Patient has Type 2 diabetes mellitus - consider treatment implications",
-        ],
-    )
+def system_prompt() -> str:
+    """Pre-built system prompt for testing (replaces PatientContext)."""
+    return "You are a clinical reasoning assistant. Patient: John Doe, DOB 1960-05-15."
 
 
 def create_mock_agent_response() -> AgentResponse:
@@ -255,182 +197,6 @@ class TestGetDisplayName:
         assert result == "Metformin 500 MG"
 
 
-class TestFormatPatientInfo:
-    """Tests for _format_patient_info helper."""
-
-    def test_format_full_patient(self, sample_patient: dict):
-        """Test formatting patient with all fields."""
-        result = _format_patient_info(sample_patient)
-
-        assert "John Michael Doe" in result
-        assert "1960-05-15" in result
-        assert "male" in result
-        assert "patient-123" in result
-
-    def test_format_patient_no_name(self):
-        """Test formatting patient without name."""
-        patient = {"resourceType": "Patient", "id": "test", "gender": "female"}
-        result = _format_patient_info(patient)
-
-        assert "female" in result
-        assert "test" in result
-
-    def test_format_empty_patient(self):
-        """Test formatting empty patient resource."""
-        result = _format_patient_info({})
-        assert result == "No demographic information available"
-
-
-class TestFormatResourceList:
-    """Tests for _format_resource_list helper."""
-
-    def test_format_conditions_list(self, sample_condition: dict):
-        """Test formatting list of conditions."""
-        result = _format_resource_list(
-            [sample_condition],
-            "No conditions",
-            format_fn=_format_condition,
-        )
-
-        assert "Type 2 diabetes mellitus" in result
-        assert "active" in result
-
-    def test_format_empty_list(self):
-        """Test formatting empty list."""
-        result = _format_resource_list([], "No items recorded")
-        assert result == "No items recorded"
-
-    def test_format_with_text_fallback(self):
-        """Test formatting resource using text fallback."""
-        resource = {
-            "resourceType": "Condition",
-            "code": {"text": "Hypertension"},
-            "clinicalStatus": {"coding": [{"code": "active"}]},
-        }
-        result = _format_resource_list(
-            [resource],
-            "No conditions",
-            format_fn=_format_condition,
-        )
-        assert "Hypertension" in result
-
-    def test_format_medications(self, sample_medication: dict):
-        """Test formatting medications with custom code field."""
-        result = _format_resource_list(
-            [sample_medication],
-            "No medications",
-            code_field="medicationCodeableConcept",
-            format_fn=_format_medication,
-        )
-
-        assert "Metformin 500 MG" in result
-        assert "active" in result
-
-    def test_format_allergies(self, sample_allergy: dict):
-        """Test formatting allergies."""
-        result = _format_resource_list(
-            [sample_allergy],
-            "No allergies",
-            format_fn=_format_allergy,
-        )
-
-        assert "Penicillin" in result
-        assert "high" in result
-        assert "medication" in result
-
-
-class TestFormatRetrievedContext:
-    """Tests for _format_retrieved_context helper."""
-
-    def test_format_observation_with_value(self, sample_observation: dict):
-        """Test formatting observation with quantity value."""
-        items = [{"resource": sample_observation, "score": 0.95}]
-        result = _format_retrieved_context(items)
-
-        assert "Hemoglobin A1c" in result
-        assert "7.2" in result
-        assert "Observations (1)" in result
-
-    def test_format_empty_retrieved(self):
-        """Test formatting empty retrieved context."""
-        result = _format_retrieved_context([])
-        assert result == "No additional context retrieved"
-
-    def test_format_non_observation_resource(self, sample_condition: dict):
-        """Test formatting non-observation resource."""
-        items = [{"resource": sample_condition, "score": 0.88}]
-        result = _format_retrieved_context(items)
-
-        assert "Conditions (1)" in result
-        assert "Type 2 diabetes mellitus" in result
-
-
-class TestFormatConstraints:
-    """Tests for _format_constraints helper."""
-
-    def test_format_constraints_list(self):
-        """Test formatting list of constraints."""
-        constraints = [
-            "ALLERGY: Patient is allergic to Penicillin",
-            "MEDICATION: Patient is taking Warfarin",
-        ]
-        result = _format_constraints(constraints)
-
-        assert "- ALLERGY: Patient is allergic to Penicillin" in result
-        assert "- MEDICATION: Patient is taking Warfarin" in result
-
-    def test_format_empty_constraints(self):
-        """Test formatting empty constraints list."""
-        result = _format_constraints([])
-        assert result == "No specific safety constraints"
-
-
-# =============================================================================
-# System Prompt Tests
-# =============================================================================
-
-
-class TestBuildSystemPrompt:
-    """Tests for build_system_prompt function."""
-
-    def test_build_prompt_minimal_context(self, minimal_context: PatientContext):
-        """Test building prompt with minimal context."""
-        prompt = build_system_prompt(minimal_context)
-
-        assert "clinical reasoning assistant" in prompt
-        assert "John Michael Doe" in prompt
-        assert "No active conditions recorded" in prompt
-        assert "No specific safety constraints" in prompt
-
-    def test_build_prompt_full_context(self, full_context: PatientContext):
-        """Test building prompt with full context."""
-        prompt = build_system_prompt(full_context)
-
-        assert "John Michael Doe" in prompt
-        assert "Active retired teacher" in prompt
-        assert "Type 2 diabetes mellitus" in prompt
-        assert "Metformin 500 MG" in prompt
-        assert "Penicillin" in prompt
-        assert "Hemoglobin A1c" in prompt
-        assert "7.2" in prompt
-        assert "CRITICAL ALLERGY" in prompt
-
-    def test_prompt_includes_guidelines(self, minimal_context: PatientContext):
-        """Test that prompt includes response guidelines."""
-        prompt = build_system_prompt(minimal_context)
-
-        assert "Response Guidelines" in prompt
-        assert "Safety Constraints" in prompt
-        assert "Response Format" in prompt
-
-    def test_prompt_includes_tools_section(self, minimal_context: PatientContext):
-        """Test that prompt includes tools section."""
-        prompt = build_system_prompt(minimal_context)
-
-        assert "## Tools" in prompt
-        assert "call a tool" in prompt
-
-
 # =============================================================================
 # AgentService Tests
 # =============================================================================
@@ -485,13 +251,13 @@ class TestAgentServiceGenerateResponse:
     """Tests for AgentService.generate_response method."""
 
     @pytest.mark.asyncio
-    async def test_generate_response_basic(self, full_context: PatientContext):
+    async def test_generate_response_basic(self, system_prompt: str, patient_id: str):
         """Test basic response generation."""
         mock_client = create_mock_openai_client()
         service = AgentService(client=mock_client)
 
         response = await service.generate_response(
-            context=full_context,
+            system_prompt=system_prompt, patient_id=patient_id,
             message="What medications is this patient taking?",
         )
 
@@ -501,7 +267,7 @@ class TestAgentServiceGenerateResponse:
         mock_client.responses.parse.assert_called_once()
 
     @pytest.mark.asyncio
-    async def test_generate_response_with_history(self, full_context: PatientContext):
+    async def test_generate_response_with_history(self, system_prompt: str, patient_id: str):
         """Test response generation with conversation history."""
         mock_client = create_mock_openai_client()
         service = AgentService(client=mock_client)
@@ -512,7 +278,7 @@ class TestAgentServiceGenerateResponse:
         ]
 
         response = await service.generate_response(
-            context=full_context,
+            system_prompt=system_prompt, patient_id=patient_id,
             message="What about their medications?",
             history=history,
         )
@@ -524,31 +290,31 @@ class TestAgentServiceGenerateResponse:
         assert len(input_messages) == 4  # system + 2 history + current
 
     @pytest.mark.asyncio
-    async def test_generate_response_empty_message_raises(self, minimal_context: PatientContext):
+    async def test_generate_response_empty_message_raises(self, system_prompt: str, patient_id: str):
         """Test that empty message raises ValueError."""
         mock_client = create_mock_openai_client()
         service = AgentService(client=mock_client)
 
         with pytest.raises(ValueError, match="message cannot be empty"):
-            await service.generate_response(context=minimal_context, message="")
+            await service.generate_response(system_prompt=system_prompt, patient_id=patient_id, message="")
 
     @pytest.mark.asyncio
-    async def test_generate_response_whitespace_message_raises(self, minimal_context: PatientContext):
+    async def test_generate_response_whitespace_message_raises(self, system_prompt: str, patient_id: str):
         """Test that whitespace-only message raises ValueError."""
         mock_client = create_mock_openai_client()
         service = AgentService(client=mock_client)
 
         with pytest.raises(ValueError, match="message cannot be empty"):
-            await service.generate_response(context=minimal_context, message="   ")
+            await service.generate_response(system_prompt=system_prompt, patient_id=patient_id, message="   ")
 
     @pytest.mark.asyncio
-    async def test_generate_response_reasoning_effort_override(self, full_context: PatientContext):
+    async def test_generate_response_reasoning_effort_override(self, system_prompt: str, patient_id: str):
         """Test overriding reasoning effort for a single call."""
         mock_client = create_mock_openai_client()
         service = AgentService(client=mock_client, reasoning_effort="low")
 
         await service.generate_response(
-            context=full_context,
+            system_prompt=system_prompt, patient_id=patient_id,
             message="Complex question",
             reasoning_effort="high",
         )
@@ -559,13 +325,13 @@ class TestAgentServiceGenerateResponse:
         assert effort == "high"
 
     @pytest.mark.asyncio
-    async def test_generate_response_uses_correct_model(self, minimal_context: PatientContext):
+    async def test_generate_response_uses_correct_model(self, system_prompt: str, patient_id: str):
         """Test that correct model is passed to API."""
         mock_client = create_mock_openai_client()
         service = AgentService(client=mock_client, model="gpt-5.2-preview")
 
         await service.generate_response(
-            context=minimal_context,
+            system_prompt=system_prompt, patient_id=patient_id,
             message="Test question",
         )
 
@@ -573,13 +339,13 @@ class TestAgentServiceGenerateResponse:
         assert call_args.kwargs["model"] == "gpt-5.2-preview"
 
     @pytest.mark.asyncio
-    async def test_generate_response_uses_text_format(self, minimal_context: PatientContext):
+    async def test_generate_response_uses_text_format(self, system_prompt: str, patient_id: str):
         """Test that AgentResponse is passed as text_format."""
         mock_client = create_mock_openai_client()
         service = AgentService(client=mock_client)
 
         await service.generate_response(
-            context=minimal_context,
+            system_prompt=system_prompt, patient_id=patient_id,
             message="Test question",
         )
 
@@ -587,13 +353,13 @@ class TestAgentServiceGenerateResponse:
         assert call_args.kwargs["text_format"] is AgentResponse
 
     @pytest.mark.asyncio
-    async def test_generate_response_includes_max_tokens(self, minimal_context: PatientContext):
+    async def test_generate_response_includes_max_tokens(self, system_prompt: str, patient_id: str):
         """Test that max_output_tokens is passed to API."""
         mock_client = create_mock_openai_client()
         service = AgentService(client=mock_client, max_output_tokens=2048)
 
         await service.generate_response(
-            context=minimal_context,
+            system_prompt=system_prompt, patient_id=patient_id,
             message="Test question",
         )
 
@@ -601,7 +367,7 @@ class TestAgentServiceGenerateResponse:
         assert call_args.kwargs["max_output_tokens"] == 2048
 
     @pytest.mark.asyncio
-    async def test_generate_response_fallback_on_none(self, minimal_context: PatientContext):
+    async def test_generate_response_fallback_on_none(self, system_prompt: str, patient_id: str):
         """Test fallback when structured parsing returns None but raw text available."""
         mock_client = AsyncMock()
 
@@ -615,7 +381,7 @@ class TestAgentServiceGenerateResponse:
         service = AgentService(client=mock_client)
 
         response = await service.generate_response(
-            context=minimal_context,
+            system_prompt=system_prompt, patient_id=patient_id,
             message="Test question",
         )
 
@@ -623,7 +389,7 @@ class TestAgentServiceGenerateResponse:
         assert response.narrative == expected_response.narrative
 
     @pytest.mark.asyncio
-    async def test_generate_response_raises_on_parse_failure(self, minimal_context: PatientContext):
+    async def test_generate_response_raises_on_parse_failure(self, system_prompt: str, patient_id: str):
         """Test that RuntimeError is raised when all parsing fails."""
         mock_client = AsyncMock()
 
@@ -637,12 +403,12 @@ class TestAgentServiceGenerateResponse:
 
         with pytest.raises(RuntimeError, match="LLM response could not be parsed"):
             await service.generate_response(
-                context=minimal_context,
+                system_prompt=system_prompt, patient_id=patient_id,
                 message="Test question",
             )
 
     @pytest.mark.asyncio
-    async def test_generate_response_filters_invalid_history(self, minimal_context: PatientContext):
+    async def test_generate_response_filters_invalid_history(self, system_prompt: str, patient_id: str):
         """Test that invalid history entries are filtered."""
         mock_client = create_mock_openai_client()
         service = AgentService(client=mock_client)
@@ -655,7 +421,7 @@ class TestAgentServiceGenerateResponse:
         ]
 
         await service.generate_response(
-            context=minimal_context,
+            system_prompt=system_prompt, patient_id=patient_id,
             message="Current question",
             history=history,
         )
@@ -704,7 +470,7 @@ class TestAgentServiceGenerateResponseStream:
     """Tests for AgentService.generate_response_stream method."""
 
     @pytest.mark.asyncio
-    async def test_stream_yields_reasoning_and_narrative(self, full_context: PatientContext):
+    async def test_stream_yields_reasoning_and_narrative(self, system_prompt: str, patient_id: str):
         """Test that stream yields reasoning and narrative deltas then done."""
         mock_client = AsyncMock()
         expected = create_mock_agent_response()
@@ -714,7 +480,7 @@ class TestAgentServiceGenerateResponseStream:
 
         events = []
         async for event_type, data in service.generate_response_stream(
-            context=full_context,
+            system_prompt=system_prompt, patient_id=patient_id,
             message="What about diabetes?",
         ):
             events.append((event_type, data))
@@ -730,19 +496,19 @@ class TestAgentServiceGenerateResponseStream:
         assert done_data.narrative == expected.narrative
 
     @pytest.mark.asyncio
-    async def test_stream_empty_message_raises(self, minimal_context: PatientContext):
+    async def test_stream_empty_message_raises(self, system_prompt: str, patient_id: str):
         """Test that empty message raises ValueError."""
         mock_client = AsyncMock()
         service = AgentService(client=mock_client)
 
         with pytest.raises(ValueError, match="message cannot be empty"):
             async for _ in service.generate_response_stream(
-                context=minimal_context, message=""
+                system_prompt=system_prompt, patient_id=patient_id, message=""
             ):
                 pass
 
     @pytest.mark.asyncio
-    async def test_stream_passes_correct_kwargs(self, minimal_context: PatientContext):
+    async def test_stream_passes_correct_kwargs(self, system_prompt: str, patient_id: str):
         """Test that stream call uses same params as generate_response."""
         mock_client = AsyncMock()
         mock_client.responses.stream = MagicMock(
@@ -752,7 +518,7 @@ class TestAgentServiceGenerateResponseStream:
         service = AgentService(client=mock_client, model="gpt-5.2-preview", reasoning_effort="high")
 
         async for _ in service.generate_response_stream(
-            context=minimal_context,
+            system_prompt=system_prompt, patient_id=patient_id,
             message="Test question",
         ):
             pass
@@ -765,7 +531,7 @@ class TestAgentServiceGenerateResponseStream:
         assert effort == "high"
 
     @pytest.mark.asyncio
-    async def test_stream_fallback_on_none_parsed(self, minimal_context: PatientContext):
+    async def test_stream_fallback_on_none_parsed(self, system_prompt: str, patient_id: str):
         """Test fallback when structured parsing returns None."""
         mock_client = AsyncMock()
         expected = create_mock_agent_response()
@@ -783,7 +549,7 @@ class TestAgentServiceGenerateResponseStream:
 
         events = []
         async for event_type, data in service.generate_response_stream(
-            context=minimal_context,
+            system_prompt=system_prompt, patient_id=patient_id,
             message="Test",
         ):
             events.append((event_type, data))
@@ -942,13 +708,13 @@ class TestToolUseLoop:
     """Tests for the tool-use loop in generate_response."""
 
     @pytest.mark.asyncio
-    async def test_no_tools_when_graph_db_absent(self, full_context: PatientContext):
+    async def test_no_tools_when_graph_db_absent(self, system_prompt: str, patient_id: str):
         """Test that tools are not passed when graph/db not provided."""
         mock_client = create_mock_openai_client()
         service = AgentService(client=mock_client)
 
         await service.generate_response(
-            context=full_context,
+            system_prompt=system_prompt, patient_id=patient_id,
             message="What medications?",
         )
 
@@ -956,13 +722,13 @@ class TestToolUseLoop:
         assert "tools" not in call_args.kwargs
 
     @pytest.mark.asyncio
-    async def test_tools_passed_when_graph_db_provided(self, full_context: PatientContext):
+    async def test_tools_passed_when_graph_db_provided(self, system_prompt: str, patient_id: str):
         """Test that tools are passed when graph and db are provided."""
         mock_client = create_mock_openai_client()
         service = AgentService(client=mock_client)
 
         await service.generate_response(
-            context=full_context,
+            system_prompt=system_prompt, patient_id=patient_id,
             message="What medications?",
             graph=AsyncMock(),
             db=AsyncMock(),
@@ -975,7 +741,7 @@ class TestToolUseLoop:
     @pytest.mark.asyncio
     @patch("app.services.agent.execute_tool", new_callable=AsyncMock)
     async def test_single_tool_call_round(
-        self, mock_execute, full_context: PatientContext
+        self, mock_execute, system_prompt: str, patient_id: str
     ):
         """Test that a single tool call is executed and result fed back."""
         mock_execute.return_value = "Search results: diabetes found"
@@ -989,7 +755,7 @@ class TestToolUseLoop:
         service = AgentService(client=mock_client)
 
         response = await service.generate_response(
-            context=full_context,
+            system_prompt=system_prompt, patient_id=patient_id,
             message="Tell me about diabetes",
             graph=AsyncMock(),
             db=AsyncMock(),
@@ -1009,7 +775,7 @@ class TestToolUseLoop:
     @pytest.mark.asyncio
     @patch("app.services.agent.execute_tool", new_callable=AsyncMock)
     async def test_multiple_tool_call_rounds(
-        self, mock_execute, full_context: PatientContext
+        self, mock_execute, system_prompt: str, patient_id: str
     ):
         """Test multi-round tool calling."""
         mock_execute.side_effect = ["Round 1 result", "Round 2 result"]
@@ -1026,7 +792,7 @@ class TestToolUseLoop:
         service = AgentService(client=mock_client)
 
         response = await service.generate_response(
-            context=full_context,
+            system_prompt=system_prompt, patient_id=patient_id,
             message="Diabetes labs?",
             graph=AsyncMock(),
             db=AsyncMock(),
@@ -1039,7 +805,7 @@ class TestToolUseLoop:
     @pytest.mark.asyncio
     @patch("app.services.agent.execute_tool", new_callable=AsyncMock)
     async def test_parallel_tool_calls_in_one_round(
-        self, mock_execute, full_context: PatientContext
+        self, mock_execute, system_prompt: str, patient_id: str
     ):
         """Test multiple tool calls in a single round."""
         mock_execute.side_effect = ["Result A", "Result B"]
@@ -1056,7 +822,7 @@ class TestToolUseLoop:
         service = AgentService(client=mock_client)
 
         response = await service.generate_response(
-            context=full_context,
+            system_prompt=system_prompt, patient_id=patient_id,
             message="Diabetes overview",
             graph=AsyncMock(),
             db=AsyncMock(),
@@ -1071,7 +837,7 @@ class TestToolUseStreamLoop:
     """Tests for tool-use in generate_response_stream."""
 
     @pytest.mark.asyncio
-    async def test_stream_no_tools_when_graph_db_absent(self, full_context: PatientContext):
+    async def test_stream_no_tools_when_graph_db_absent(self, system_prompt: str, patient_id: str):
         """Test that streaming without graph/db skips tools entirely."""
         mock_client = AsyncMock()
         mock_client.responses.stream = MagicMock(return_value=create_mock_stream())
@@ -1080,7 +846,7 @@ class TestToolUseStreamLoop:
 
         events = []
         async for et, data in service.generate_response_stream(
-            context=full_context,
+            system_prompt=system_prompt, patient_id=patient_id,
             message="What medications?",
         ):
             events.append((et, data))
@@ -1093,7 +859,7 @@ class TestToolUseStreamLoop:
     @pytest.mark.asyncio
     @patch("app.services.agent.execute_tool", new_callable=AsyncMock)
     async def test_stream_with_tool_calls(
-        self, mock_execute, full_context: PatientContext
+        self, mock_execute, system_prompt: str, patient_id: str
     ):
         """Test streaming with tool calls uses parse for tool rounds then streams final."""
         mock_execute.return_value = "Tool result text"
@@ -1123,7 +889,7 @@ class TestToolUseStreamLoop:
 
         events = []
         async for et, data in service.generate_response_stream(
-            context=full_context,
+            system_prompt=system_prompt, patient_id=patient_id,
             message="Diabetes info",
             graph=AsyncMock(),
             db=AsyncMock(),

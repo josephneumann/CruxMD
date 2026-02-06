@@ -1417,35 +1417,6 @@ async def test_get_procedures_for_condition(
     assert procs[0]["resourceType"] == "Procedure"
 
 
-@pytest.mark.asyncio
-async def test_get_diagnostic_report_results(
-    graph: KnowledgeGraph,
-    patient_id: str,
-    sample_patient,
-    sample_encounter,
-    sample_observation_with_encounter,
-    sample_diagnostic_report_with_encounter_and_results,
-):
-    """Test get_diagnostic_report_results returns observations in a report."""
-    await graph.build_from_fhir(
-        patient_id,
-        [
-            sample_patient,
-            sample_encounter,
-            sample_observation_with_encounter,
-            sample_diagnostic_report_with_encounter_and_results,
-        ],
-    )
-
-    obs = await graph.get_diagnostic_report_results(
-        sample_diagnostic_report_with_encounter_and_results["id"]
-    )
-
-    assert len(obs) == 1
-    assert obs[0]["id"] == sample_observation_with_encounter["id"]
-    assert obs[0]["resourceType"] == "Observation"
-
-
 # =============================================================================
 # Tests for encounter_fhir_id stored on nodes
 # =============================================================================
