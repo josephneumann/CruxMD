@@ -10,6 +10,7 @@ from app.schemas.agent import (
     DataTable,
     FollowUp,
     Insight,
+    LightningResponse,
     TableColumn,
     Visualization,
 )
@@ -210,6 +211,65 @@ class TestFollowUp:
         with pytest.raises(ValidationError) as exc_info:
             FollowUp(question="")
         assert "question" in str(exc_info.value)
+
+
+class TestLightningResponse:
+    """Tests for LightningResponse schema."""
+
+    def test_minimal_lightning_response(self):
+        """LightningResponse with only required narrative."""
+        response = LightningResponse(narrative="The patient is on metformin 500mg.")
+        assert response.narrative == "The patient is on metformin 500mg."
+        assert response.follow_ups is None
+
+    def test_lightning_response_with_follow_ups(self):
+        """LightningResponse with follow-up questions."""
+        response = LightningResponse(
+            narrative="## Medications\n\n- Metformin 500mg\n- Lisinopril 10mg",
+            follow_ups=[
+                FollowUp(question="What are the allergies?"),
+                FollowUp(question="Show me recent lab results"),
+            ],
+        )
+        assert len(response.follow_ups) == 2
+        assert response.follow_ups[0].question == "What are the allergies?"
+
+    def test_lightning_response_empty_narrative_rejected(self):
+        """LightningResponse requires non-empty narrative."""
+        with pytest.raises(ValidationError) as exc_info:
+            LightningResponse(narrative="")
+        assert "narrative" in str(exc_info.value)
+
+    def test_lightning_response_missing_narrative_rejected(self):
+        """LightningResponse requires narrative field."""
+        with pytest.raises(ValidationError) as exc_info:
+            LightningResponse()
+        assert "narrative" in str(exc_info.value)
+
+    def test_lightning_response_json_serialization(self):
+        """LightningResponse can be serialized to JSON."""
+        response = LightningResponse(
+            narrative="Patient has no known allergies.",
+            follow_ups=[FollowUp(question="What medications?")],
+        )
+        json_str = response.model_dump_json()
+        assert "no known allergies" in json_str
+        assert "What medications?" in json_str
+
+    def test_lightning_response_from_json(self):
+        """LightningResponse can be parsed from JSON."""
+        json_data = {
+            "narrative": "BP is 120/80 mmHg.",
+            "follow_ups": [{"question": "Show vitals trend"}],
+        }
+        response = LightningResponse.model_validate(json_data)
+        assert response.narrative == "BP is 120/80 mmHg."
+        assert len(response.follow_ups) == 1
+
+    def test_lightning_response_has_no_extra_fields(self):
+        """LightningResponse only has narrative and follow_ups -- no thinking, insights, etc."""
+        fields = set(LightningResponse.model_fields.keys())
+        assert fields == {"narrative", "follow_ups"}
 
 
 class TestAgentResponse:
