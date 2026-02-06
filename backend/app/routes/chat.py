@@ -19,13 +19,10 @@ from app.database import async_session_maker, get_db
 from app.models import FhirResource
 from app.models.session import Session
 from app.schemas import AgentResponse
-from app.schemas.context import PatientContext
-from app.services.agent import AgentService
-from app.services.context_engine import ContextEngine
-from app.services.embeddings import EmbeddingService
+from app.services.agent import AgentService, build_system_prompt_v2
+from app.services.compiler import compile_and_store, get_compiled_summary
 from app.services.fhir_loader import get_patient_profile
 from app.services.graph import KnowledgeGraph
-from app.services.vector_search import VectorSearchService
 
 logger = logging.getLogger(__name__)
 
@@ -113,16 +110,15 @@ class ChatContext:
     """Prepared context for chat endpoints."""
 
     conversation_id: uuid.UUID
-    context: PatientContext
+    system_prompt: str
+    patient_id: str
     history: list[dict[str, str]] | None
     graph: KnowledgeGraph
-    embedding_service: EmbeddingService
     agent: AgentService
 
     async def cleanup(self) -> None:
         """Close all services."""
         await self.graph.close()
-        await self.embedding_service.close()
         await self.agent.close()
 
 
@@ -130,16 +126,18 @@ async def _prepare_chat_context(
     request: ChatRequest,
     db: AsyncSession,
 ) -> ChatContext:
-    """Validate patient, build context, and initialize services.
+    """Validate patient, load compiled summary, and initialize services.
 
     Shared setup used by both /chat and /chat/stream endpoints.
+    Loads the pre-compiled patient summary (or compiles on-demand if missing),
+    then builds the v2 system prompt.
 
     Args:
         request: Chat request with patient_id, message, and optional history.
         db: Database session.
 
     Returns:
-        ChatContext with all prepared services and context.
+        ChatContext with system prompt, graph, and agent services.
 
     Raises:
         HTTPException: 404 if patient not found.
@@ -160,29 +158,22 @@ async def _prepare_chat_context(
             detail="Patient not found",
         )
 
-    # Initialize services
+    # Initialize services (graph needed for both compilation fallback and tool execution)
     graph = KnowledgeGraph()
-    embedding_service = EmbeddingService()
-    vector_search = VectorSearchService(db)
     agent = AgentService(model=request.model) if request.model else AgentService()
 
-    context_engine = ContextEngine(
-        graph=graph,
-        embedding_service=embedding_service,
-        vector_search=vector_search,
-    )
+    # Load pre-compiled summary, compile on-demand if missing
+    compiled_summary = await get_compiled_summary(request.patient_id, db)
+    if compiled_summary is None:
+        logger.info("No cached summary for patient %s, compiling on-demand", request.patient_id)
+        compiled_summary = await compile_and_store(request.patient_id, graph, db)
 
     # Extract patient profile summary if available
     profile = get_patient_profile(patient_resource.data)
     profile_summary = _format_profile_summary(profile) if profile else None
 
-    # Build patient context with the patient resource
-    context = await context_engine.build_context_with_patient(
-        patient_id=str(request.patient_id),
-        patient_resource=patient_resource.data,
-        query=request.message,
-        profile_summary=profile_summary,
-    )
+    # Build v2 system prompt from compiled summary
+    system_prompt = build_system_prompt_v2(compiled_summary, patient_profile=profile_summary)
 
     # Convert conversation history to the format expected by AgentService
     history = None
@@ -194,10 +185,10 @@ async def _prepare_chat_context(
 
     return ChatContext(
         conversation_id=conversation_id,
-        context=context,
+        system_prompt=system_prompt,
+        patient_id=str(request.patient_id),
         history=history,
         graph=graph,
-        embedding_service=embedding_service,
         agent=agent,
     )
 
@@ -245,7 +236,7 @@ async def chat(
 
     This endpoint:
     1. Validates the patient exists
-    2. Builds patient context using hybrid retrieval (graph + vector)
+    2. Loads pre-compiled patient summary (or compiles on-demand)
     3. Generates a structured response using the LLM agent
     4. Returns the response with conversation metadata
 
@@ -268,7 +259,8 @@ async def chat(
 
     try:
         agent_response = await chat_ctx.agent.generate_response(
-            context=chat_ctx.context,
+            system_prompt=chat_ctx.system_prompt,
+            patient_id=chat_ctx.patient_id,
             message=request.message,
             history=chat_ctx.history,
             reasoning_effort=request.reasoning_effort,
@@ -355,7 +347,8 @@ async def chat_stream(
 
         try:
             async for event_type, data_json in chat_ctx.agent.generate_response_stream(
-                context=chat_ctx.context,
+                system_prompt=chat_ctx.system_prompt,
+                patient_id=chat_ctx.patient_id,
                 message=request.message,
                 history=chat_ctx.history,
                 reasoning_effort=request.reasoning_effort,

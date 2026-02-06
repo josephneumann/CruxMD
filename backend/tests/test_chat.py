@@ -4,7 +4,7 @@ Tests the POST /api/chat and POST /api/chat/stream endpoints covering:
 - Authentication (API key validation)
 - Request validation
 - Patient existence checks
-- Integration with ContextEngine and AgentService
+- Integration with compiled summary pipeline and AgentService
 - Error handling
 - SSE streaming
 """
@@ -20,12 +20,6 @@ from sqlalchemy.ext.asyncio import AsyncSession, async_sessionmaker
 
 from app.models import FhirResource
 from app.schemas import AgentResponse, FollowUp, Insight
-from app.schemas.context import (
-    ContextMeta,
-    PatientContext,
-    RetrievedLayer,
-    VerifiedLayer,
-)
 
 
 # =============================================================================
@@ -65,15 +59,23 @@ def sample_agent_response() -> AgentResponse:
 
 
 @pytest.fixture
-def sample_patient_context(sample_patient_data: dict) -> PatientContext:
-    """Sample PatientContext for mocking."""
-    return PatientContext(
-        meta=ContextMeta(patient_id="test-id", query="test query"),
-        patient=sample_patient_data,
-        verified=VerifiedLayer(),
-        retrieved=RetrievedLayer(),
-        constraints=[],
-    )
+def sample_compiled_summary() -> dict:
+    """Sample compiled patient summary for mocking."""
+    return {
+        "patient_orientation": "John Doe, Male, DOB 1960-05-15 (age 65)",
+        "compilation_date": "2026-02-06",
+        "tier1_active_conditions": [],
+        "tier1_unlinked_medications": [],
+        "tier1_allergies": [{"note": "None recorded"}],
+        "tier1_immunizations": [],
+        "tier1_care_plans": [],
+        "tier2_recent_encounters": [],
+        "tier3_latest_observations": {},
+        "safety_constraints": {
+            "active_allergies": [{"note": "None recorded"}],
+            "drug_interactions_note": "Review active medications for potential interactions.",
+        },
+    }
 
 
 @pytest_asyncio.fixture
@@ -212,31 +214,19 @@ class TestChatSuccess:
         auth_headers: dict,
         patient_in_db: uuid.UUID,
         sample_agent_response: AgentResponse,
-        sample_patient_context: PatientContext,
+        sample_compiled_summary: dict,
     ):
         """Test successful chat with minimal request."""
-        with patch("app.routes.chat.ContextEngine") as mock_context_engine_class, \
-             patch("app.routes.chat.AgentService") as mock_agent_service_class, \
-             patch("app.routes.chat.KnowledgeGraph") as mock_graph_class, \
-             patch("app.routes.chat.EmbeddingService") as mock_embedding_class, \
-             patch("app.routes.chat.VectorSearchService"):
+        with patch("app.routes.chat.get_compiled_summary", new_callable=AsyncMock, return_value=sample_compiled_summary), \
+             patch("app.routes.chat.build_system_prompt_v2", return_value="system prompt") as mock_prompt, \
+             patch("app.routes.chat.AgentService") as mock_agent_cls, \
+             patch("app.routes.chat.KnowledgeGraph") as mock_graph_cls:
 
-            # Setup mocks
-            mock_graph = AsyncMock()
-            mock_graph_class.return_value = mock_graph
-
-            mock_embedding = AsyncMock()
-            mock_embedding_class.return_value = mock_embedding
-
-            mock_context_engine = AsyncMock()
-            mock_context_engine.build_context_with_patient = AsyncMock(
-                return_value=sample_patient_context
-            )
-            mock_context_engine_class.return_value = mock_context_engine
+            mock_graph_cls.return_value = AsyncMock()
 
             mock_agent = AsyncMock()
             mock_agent.generate_response = AsyncMock(return_value=sample_agent_response)
-            mock_agent_service_class.return_value = mock_agent
+            mock_agent_cls.return_value = mock_agent
 
             response = await client.post(
                 "/api/chat",
@@ -255,6 +245,11 @@ class TestChatSuccess:
             assert "response" in data
             assert data["response"]["narrative"] == sample_agent_response.narrative
 
+            # Verify build_system_prompt_v2 was called with compiled summary
+            mock_prompt.assert_called_once()
+            call_args = mock_prompt.call_args
+            assert call_args[0][0] == sample_compiled_summary
+
     @pytest.mark.asyncio
     async def test_chat_generates_conversation_id_when_not_provided(
         self,
@@ -262,27 +257,19 @@ class TestChatSuccess:
         auth_headers: dict,
         patient_in_db: uuid.UUID,
         sample_agent_response: AgentResponse,
-        sample_patient_context: PatientContext,
+        sample_compiled_summary: dict,
     ):
         """Test that conversation_id is generated when not provided."""
-        with patch("app.routes.chat.ContextEngine") as mock_context_engine_class, \
-             patch("app.routes.chat.AgentService") as mock_agent_service_class, \
-             patch("app.routes.chat.KnowledgeGraph") as mock_graph_class, \
-             patch("app.routes.chat.EmbeddingService") as mock_embedding_class, \
-             patch("app.routes.chat.VectorSearchService"):
+        with patch("app.routes.chat.get_compiled_summary", new_callable=AsyncMock, return_value=sample_compiled_summary), \
+             patch("app.routes.chat.build_system_prompt_v2", return_value="system prompt"), \
+             patch("app.routes.chat.AgentService") as mock_agent_cls, \
+             patch("app.routes.chat.KnowledgeGraph") as mock_graph_cls:
 
-            mock_graph_class.return_value = AsyncMock()
-            mock_embedding_class.return_value = AsyncMock()
-
-            mock_context_engine = AsyncMock()
-            mock_context_engine.build_context_with_patient = AsyncMock(
-                return_value=sample_patient_context
-            )
-            mock_context_engine_class.return_value = mock_context_engine
+            mock_graph_cls.return_value = AsyncMock()
 
             mock_agent = AsyncMock()
             mock_agent.generate_response = AsyncMock(return_value=sample_agent_response)
-            mock_agent_service_class.return_value = mock_agent
+            mock_agent_cls.return_value = mock_agent
 
             response = await client.post(
                 "/api/chat",
@@ -307,29 +294,21 @@ class TestChatSuccess:
         auth_headers: dict,
         patient_in_db: uuid.UUID,
         sample_agent_response: AgentResponse,
-        sample_patient_context: PatientContext,
+        sample_compiled_summary: dict,
     ):
         """Test that provided conversation_id is used."""
         provided_conversation_id = uuid.uuid4()
 
-        with patch("app.routes.chat.ContextEngine") as mock_context_engine_class, \
-             patch("app.routes.chat.AgentService") as mock_agent_service_class, \
-             patch("app.routes.chat.KnowledgeGraph") as mock_graph_class, \
-             patch("app.routes.chat.EmbeddingService") as mock_embedding_class, \
-             patch("app.routes.chat.VectorSearchService"):
+        with patch("app.routes.chat.get_compiled_summary", new_callable=AsyncMock, return_value=sample_compiled_summary), \
+             patch("app.routes.chat.build_system_prompt_v2", return_value="system prompt"), \
+             patch("app.routes.chat.AgentService") as mock_agent_cls, \
+             patch("app.routes.chat.KnowledgeGraph") as mock_graph_cls:
 
-            mock_graph_class.return_value = AsyncMock()
-            mock_embedding_class.return_value = AsyncMock()
-
-            mock_context_engine = AsyncMock()
-            mock_context_engine.build_context_with_patient = AsyncMock(
-                return_value=sample_patient_context
-            )
-            mock_context_engine_class.return_value = mock_context_engine
+            mock_graph_cls.return_value = AsyncMock()
 
             mock_agent = AsyncMock()
             mock_agent.generate_response = AsyncMock(return_value=sample_agent_response)
-            mock_agent_service_class.return_value = mock_agent
+            mock_agent_cls.return_value = mock_agent
 
             response = await client.post(
                 "/api/chat",
@@ -353,27 +332,19 @@ class TestChatSuccess:
         auth_headers: dict,
         patient_in_db: uuid.UUID,
         sample_agent_response: AgentResponse,
-        sample_patient_context: PatientContext,
+        sample_compiled_summary: dict,
     ):
         """Test chat with conversation history."""
-        with patch("app.routes.chat.ContextEngine") as mock_context_engine_class, \
-             patch("app.routes.chat.AgentService") as mock_agent_service_class, \
-             patch("app.routes.chat.KnowledgeGraph") as mock_graph_class, \
-             patch("app.routes.chat.EmbeddingService") as mock_embedding_class, \
-             patch("app.routes.chat.VectorSearchService"):
+        with patch("app.routes.chat.get_compiled_summary", new_callable=AsyncMock, return_value=sample_compiled_summary), \
+             patch("app.routes.chat.build_system_prompt_v2", return_value="system prompt"), \
+             patch("app.routes.chat.AgentService") as mock_agent_cls, \
+             patch("app.routes.chat.KnowledgeGraph") as mock_graph_cls:
 
-            mock_graph_class.return_value = AsyncMock()
-            mock_embedding_class.return_value = AsyncMock()
-
-            mock_context_engine = AsyncMock()
-            mock_context_engine.build_context_with_patient = AsyncMock(
-                return_value=sample_patient_context
-            )
-            mock_context_engine_class.return_value = mock_context_engine
+            mock_graph_cls.return_value = AsyncMock()
 
             mock_agent = AsyncMock()
             mock_agent.generate_response = AsyncMock(return_value=sample_agent_response)
-            mock_agent_service_class.return_value = mock_agent
+            mock_agent_cls.return_value = mock_agent
 
             response = await client.post(
                 "/api/chat",
@@ -400,6 +371,93 @@ class TestChatSuccess:
 
 
 # =============================================================================
+# On-Demand Compilation Tests
+# =============================================================================
+
+
+class TestChatOnDemandCompilation:
+    """Tests for on-demand compilation fallback when no cached summary exists."""
+
+    @pytest.mark.asyncio
+    async def test_chat_compiles_on_demand_when_no_cached_summary(
+        self,
+        client: AsyncClient,
+        auth_headers: dict,
+        patient_in_db: uuid.UUID,
+        sample_agent_response: AgentResponse,
+        sample_compiled_summary: dict,
+    ):
+        """Test that compile_and_store is called when get_compiled_summary returns None."""
+        with patch("app.routes.chat.get_compiled_summary", new_callable=AsyncMock, return_value=None) as mock_get, \
+             patch("app.routes.chat.compile_and_store", new_callable=AsyncMock, return_value=sample_compiled_summary) as mock_compile, \
+             patch("app.routes.chat.build_system_prompt_v2", return_value="system prompt"), \
+             patch("app.routes.chat.AgentService") as mock_agent_cls, \
+             patch("app.routes.chat.KnowledgeGraph") as mock_graph_cls:
+
+            mock_graph_cls.return_value = AsyncMock()
+
+            mock_agent = AsyncMock()
+            mock_agent.generate_response = AsyncMock(return_value=sample_agent_response)
+            mock_agent_cls.return_value = mock_agent
+
+            response = await client.post(
+                "/api/chat",
+                json={
+                    "patient_id": str(patient_in_db),
+                    "message": "What medications is this patient taking?",
+                },
+                headers=auth_headers,
+            )
+
+            assert response.status_code == 200
+
+            # Verify get_compiled_summary was called first
+            mock_get.assert_called_once()
+
+            # Verify compile_and_store was called as fallback
+            mock_compile.assert_called_once()
+
+    @pytest.mark.asyncio
+    async def test_chat_skips_compilation_when_cached_summary_exists(
+        self,
+        client: AsyncClient,
+        auth_headers: dict,
+        patient_in_db: uuid.UUID,
+        sample_agent_response: AgentResponse,
+        sample_compiled_summary: dict,
+    ):
+        """Test that compile_and_store is NOT called when cached summary exists."""
+        with patch("app.routes.chat.get_compiled_summary", new_callable=AsyncMock, return_value=sample_compiled_summary) as mock_get, \
+             patch("app.routes.chat.compile_and_store", new_callable=AsyncMock) as mock_compile, \
+             patch("app.routes.chat.build_system_prompt_v2", return_value="system prompt"), \
+             patch("app.routes.chat.AgentService") as mock_agent_cls, \
+             patch("app.routes.chat.KnowledgeGraph") as mock_graph_cls:
+
+            mock_graph_cls.return_value = AsyncMock()
+
+            mock_agent = AsyncMock()
+            mock_agent.generate_response = AsyncMock(return_value=sample_agent_response)
+            mock_agent_cls.return_value = mock_agent
+
+            response = await client.post(
+                "/api/chat",
+                json={
+                    "patient_id": str(patient_in_db),
+                    "message": "What medications is this patient taking?",
+                },
+                headers=auth_headers,
+            )
+
+            assert response.status_code == 200
+
+            # Verify get_compiled_summary was called
+            mock_get.assert_called_once()
+
+            # Verify compile_and_store was NOT called
+            mock_compile.assert_not_called()
+
+
+# =============================================================================
 # Error Handling Tests
 # =============================================================================
 
@@ -413,29 +471,21 @@ class TestChatErrorHandling:
         client: AsyncClient,
         auth_headers: dict,
         patient_in_db: uuid.UUID,
-        sample_patient_context: PatientContext,
+        sample_compiled_summary: dict,
     ):
         """Test that RuntimeError from agent returns 500."""
-        with patch("app.routes.chat.ContextEngine") as mock_context_engine_class, \
-             patch("app.routes.chat.AgentService") as mock_agent_service_class, \
-             patch("app.routes.chat.KnowledgeGraph") as mock_graph_class, \
-             patch("app.routes.chat.EmbeddingService") as mock_embedding_class, \
-             patch("app.routes.chat.VectorSearchService"):
+        with patch("app.routes.chat.get_compiled_summary", new_callable=AsyncMock, return_value=sample_compiled_summary), \
+             patch("app.routes.chat.build_system_prompt_v2", return_value="system prompt"), \
+             patch("app.routes.chat.AgentService") as mock_agent_cls, \
+             patch("app.routes.chat.KnowledgeGraph") as mock_graph_cls:
 
-            mock_graph_class.return_value = AsyncMock()
-            mock_embedding_class.return_value = AsyncMock()
-
-            mock_context_engine = AsyncMock()
-            mock_context_engine.build_context_with_patient = AsyncMock(
-                return_value=sample_patient_context
-            )
-            mock_context_engine_class.return_value = mock_context_engine
+            mock_graph_cls.return_value = AsyncMock()
 
             mock_agent = AsyncMock()
             mock_agent.generate_response = AsyncMock(
                 side_effect=RuntimeError("LLM response could not be parsed")
             )
-            mock_agent_service_class.return_value = mock_agent
+            mock_agent_cls.return_value = mock_agent
 
             response = await client.post(
                 "/api/chat",
@@ -455,29 +505,21 @@ class TestChatErrorHandling:
         client: AsyncClient,
         auth_headers: dict,
         patient_in_db: uuid.UUID,
-        sample_patient_context: PatientContext,
+        sample_compiled_summary: dict,
     ):
         """Test that ValueError from agent returns 400."""
-        with patch("app.routes.chat.ContextEngine") as mock_context_engine_class, \
-             patch("app.routes.chat.AgentService") as mock_agent_service_class, \
-             patch("app.routes.chat.KnowledgeGraph") as mock_graph_class, \
-             patch("app.routes.chat.EmbeddingService") as mock_embedding_class, \
-             patch("app.routes.chat.VectorSearchService"):
+        with patch("app.routes.chat.get_compiled_summary", new_callable=AsyncMock, return_value=sample_compiled_summary), \
+             patch("app.routes.chat.build_system_prompt_v2", return_value="system prompt"), \
+             patch("app.routes.chat.AgentService") as mock_agent_cls, \
+             patch("app.routes.chat.KnowledgeGraph") as mock_graph_cls:
 
-            mock_graph_class.return_value = AsyncMock()
-            mock_embedding_class.return_value = AsyncMock()
-
-            mock_context_engine = AsyncMock()
-            mock_context_engine.build_context_with_patient = AsyncMock(
-                return_value=sample_patient_context
-            )
-            mock_context_engine_class.return_value = mock_context_engine
+            mock_graph_cls.return_value = AsyncMock()
 
             mock_agent = AsyncMock()
             mock_agent.generate_response = AsyncMock(
                 side_effect=ValueError("message cannot be empty")
             )
-            mock_agent_service_class.return_value = mock_agent
+            mock_agent_cls.return_value = mock_agent
 
             response = await client.post(
                 "/api/chat",
@@ -542,27 +584,19 @@ class TestChatInputValidation:
         auth_headers: dict,
         patient_in_db: uuid.UUID,
         sample_agent_response: AgentResponse,
-        sample_patient_context: PatientContext,
+        sample_compiled_summary: dict,
     ):
         """Test that messages at max length are accepted."""
-        with patch("app.routes.chat.ContextEngine") as mock_context_engine_class, \
-             patch("app.routes.chat.AgentService") as mock_agent_service_class, \
-             patch("app.routes.chat.KnowledgeGraph") as mock_graph_class, \
-             patch("app.routes.chat.EmbeddingService") as mock_embedding_class, \
-             patch("app.routes.chat.VectorSearchService"):
+        with patch("app.routes.chat.get_compiled_summary", new_callable=AsyncMock, return_value=sample_compiled_summary), \
+             patch("app.routes.chat.build_system_prompt_v2", return_value="system prompt"), \
+             patch("app.routes.chat.AgentService") as mock_agent_cls, \
+             patch("app.routes.chat.KnowledgeGraph") as mock_graph_cls:
 
-            mock_graph_class.return_value = AsyncMock()
-            mock_embedding_class.return_value = AsyncMock()
-
-            mock_context_engine = AsyncMock()
-            mock_context_engine.build_context_with_patient = AsyncMock(
-                return_value=sample_patient_context
-            )
-            mock_context_engine_class.return_value = mock_context_engine
+            mock_graph_cls.return_value = AsyncMock()
 
             mock_agent = AsyncMock()
             mock_agent.generate_response = AsyncMock(return_value=sample_agent_response)
-            mock_agent_service_class.return_value = mock_agent
+            mock_agent_cls.return_value = mock_agent
 
             response = await client.post(
                 "/api/chat",
@@ -608,82 +642,62 @@ class TestChatIntegration:
     """Integration tests for chat endpoint service coordination."""
 
     @pytest.mark.asyncio
-    async def test_chat_calls_context_engine_with_correct_params(
+    async def test_chat_loads_compiled_summary_for_patient(
         self,
         client: AsyncClient,
         auth_headers: dict,
         patient_in_db: uuid.UUID,
         sample_agent_response: AgentResponse,
-        sample_patient_context: PatientContext,
-        sample_patient_data: dict,
+        sample_compiled_summary: dict,
     ):
-        """Test that ContextEngine is called with correct parameters."""
-        with patch("app.routes.chat.ContextEngine") as mock_context_engine_class, \
-             patch("app.routes.chat.AgentService") as mock_agent_service_class, \
-             patch("app.routes.chat.KnowledgeGraph") as mock_graph_class, \
-             patch("app.routes.chat.EmbeddingService") as mock_embedding_class, \
-             patch("app.routes.chat.VectorSearchService"):
+        """Test that get_compiled_summary is called with the correct patient_id."""
+        with patch("app.routes.chat.get_compiled_summary", new_callable=AsyncMock, return_value=sample_compiled_summary) as mock_get, \
+             patch("app.routes.chat.build_system_prompt_v2", return_value="system prompt"), \
+             patch("app.routes.chat.AgentService") as mock_agent_cls, \
+             patch("app.routes.chat.KnowledgeGraph") as mock_graph_cls:
 
-            mock_graph_class.return_value = AsyncMock()
-            mock_embedding_class.return_value = AsyncMock()
-
-            mock_context_engine = AsyncMock()
-            mock_context_engine.build_context_with_patient = AsyncMock(
-                return_value=sample_patient_context
-            )
-            mock_context_engine_class.return_value = mock_context_engine
+            mock_graph_cls.return_value = AsyncMock()
 
             mock_agent = AsyncMock()
             mock_agent.generate_response = AsyncMock(return_value=sample_agent_response)
-            mock_agent_service_class.return_value = mock_agent
-
-            test_message = "What medications is this patient taking?"
+            mock_agent_cls.return_value = mock_agent
 
             response = await client.post(
                 "/api/chat",
                 json={
                     "patient_id": str(patient_in_db),
-                    "message": test_message,
+                    "message": "What medications is this patient taking?",
                 },
                 headers=auth_headers,
             )
 
             assert response.status_code == 200
 
-            # Verify ContextEngine was called with correct params
-            mock_context_engine.build_context_with_patient.assert_called_once()
-            call_kwargs = mock_context_engine.build_context_with_patient.call_args.kwargs
-            assert call_kwargs["patient_id"] == str(patient_in_db)
-            assert call_kwargs["query"] == test_message
+            # Verify get_compiled_summary was called with the patient_id
+            mock_get.assert_called_once()
+            call_args = mock_get.call_args
+            assert call_args[0][0] == patient_in_db
 
     @pytest.mark.asyncio
-    async def test_chat_calls_agent_service_with_context_and_message(
+    async def test_chat_passes_system_prompt_to_agent(
         self,
         client: AsyncClient,
         auth_headers: dict,
         patient_in_db: uuid.UUID,
         sample_agent_response: AgentResponse,
-        sample_patient_context: PatientContext,
+        sample_compiled_summary: dict,
     ):
-        """Test that AgentService is called with context and message."""
-        with patch("app.routes.chat.ContextEngine") as mock_context_engine_class, \
-             patch("app.routes.chat.AgentService") as mock_agent_service_class, \
-             patch("app.routes.chat.KnowledgeGraph") as mock_graph_class, \
-             patch("app.routes.chat.EmbeddingService") as mock_embedding_class, \
-             patch("app.routes.chat.VectorSearchService"):
+        """Test that AgentService receives the system_prompt and patient_id."""
+        with patch("app.routes.chat.get_compiled_summary", new_callable=AsyncMock, return_value=sample_compiled_summary), \
+             patch("app.routes.chat.build_system_prompt_v2", return_value="test system prompt"), \
+             patch("app.routes.chat.AgentService") as mock_agent_cls, \
+             patch("app.routes.chat.KnowledgeGraph") as mock_graph_cls:
 
-            mock_graph_class.return_value = AsyncMock()
-            mock_embedding_class.return_value = AsyncMock()
-
-            mock_context_engine = AsyncMock()
-            mock_context_engine.build_context_with_patient = AsyncMock(
-                return_value=sample_patient_context
-            )
-            mock_context_engine_class.return_value = mock_context_engine
+            mock_graph_cls.return_value = AsyncMock()
 
             mock_agent = AsyncMock()
             mock_agent.generate_response = AsyncMock(return_value=sample_agent_response)
-            mock_agent_service_class.return_value = mock_agent
+            mock_agent_cls.return_value = mock_agent
 
             test_message = "What medications is this patient taking?"
 
@@ -701,7 +715,8 @@ class TestChatIntegration:
             # Verify AgentService was called with correct params
             mock_agent.generate_response.assert_called_once()
             call_kwargs = mock_agent.generate_response.call_args.kwargs
-            assert call_kwargs["context"] == sample_patient_context
+            assert call_kwargs["system_prompt"] == "test system prompt"
+            assert call_kwargs["patient_id"] == str(patient_in_db)
             assert call_kwargs["message"] == test_message
             assert call_kwargs["history"] is None
 
@@ -712,30 +727,20 @@ class TestChatIntegration:
         auth_headers: dict,
         patient_in_db: uuid.UUID,
         sample_agent_response: AgentResponse,
-        sample_patient_context: PatientContext,
+        sample_compiled_summary: dict,
     ):
         """Test that services are cleaned up after successful request."""
-        with patch("app.routes.chat.ContextEngine") as mock_context_engine_class, \
-             patch("app.routes.chat.AgentService") as mock_agent_service_class, \
-             patch("app.routes.chat.KnowledgeGraph") as mock_graph_class, \
-             patch("app.routes.chat.EmbeddingService") as mock_embedding_class, \
-             patch("app.routes.chat.VectorSearchService"):
+        with patch("app.routes.chat.get_compiled_summary", new_callable=AsyncMock, return_value=sample_compiled_summary), \
+             patch("app.routes.chat.build_system_prompt_v2", return_value="system prompt"), \
+             patch("app.routes.chat.AgentService") as mock_agent_cls, \
+             patch("app.routes.chat.KnowledgeGraph") as mock_graph_cls:
 
             mock_graph = AsyncMock()
-            mock_graph_class.return_value = mock_graph
-
-            mock_embedding = AsyncMock()
-            mock_embedding_class.return_value = mock_embedding
-
-            mock_context_engine = AsyncMock()
-            mock_context_engine.build_context_with_patient = AsyncMock(
-                return_value=sample_patient_context
-            )
-            mock_context_engine_class.return_value = mock_context_engine
+            mock_graph_cls.return_value = mock_graph
 
             mock_agent = AsyncMock()
             mock_agent.generate_response = AsyncMock(return_value=sample_agent_response)
-            mock_agent_service_class.return_value = mock_agent
+            mock_agent_cls.return_value = mock_agent
 
             response = await client.post(
                 "/api/chat",
@@ -750,7 +755,6 @@ class TestChatIntegration:
 
             # Verify cleanup was called
             mock_graph.close.assert_called_once()
-            mock_embedding.close.assert_called_once()
             mock_agent.close.assert_called_once()
 
     @pytest.mark.asyncio
@@ -759,32 +763,22 @@ class TestChatIntegration:
         client: AsyncClient,
         auth_headers: dict,
         patient_in_db: uuid.UUID,
-        sample_patient_context: PatientContext,
+        sample_compiled_summary: dict,
     ):
         """Test that services are cleaned up even on error."""
-        with patch("app.routes.chat.ContextEngine") as mock_context_engine_class, \
-             patch("app.routes.chat.AgentService") as mock_agent_service_class, \
-             patch("app.routes.chat.KnowledgeGraph") as mock_graph_class, \
-             patch("app.routes.chat.EmbeddingService") as mock_embedding_class, \
-             patch("app.routes.chat.VectorSearchService"):
+        with patch("app.routes.chat.get_compiled_summary", new_callable=AsyncMock, return_value=sample_compiled_summary), \
+             patch("app.routes.chat.build_system_prompt_v2", return_value="system prompt"), \
+             patch("app.routes.chat.AgentService") as mock_agent_cls, \
+             patch("app.routes.chat.KnowledgeGraph") as mock_graph_cls:
 
             mock_graph = AsyncMock()
-            mock_graph_class.return_value = mock_graph
-
-            mock_embedding = AsyncMock()
-            mock_embedding_class.return_value = mock_embedding
-
-            mock_context_engine = AsyncMock()
-            mock_context_engine.build_context_with_patient = AsyncMock(
-                return_value=sample_patient_context
-            )
-            mock_context_engine_class.return_value = mock_context_engine
+            mock_graph_cls.return_value = mock_graph
 
             mock_agent = AsyncMock()
             mock_agent.generate_response = AsyncMock(
                 side_effect=RuntimeError("LLM error")
             )
-            mock_agent_service_class.return_value = mock_agent
+            mock_agent_cls.return_value = mock_agent
 
             response = await client.post(
                 "/api/chat",
@@ -799,8 +793,45 @@ class TestChatIntegration:
 
             # Verify cleanup was still called
             mock_graph.close.assert_called_once()
-            mock_embedding.close.assert_called_once()
             mock_agent.close.assert_called_once()
+
+    @pytest.mark.asyncio
+    async def test_chat_passes_graph_and_db_to_agent_for_tools(
+        self,
+        client: AsyncClient,
+        auth_headers: dict,
+        patient_in_db: uuid.UUID,
+        sample_agent_response: AgentResponse,
+        sample_compiled_summary: dict,
+    ):
+        """Test that graph and db are passed to agent for tool execution."""
+        with patch("app.routes.chat.get_compiled_summary", new_callable=AsyncMock, return_value=sample_compiled_summary), \
+             patch("app.routes.chat.build_system_prompt_v2", return_value="system prompt"), \
+             patch("app.routes.chat.AgentService") as mock_agent_cls, \
+             patch("app.routes.chat.KnowledgeGraph") as mock_graph_cls:
+
+            mock_graph = AsyncMock()
+            mock_graph_cls.return_value = mock_graph
+
+            mock_agent = AsyncMock()
+            mock_agent.generate_response = AsyncMock(return_value=sample_agent_response)
+            mock_agent_cls.return_value = mock_agent
+
+            response = await client.post(
+                "/api/chat",
+                json={
+                    "patient_id": str(patient_in_db),
+                    "message": "Test message",
+                },
+                headers=auth_headers,
+            )
+
+            assert response.status_code == 200
+
+            # Verify graph and db were passed to agent
+            call_kwargs = mock_agent.generate_response.call_args.kwargs
+            assert call_kwargs["graph"] is mock_graph
+            assert call_kwargs["db"] is not None
 
 
 # =============================================================================
@@ -859,21 +890,15 @@ class TestChatStream:
         client: AsyncClient,
         auth_headers: dict,
         patient_in_db: uuid.UUID,
-        sample_patient_context: PatientContext,
+        sample_compiled_summary: dict,
     ):
         """Test successful streaming returns reasoning, narrative, and done SSE events."""
-        with patch("app.routes.chat.ContextEngine") as mock_ce_cls, \
+        with patch("app.routes.chat.get_compiled_summary", new_callable=AsyncMock, return_value=sample_compiled_summary), \
+             patch("app.routes.chat.build_system_prompt_v2", return_value="system prompt"), \
              patch("app.routes.chat.AgentService") as mock_agent_cls, \
-             patch("app.routes.chat.KnowledgeGraph") as mock_graph_cls, \
-             patch("app.routes.chat.EmbeddingService") as mock_emb_cls, \
-             patch("app.routes.chat.VectorSearchService"):
+             patch("app.routes.chat.KnowledgeGraph") as mock_graph_cls:
 
             mock_graph_cls.return_value = AsyncMock()
-            mock_emb_cls.return_value = AsyncMock()
-
-            mock_ce = AsyncMock()
-            mock_ce.build_context_with_patient = AsyncMock(return_value=sample_patient_context)
-            mock_ce_cls.return_value = mock_ce
 
             mock_agent = AsyncMock()
             mock_agent.generate_response_stream = MagicMock(return_value=_mock_stream_generator())
@@ -910,7 +935,7 @@ class TestChatStream:
         client: AsyncClient,
         auth_headers: dict,
         patient_in_db: uuid.UUID,
-        sample_patient_context: PatientContext,
+        sample_compiled_summary: dict,
     ):
         """Test that errors during streaming emit an error SSE event."""
 
@@ -918,18 +943,12 @@ class TestChatStream:
             yield ("reasoning", json.dumps({"delta": "Thinking..."}))
             raise RuntimeError("LLM crashed")
 
-        with patch("app.routes.chat.ContextEngine") as mock_ce_cls, \
+        with patch("app.routes.chat.get_compiled_summary", new_callable=AsyncMock, return_value=sample_compiled_summary), \
+             patch("app.routes.chat.build_system_prompt_v2", return_value="system prompt"), \
              patch("app.routes.chat.AgentService") as mock_agent_cls, \
-             patch("app.routes.chat.KnowledgeGraph") as mock_graph_cls, \
-             patch("app.routes.chat.EmbeddingService") as mock_emb_cls, \
-             patch("app.routes.chat.VectorSearchService"):
+             patch("app.routes.chat.KnowledgeGraph") as mock_graph_cls:
 
             mock_graph_cls.return_value = AsyncMock()
-            mock_emb_cls.return_value = AsyncMock()
-
-            mock_ce = AsyncMock()
-            mock_ce.build_context_with_patient = AsyncMock(return_value=sample_patient_context)
-            mock_ce_cls.return_value = mock_ce
 
             mock_agent = AsyncMock()
             mock_agent.generate_response_stream = MagicMock(return_value=_failing_stream())
@@ -958,24 +977,16 @@ class TestChatStream:
         client: AsyncClient,
         auth_headers: dict,
         patient_in_db: uuid.UUID,
-        sample_patient_context: PatientContext,
+        sample_compiled_summary: dict,
     ):
         """Test that services are cleaned up after streaming completes."""
-        with patch("app.routes.chat.ContextEngine") as mock_ce_cls, \
+        with patch("app.routes.chat.get_compiled_summary", new_callable=AsyncMock, return_value=sample_compiled_summary), \
+             patch("app.routes.chat.build_system_prompt_v2", return_value="system prompt"), \
              patch("app.routes.chat.AgentService") as mock_agent_cls, \
-             patch("app.routes.chat.KnowledgeGraph") as mock_graph_cls, \
-             patch("app.routes.chat.EmbeddingService") as mock_emb_cls, \
-             patch("app.routes.chat.VectorSearchService"):
+             patch("app.routes.chat.KnowledgeGraph") as mock_graph_cls:
 
             mock_graph = AsyncMock()
             mock_graph_cls.return_value = mock_graph
-
-            mock_emb = AsyncMock()
-            mock_emb_cls.return_value = mock_emb
-
-            mock_ce = AsyncMock()
-            mock_ce.build_context_with_patient = AsyncMock(return_value=sample_patient_context)
-            mock_ce_cls.return_value = mock_ce
 
             mock_agent = AsyncMock()
             mock_agent.generate_response_stream = MagicMock(return_value=_mock_stream_generator())
@@ -991,5 +1002,40 @@ class TestChatStream:
             )
 
             mock_graph.close.assert_called_once()
-            mock_emb.close.assert_called_once()
             mock_agent.close.assert_called_once()
+
+    @pytest.mark.asyncio
+    async def test_stream_on_demand_compilation(
+        self,
+        client: AsyncClient,
+        auth_headers: dict,
+        patient_in_db: uuid.UUID,
+        sample_compiled_summary: dict,
+    ):
+        """Test that streaming also triggers on-demand compilation when needed."""
+        with patch("app.routes.chat.get_compiled_summary", new_callable=AsyncMock, return_value=None) as mock_get, \
+             patch("app.routes.chat.compile_and_store", new_callable=AsyncMock, return_value=sample_compiled_summary) as mock_compile, \
+             patch("app.routes.chat.build_system_prompt_v2", return_value="system prompt"), \
+             patch("app.routes.chat.AgentService") as mock_agent_cls, \
+             patch("app.routes.chat.KnowledgeGraph") as mock_graph_cls:
+
+            mock_graph_cls.return_value = AsyncMock()
+
+            mock_agent = AsyncMock()
+            mock_agent.generate_response_stream = MagicMock(return_value=_mock_stream_generator())
+            mock_agent_cls.return_value = mock_agent
+
+            response = await client.post(
+                "/api/chat/stream",
+                json={
+                    "patient_id": str(patient_in_db),
+                    "message": "Tell me about this patient",
+                },
+                headers=auth_headers,
+            )
+
+            assert response.status_code == 200
+
+            # Verify on-demand compilation happened
+            mock_get.assert_called_once()
+            mock_compile.assert_called_once()

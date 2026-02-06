@@ -1144,7 +1144,7 @@ class AgentService:
         message: str,
         history: list[dict[str, str]] | None = None,
     ) -> list[dict[str, str]]:
-        """Build input messages for the API call.
+        """Build input messages for the API call (v1, uses PatientContext).
 
         Args:
             context: Patient context for system prompt
@@ -1169,10 +1169,43 @@ class AgentService:
 
         return messages
 
+    @staticmethod
+    def _build_input_messages_v2(
+        system_prompt: str,
+        message: str,
+        history: list[dict[str, str]] | None = None,
+    ) -> list[dict[str, str]]:
+        """Build input messages from a pre-built system prompt string.
+
+        Args:
+            system_prompt: Complete system prompt string.
+            message: Current user message.
+            history: Optional conversation history.
+
+        Returns:
+            List of message dicts for the API.
+        """
+        messages = [
+            {"role": "system", "content": system_prompt},
+        ]
+
+        if history:
+            for msg in history:
+                role = msg.get("role", "user")
+                content = msg.get("content", "")
+                if role in ("user", "assistant") and content:
+                    messages.append({"role": role, "content": content})
+
+        messages.append({"role": "user", "content": message})
+
+        return messages
+
     async def generate_response(
         self,
-        context: PatientContext,
         message: str,
+        system_prompt: str | None = None,
+        patient_id: str | None = None,
+        context: PatientContext | None = None,
         history: list[dict[str, str]] | None = None,
         reasoning_effort: Literal["low", "medium", "high"] | None = None,
         graph: KnowledgeGraph | None = None,
@@ -1180,26 +1213,40 @@ class AgentService:
     ) -> AgentResponse:
         """Generate a structured response for a clinical question.
 
+        Supports two calling conventions:
+        - v2 (preferred): Pass system_prompt + patient_id from pre-compiled summary.
+        - v1 (legacy): Pass context (PatientContext) for backward compatibility.
+
         Args:
-            context: PatientContext with verified facts and retrieved resources
             message: The user's question or message
+            system_prompt: Pre-built system prompt string (v2 path).
+            patient_id: Patient UUID string for tool execution (v2 path).
+            context: PatientContext with verified facts (v1 legacy path).
             history: Optional list of previous messages in the conversation.
-                    Each message should have 'role' and 'content' keys.
-            reasoning_effort: Override default reasoning effort for this call
-            graph: KnowledgeGraph instance for tool execution
-            db: AsyncSession for tool execution
+            reasoning_effort: Override default reasoning effort for this call.
+            graph: KnowledgeGraph instance for tool execution.
+            db: AsyncSession for tool execution.
 
         Returns:
             AgentResponse with narrative, insights, visualizations, and follow-ups
 
         Raises:
-            ValueError: If message is empty
-            openai.APIError: If API call fails
+            ValueError: If message is empty or neither system_prompt nor context provided.
         """
         if not message or not message.strip():
             raise ValueError("message cannot be empty")
 
-        input_messages = self._build_input_messages(context, message, history)
+        if system_prompt is not None:
+            input_messages = self._build_input_messages_v2(system_prompt, message, history)
+            if not patient_id:
+                raise ValueError("patient_id is required when using system_prompt")
+            resolved_patient_id = patient_id
+        elif context is not None:
+            input_messages = self._build_input_messages(context, message, history)
+            resolved_patient_id = context.meta.patient_id
+        else:
+            raise ValueError("Either system_prompt or context must be provided")
+
         effort = reasoning_effort or self._reasoning_effort
         tools_available = graph is not None and db is not None
 
@@ -1222,7 +1269,7 @@ class AgentService:
             # Run tool rounds (discard SSE events — non-streaming path).
             # _execute_tool_calls stores the final non-tool response in kwargs.
             async for _ in self._execute_tool_calls(
-                kwargs, context.meta.patient_id, graph, db
+                kwargs, resolved_patient_id, graph, db
             ):
                 pass
 
@@ -1255,8 +1302,10 @@ class AgentService:
 
     async def generate_response_stream(
         self,
-        context: PatientContext,
         message: str,
+        system_prompt: str | None = None,
+        patient_id: str | None = None,
+        context: PatientContext | None = None,
         history: list[dict[str, str]] | None = None,
         reasoning_effort: Literal["low", "medium", "high"] | None = None,
         graph: KnowledgeGraph | None = None,
@@ -1270,24 +1319,37 @@ class AgentService:
 
         After all deltas, yields ("done", json) with the final parsed AgentResponse.
 
-        Tool execution rounds happen silently (no events emitted) between
-        streaming rounds. Only the final text response is streamed.
+        Supports two calling conventions:
+        - v2 (preferred): Pass system_prompt + patient_id from pre-compiled summary.
+        - v1 (legacy): Pass context (PatientContext) for backward compatibility.
 
         Args:
-            context: PatientContext with verified facts and retrieved resources
-            message: The user's question or message
-            history: Optional conversation history
-            reasoning_effort: Override default reasoning effort for this call
-            graph: KnowledgeGraph instance for tool execution
-            db: AsyncSession for tool execution
+            message: The user's question or message.
+            system_prompt: Pre-built system prompt string (v2 path).
+            patient_id: Patient UUID string for tool execution (v2 path).
+            context: PatientContext with verified facts (v1 legacy path).
+            history: Optional conversation history.
+            reasoning_effort: Override default reasoning effort for this call.
+            graph: KnowledgeGraph instance for tool execution.
+            db: AsyncSession for tool execution.
 
         Raises:
-            ValueError: If message is empty
+            ValueError: If message is empty or neither system_prompt nor context provided.
         """
         if not message or not message.strip():
             raise ValueError("message cannot be empty")
 
-        input_messages = self._build_input_messages(context, message, history)
+        if system_prompt is not None:
+            input_messages = self._build_input_messages_v2(system_prompt, message, history)
+            if not patient_id:
+                raise ValueError("patient_id is required when using system_prompt")
+            resolved_patient_id = patient_id
+        elif context is not None:
+            input_messages = self._build_input_messages(context, message, history)
+            resolved_patient_id = context.meta.patient_id
+        else:
+            raise ValueError("Either system_prompt or context must be provided")
+
         effort = reasoning_effort or self._reasoning_effort
         tools_available = graph is not None and db is not None
 
@@ -1311,7 +1373,7 @@ class AgentService:
         # _execute_tool_calls leaves kwargs ready for the final streaming call.
         if tools_available:
             async for event in self._execute_tool_calls(
-                kwargs, context.meta.patient_id, graph, db
+                kwargs, resolved_patient_id, graph, db
             ):
                 yield event
 
