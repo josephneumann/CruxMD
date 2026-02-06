@@ -24,6 +24,7 @@ from app.services.agent import (
     DEFAULT_REASONING_EFFORT,
     DEFAULT_MAX_OUTPUT_TOKENS,
     build_system_prompt,
+    build_system_prompt_v2,
     _format_patient_info,
     _format_resource_list,
     _format_condition,
@@ -31,6 +32,10 @@ from app.services.agent import (
     _format_allergy,
     _format_retrieved_context,
     _format_constraints,
+    _format_tier1_conditions,
+    _format_tier2_encounters,
+    _format_tier3_observations,
+    _format_safety_constraints_v2,
     _get_display_name,
     _prune_fhir_resource,
 )
@@ -1279,3 +1284,585 @@ class TestPruneFhirResourceGeneral:
         assert "text" not in pruned
         assert "identifier" not in pruned
         assert pruned["clinicalStatus"] == "Active"
+
+
+# =============================================================================
+# build_system_prompt_v2 Tests
+# =============================================================================
+
+
+@pytest.fixture
+def minimal_compiled_summary() -> dict:
+    """Minimal compiled summary with just patient orientation."""
+    return {
+        "patient_orientation": "Jane Doe, Female, DOB 1955-03-20 (age 71)",
+        "compilation_date": "2026-02-05",
+        "tier1_active_conditions": [],
+        "tier1_unlinked_medications": [],
+        "tier1_allergies": [{"note": "None recorded"}],
+        "tier1_immunizations": [],
+        "tier1_care_plans": [],
+        "tier2_recent_encounters": [],
+        "tier3_latest_observations": {},
+        "safety_constraints": {
+            "active_allergies": [{"note": "None recorded"}],
+            "drug_interactions_note": "Review active medications for potential interactions.",
+        },
+    }
+
+
+@pytest.fixture
+def full_compiled_summary() -> dict:
+    """Full compiled summary with all tiers populated."""
+    return {
+        "patient_orientation": "John Smith, Male, DOB 1960-05-15 (age 65)",
+        "compilation_date": "2026-02-05",
+        "tier1_active_conditions": [
+            {
+                "condition": {
+                    "resourceType": "Condition",
+                    "id": "cond-diabetes",
+                    "code": {
+                        "coding": [{"code": "44054006", "display": "Type 2 diabetes mellitus"}]
+                    },
+                    "clinicalStatus": "Active",
+                    "onsetDateTime": "2015-03-10",
+                },
+                "treating_medications": [
+                    {
+                        "resourceType": "MedicationRequest",
+                        "id": "med-metformin",
+                        "medicationCodeableConcept": "Metformin 500 MG",
+                        "status": "active",
+                        "_recency": "established",
+                        "_duration_days": 3200,
+                        "_dose_history": [
+                            {"dose": "250 MG", "authoredOn": "2015-03-10", "status": "completed"},
+                        ],
+                    },
+                ],
+                "care_plans": [
+                    {
+                        "resourceType": "CarePlan",
+                        "id": "cp-diabetes",
+                        "category": "Diabetes self management plan",
+                        "status": "active",
+                    },
+                ],
+                "related_procedures": [],
+            },
+            {
+                "condition": {
+                    "resourceType": "Condition",
+                    "id": "cond-hypertension",
+                    "code": {
+                        "coding": [{"code": "38341003", "display": "Essential hypertension"}]
+                    },
+                    "clinicalStatus": "Active",
+                    "onsetDateTime": "2018-06-22",
+                },
+                "treating_medications": [
+                    {
+                        "resourceType": "MedicationRequest",
+                        "id": "med-lisinopril",
+                        "medicationCodeableConcept": "Lisinopril 10 MG",
+                        "status": "active",
+                        "_recency": "established",
+                        "_duration_days": 2800,
+                        "_inferred": True,
+                    },
+                ],
+                "care_plans": [],
+                "related_procedures": [],
+            },
+        ],
+        "tier1_recently_resolved": [
+            {
+                "condition": {
+                    "resourceType": "Condition",
+                    "id": "cond-bronchitis",
+                    "code": {
+                        "coding": [{"code": "10509002", "display": "Acute bronchitis"}]
+                    },
+                    "clinicalStatus": "resolved",
+                },
+                "treating_medications": [],
+                "care_plans": [],
+                "related_procedures": [],
+            },
+        ],
+        "tier1_unlinked_medications": [
+            {
+                "resourceType": "MedicationRequest",
+                "id": "med-aspirin",
+                "medicationCodeableConcept": "Aspirin 81 MG",
+                "status": "active",
+                "_recency": "established",
+            },
+        ],
+        "tier1_allergies": [
+            {
+                "resourceType": "AllergyIntolerance",
+                "id": "allergy-penicillin",
+                "code": "Penicillin",
+                "criticality": "high",
+                "category": "medication",
+            },
+        ],
+        "tier1_immunizations": [
+            {
+                "resourceType": "Immunization",
+                "id": "imm-flu",
+                "vaccineCode": "Influenza vaccine",
+                "occurrenceDateTime": "2025-10-15",
+            },
+        ],
+        "tier1_care_plans": [
+            {
+                "resourceType": "CarePlan",
+                "id": "cp-wellness",
+                "category": "Routine wellness plan",
+                "status": "active",
+            },
+        ],
+        "tier2_recent_encounters": [
+            {
+                "encounter": {
+                    "resourceType": "Encounter",
+                    "id": "enc-last",
+                    "type": "General examination",
+                    "class": {"code": "AMB"},
+                    "period": {"start": "2026-01-15"},
+                },
+                "events": {
+                    "DIAGNOSED": [
+                        {
+                            "resourceType": "Condition",
+                            "id": "cond-diabetes",
+                            "code": {"coding": [{"display": "Type 2 diabetes mellitus"}]},
+                        },
+                    ],
+                    "RECORDED": [
+                        {
+                            "resourceType": "Observation",
+                            "id": "obs-bp",
+                            "code": {"coding": [{"display": "Blood pressure panel"}]},
+                        },
+                    ],
+                },
+                "clinical_notes": ["Patient reports good adherence to medication regimen."],
+            },
+        ],
+        "tier3_latest_observations": {
+            "laboratory": [
+                {
+                    "resourceType": "Observation",
+                    "id": "obs-hba1c",
+                    "code": {"coding": [{"code": "4548-4", "display": "Hemoglobin A1c"}]},
+                    "valueQuantity": {"value": 7.2, "unit": "%"},
+                    "effectiveDateTime": "2026-01-10",
+                    "referenceRange": [
+                        {"low": {"value": 4.0}, "high": {"value": 5.6}},
+                    ],
+                    "_trend": {
+                        "direction": "rising",
+                        "delta": 0.3,
+                        "delta_percent": 4.35,
+                        "previous_value": 6.9,
+                        "previous_date": "2025-07-15",
+                        "timespan_days": 179,
+                    },
+                },
+            ],
+            "vital-signs": [
+                {
+                    "resourceType": "Observation",
+                    "id": "obs-sys-bp",
+                    "code": {"coding": [{"display": "Systolic blood pressure"}]},
+                    "valueQuantity": {"value": 138, "unit": "mmHg"},
+                    "effectiveDateTime": "2026-01-15",
+                },
+            ],
+            "survey": [],
+            "social-history": [],
+        },
+        "safety_constraints": {
+            "active_allergies": [
+                {
+                    "resourceType": "AllergyIntolerance",
+                    "id": "allergy-penicillin",
+                    "code": "Penicillin",
+                    "criticality": "high",
+                    "category": "medication",
+                },
+            ],
+            "drug_interactions_note": "Review active medications for potential interactions.",
+        },
+    }
+
+
+class TestBuildSystemPromptV2:
+    """Tests for build_system_prompt_v2 function."""
+
+    def test_minimal_summary_includes_role(self, minimal_compiled_summary: dict):
+        """Test that v2 prompt includes role/PCP persona."""
+        prompt = build_system_prompt_v2(minimal_compiled_summary)
+        assert "clinical reasoning assistant" in prompt
+        assert "primary care physician" in prompt
+
+    def test_minimal_summary_includes_patient_orientation(self, minimal_compiled_summary: dict):
+        """Test that v2 prompt includes patient orientation."""
+        prompt = build_system_prompt_v2(minimal_compiled_summary)
+        assert "Jane Doe" in prompt
+        assert "age 71" in prompt
+
+    def test_minimal_summary_includes_compilation_date(self, minimal_compiled_summary: dict):
+        """Test that v2 prompt includes compilation date."""
+        prompt = build_system_prompt_v2(minimal_compiled_summary)
+        assert "compiled 2026-02-05" in prompt
+
+    def test_minimal_summary_includes_reasoning_directives(self, minimal_compiled_summary: dict):
+        """Test that v2 prompt includes reasoning directives."""
+        prompt = build_system_prompt_v2(minimal_compiled_summary)
+        assert "Reasoning Directives" in prompt
+        assert "Absence reporting" in prompt
+        assert "Cross-condition reasoning" in prompt
+        assert "Tool-chain self-checking" in prompt
+        assert "Temporal awareness" in prompt
+        assert "Confidence calibration" in prompt
+
+    def test_minimal_summary_includes_tool_guidance(self, minimal_compiled_summary: dict):
+        """Test that v2 prompt includes tool descriptions and usage guidance."""
+        prompt = build_system_prompt_v2(minimal_compiled_summary)
+        assert "query_patient_data" in prompt
+        assert "explore_connections" in prompt
+        assert "get_patient_timeline" in prompt
+
+    def test_minimal_summary_includes_trend_guidance(self, minimal_compiled_summary: dict):
+        """Test that v2 prompt includes explicit _trend limitation guidance."""
+        prompt = build_system_prompt_v2(minimal_compiled_summary)
+        assert "_trend" in prompt
+        assert "ONE previous value" in prompt
+        assert "multi-point trend analysis" in prompt.lower()
+        assert "query_patient_data" in prompt
+
+    def test_minimal_summary_includes_dose_history_guidance(self, minimal_compiled_summary: dict):
+        """Test that v2 prompt includes explicit _dose_history guidance."""
+        prompt = build_system_prompt_v2(minimal_compiled_summary)
+        assert "_dose_history" in prompt
+        assert "dose changes" in prompt
+        assert "complete" in prompt.lower()
+
+    def test_minimal_summary_includes_safety(self, minimal_compiled_summary: dict):
+        """Test that v2 prompt includes safety constraints section."""
+        prompt = build_system_prompt_v2(minimal_compiled_summary)
+        assert "Safety Constraints" in prompt
+        assert "drug allergies" in prompt
+        assert "Never recommend starting, stopping, or changing medications" in prompt
+
+    def test_minimal_summary_includes_response_format(self, minimal_compiled_summary: dict):
+        """Test that v2 prompt includes response format guidance."""
+        prompt = build_system_prompt_v2(minimal_compiled_summary)
+        assert "Response Format" in prompt
+        assert "narrative" in prompt
+        assert "follow_ups" in prompt
+
+    def test_full_summary_includes_conditions(self, full_compiled_summary: dict):
+        """Test that v2 prompt includes active conditions."""
+        prompt = build_system_prompt_v2(full_compiled_summary)
+        assert "Type 2 diabetes mellitus" in prompt
+        assert "Essential hypertension" in prompt
+        assert "cond-diabetes" in prompt
+        assert "cond-hypertension" in prompt
+
+    def test_full_summary_includes_treating_medications(self, full_compiled_summary: dict):
+        """Test that v2 prompt includes treating medications with enrichments."""
+        prompt = build_system_prompt_v2(full_compiled_summary)
+        assert "Metformin 500 MG" in prompt
+        assert "Lisinopril 10 MG" in prompt
+        assert "established" in prompt
+        assert "3200d on therapy" in prompt
+
+    def test_full_summary_includes_dose_history_data(self, full_compiled_summary: dict):
+        """Test that v2 prompt includes dose history data when present."""
+        prompt = build_system_prompt_v2(full_compiled_summary)
+        assert "250 MG" in prompt
+        assert "2015-03-10" in prompt
+
+    def test_full_summary_includes_inferred_links(self, full_compiled_summary: dict):
+        """Test that v2 prompt shows inferred medication-condition links."""
+        prompt = build_system_prompt_v2(full_compiled_summary)
+        assert "inferred via encounter" in prompt
+
+    def test_full_summary_includes_recently_resolved(self, full_compiled_summary: dict):
+        """Test that v2 prompt includes recently resolved conditions."""
+        prompt = build_system_prompt_v2(full_compiled_summary)
+        assert "Recently Resolved" in prompt
+        assert "Acute bronchitis" in prompt
+
+    def test_full_summary_includes_unlinked_medications(self, full_compiled_summary: dict):
+        """Test that v2 prompt includes unlinked medications."""
+        prompt = build_system_prompt_v2(full_compiled_summary)
+        assert "Aspirin 81 MG" in prompt
+        assert "not linked to a condition" in prompt
+
+    def test_full_summary_includes_allergies(self, full_compiled_summary: dict):
+        """Test that v2 prompt includes allergies in summary and safety."""
+        prompt = build_system_prompt_v2(full_compiled_summary)
+        assert "Penicillin" in prompt
+        assert "high" in prompt
+
+    def test_full_summary_includes_immunizations(self, full_compiled_summary: dict):
+        """Test that v2 prompt includes immunizations."""
+        prompt = build_system_prompt_v2(full_compiled_summary)
+        assert "Influenza vaccine" in prompt
+        assert "2025-10-15" in prompt
+
+    def test_full_summary_includes_care_plans(self, full_compiled_summary: dict):
+        """Test that v2 prompt includes care plans (inline and standalone)."""
+        prompt = build_system_prompt_v2(full_compiled_summary)
+        assert "Diabetes self management plan" in prompt
+        assert "Routine wellness plan" in prompt
+
+    def test_full_summary_includes_encounters(self, full_compiled_summary: dict):
+        """Test that v2 prompt includes recent encounters."""
+        prompt = build_system_prompt_v2(full_compiled_summary)
+        assert "2026-01-15" in prompt
+        assert "General examination" in prompt
+        assert "good adherence" in prompt
+
+    def test_full_summary_includes_observations_with_trend(self, full_compiled_summary: dict):
+        """Test that v2 prompt includes observations with trend data."""
+        prompt = build_system_prompt_v2(full_compiled_summary)
+        assert "Hemoglobin A1c" in prompt
+        assert "7.2" in prompt
+        assert "rising" in prompt
+        assert "6.9" in prompt
+        assert "ref: 4.0-5.6" in prompt
+
+    def test_full_summary_includes_vital_signs(self, full_compiled_summary: dict):
+        """Test that v2 prompt includes vital signs."""
+        prompt = build_system_prompt_v2(full_compiled_summary)
+        assert "Systolic blood pressure" in prompt
+        assert "138" in prompt
+
+    def test_full_summary_safety_includes_allergy(self, full_compiled_summary: dict):
+        """Test that safety constraints include the allergy."""
+        prompt = build_system_prompt_v2(full_compiled_summary)
+        assert "ALLERGY: Penicillin" in prompt
+
+    def test_with_patient_profile(self, minimal_compiled_summary: dict):
+        """Test that patient profile is included when provided."""
+        profile = "Active retired teacher who enjoys gardening and cooking."
+        prompt = build_system_prompt_v2(minimal_compiled_summary, patient_profile=profile)
+        assert "Active retired teacher" in prompt
+        assert "Profile:" in prompt
+
+    def test_without_patient_profile(self, minimal_compiled_summary: dict):
+        """Test that profile section is absent when not provided."""
+        prompt = build_system_prompt_v2(minimal_compiled_summary)
+        assert "Profile:" not in prompt
+
+    def test_prompt_token_count_reasonable(self, full_compiled_summary: dict):
+        """Test that full prompt is within reasonable token range (~22-38k chars ~ 5.5-9.5k tokens)."""
+        profile = "Active retired teacher who enjoys gardening and has 3 grandchildren."
+        prompt = build_system_prompt_v2(full_compiled_summary, patient_profile=profile)
+        # The prompt itself (without a real patient with many conditions) should be
+        # well-structured. With a real patient the compiled summary would be much larger.
+        # For our test fixture, verify the prompt has reasonable structure.
+        char_count = len(prompt)
+        # At minimum the template + fixture data should be > 3000 chars
+        assert char_count > 3000, f"Prompt too short: {char_count} chars"
+        # With our test data it shouldn't exceed 10k chars
+        assert char_count < 10000, f"Prompt too long for test fixture: {char_count} chars"
+
+
+class TestFormatTier1Conditions:
+    """Tests for _format_tier1_conditions helper."""
+
+    def test_empty_conditions(self):
+        """Test formatting empty conditions list."""
+        result = _format_tier1_conditions([])
+        assert result == "No active conditions recorded."
+
+    def test_condition_with_all_enrichments(self):
+        """Test formatting a condition with all medication enrichments."""
+        conditions = [
+            {
+                "condition": {
+                    "resourceType": "Condition",
+                    "id": "cond-1",
+                    "code": {"coding": [{"display": "Diabetes"}]},
+                    "clinicalStatus": "Active",
+                    "onsetDateTime": "2020-01-01",
+                },
+                "treating_medications": [
+                    {
+                        "resourceType": "MedicationRequest",
+                        "id": "med-1",
+                        "medicationCodeableConcept": "Metformin 500 MG",
+                        "status": "active",
+                        "_recency": "established",
+                        "_duration_days": 1800,
+                        "_inferred": True,
+                        "_dose_history": [
+                            {"dose": "250 MG", "authoredOn": "2020-01-01", "status": "completed"},
+                        ],
+                    },
+                ],
+                "care_plans": [],
+                "related_procedures": [],
+            },
+        ]
+        result = _format_tier1_conditions(conditions)
+        assert "Diabetes" in result
+        assert "cond-1" in result
+        assert "Metformin 500 MG" in result
+        assert "established" in result
+        assert "1800d on therapy" in result
+        assert "inferred via encounter" in result
+        assert "250 MG" in result
+
+    def test_condition_with_care_plan_and_procedure(self):
+        """Test formatting a condition with care plans and procedures."""
+        conditions = [
+            {
+                "condition": {
+                    "id": "cond-2",
+                    "code": {"coding": [{"display": "Hypertension"}]},
+                    "clinicalStatus": "Active",
+                },
+                "treating_medications": [],
+                "care_plans": [
+                    {"category": "HTN management", "status": "active"},
+                ],
+                "related_procedures": [
+                    {"code": "Blood pressure monitoring"},
+                ],
+            },
+        ]
+        result = _format_tier1_conditions(conditions)
+        assert "Hypertension" in result
+        assert "CarePlan: HTN management" in result
+        assert "Procedure: Blood pressure monitoring" in result
+
+
+class TestFormatTier2Encounters:
+    """Tests for _format_tier2_encounters helper."""
+
+    def test_empty_encounters(self):
+        """Test formatting empty encounters list."""
+        result = _format_tier2_encounters([])
+        assert result == "No recent encounters."
+
+    def test_encounter_with_events_and_notes(self):
+        """Test formatting encounters with events and clinical notes."""
+        encounters = [
+            {
+                "encounter": {
+                    "id": "enc-1",
+                    "type": "Office visit",
+                    "class": {"code": "AMB"},
+                    "period": {"start": "2026-01-10"},
+                },
+                "events": {
+                    "DIAGNOSED": [
+                        {"code": {"coding": [{"display": "Common cold"}]}},
+                    ],
+                },
+                "clinical_notes": ["Patient presents with runny nose and cough."],
+            },
+        ]
+        result = _format_tier2_encounters(encounters)
+        assert "2026-01-10" in result
+        assert "Office visit" in result
+        assert "AMB" in result
+        assert "Common cold" in result
+        assert "runny nose" in result
+
+
+class TestFormatTier3Observations:
+    """Tests for _format_tier3_observations helper."""
+
+    def test_empty_observations(self):
+        """Test formatting empty observations."""
+        result = _format_tier3_observations({})
+        assert result == "No recent observations."
+
+    def test_observations_with_trend_and_ref_range(self):
+        """Test formatting observations with trend data and reference range."""
+        obs = {
+            "laboratory": [
+                {
+                    "code": {"coding": [{"display": "Glucose"}]},
+                    "valueQuantity": {"value": 120, "unit": "mg/dL"},
+                    "effectiveDateTime": "2026-01-05",
+                    "referenceRange": [
+                        {"low": {"value": 70}, "high": {"value": 100}},
+                    ],
+                    "_trend": {
+                        "direction": "rising",
+                        "previous_value": 95,
+                        "previous_date": "2025-07-01",
+                    },
+                },
+            ],
+        }
+        result = _format_tier3_observations(obs)
+        assert "Lab Results:" in result
+        assert "Glucose" in result
+        assert "120" in result
+        assert "mg/dL" in result
+        assert "ref: 70-100" in result
+        assert "rising" in result
+        assert "prev=95" in result
+
+    def test_observations_skips_empty_categories(self):
+        """Test that empty categories are omitted."""
+        obs = {
+            "laboratory": [],
+            "vital-signs": [
+                {
+                    "code": {"coding": [{"display": "Heart rate"}]},
+                    "valueQuantity": {"value": 72, "unit": "bpm"},
+                    "effectiveDateTime": "2026-01-15",
+                },
+            ],
+            "survey": [],
+        }
+        result = _format_tier3_observations(obs)
+        assert "Lab Results" not in result
+        assert "Vital Signs:" in result
+        assert "Heart rate" in result
+        assert "Surveys" not in result
+
+
+class TestFormatSafetyConstraintsV2:
+    """Tests for _format_safety_constraints_v2 helper."""
+
+    def test_no_allergies(self):
+        """Test safety constraints with no allergies."""
+        safety = {
+            "active_allergies": [{"note": "None recorded"}],
+            "drug_interactions_note": "Review active medications for potential interactions.",
+        }
+        result = _format_safety_constraints_v2(safety)
+        assert "No known allergies recorded" in result
+        assert "Review active medications" in result
+
+    def test_with_allergy(self):
+        """Test safety constraints with an allergy."""
+        safety = {
+            "active_allergies": [
+                {"code": "Penicillin", "criticality": "high"},
+            ],
+            "drug_interactions_note": "Review active medications for potential interactions.",
+        }
+        result = _format_safety_constraints_v2(safety)
+        assert "ALLERGY: Penicillin" in result
+        assert "high" in result
+
+    def test_empty_safety(self):
+        """Test safety constraints when empty."""
+        result = _format_safety_constraints_v2({})
+        assert result == "No specific safety constraints."
