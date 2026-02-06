@@ -651,3 +651,97 @@ class TestGenerateEmbeddings:
 
             # Verify close was called
             mock_service.close.assert_called_once()
+
+
+# =============================================================================
+# Tests for load_bundle compilation trigger
+# =============================================================================
+
+
+@pytest.mark.integration
+class TestLoadBundleCompilationTrigger:
+    """Tests that load_bundle triggers compile_and_store after loading.
+
+    Requires PostgreSQL and Neo4j to be running.
+    """
+
+    @pytest.mark.asyncio
+    async def test_load_bundle_populates_compiled_summary(
+        self, db_session, graph, sample_patient
+    ):
+        """load_bundle should populate compiled_summary on the Patient row."""
+        bundle = create_bundle([sample_patient])
+        patient_id = await load_bundle(db_session, graph, bundle)
+
+        result = await db_session.execute(
+            select(FhirResource).where(
+                FhirResource.patient_id == patient_id,
+                FhirResource.resource_type == "Patient",
+            )
+        )
+        patient = result.scalar_one()
+        assert patient.compiled_summary is not None
+        assert "patient_orientation" in patient.compiled_summary
+        assert patient.compiled_at is not None
+
+    @pytest.mark.asyncio
+    async def test_reload_bundle_recompiles_summary(
+        self, db_session, graph, sample_patient
+    ):
+        """Reloading a bundle should update compiled_summary."""
+        bundle = create_bundle([sample_patient])
+
+        # First load
+        patient_id = await load_bundle(db_session, graph, bundle)
+        await db_session.flush()
+
+        result = await db_session.execute(
+            select(FhirResource).where(
+                FhirResource.patient_id == patient_id,
+                FhirResource.resource_type == "Patient",
+            )
+        )
+        patient = result.scalar_one()
+        first_compiled_at = patient.compiled_at
+        assert first_compiled_at is not None
+
+        # Second load (recompile) — idempotent via upsert
+        await load_bundle(db_session, graph, bundle)
+
+        # Re-query to get updated row
+        result2 = await db_session.execute(
+            select(FhirResource).where(
+                FhirResource.patient_id == patient_id,
+                FhirResource.resource_type == "Patient",
+            )
+        )
+        patient2 = result2.scalar_one()
+        assert patient2.compiled_at is not None
+        assert patient2.compiled_at >= first_compiled_at
+
+    @pytest.mark.asyncio
+    async def test_compilation_failure_does_not_block_load(
+        self, db_session, graph, sample_patient
+    ):
+        """If compilation fails, load_bundle should still succeed."""
+        bundle = create_bundle([sample_patient])
+
+        with patch(
+            "app.services.fhir_loader.compile_and_store",
+            new_callable=AsyncMock,
+            side_effect=Exception("Compilation blew up"),
+        ):
+            patient_id = await load_bundle(db_session, graph, bundle)
+
+        # Bundle load should still succeed
+        assert patient_id is not None
+        result = await db_session.execute(
+            select(FhirResource).where(
+                FhirResource.patient_id == patient_id,
+                FhirResource.resource_type == "Patient",
+            )
+        )
+        patient = result.scalar_one()
+        assert patient is not None
+        # compiled_summary should be None since compilation failed
+        assert patient.compiled_summary is None

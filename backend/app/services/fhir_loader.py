@@ -12,6 +12,7 @@ from sqlalchemy import select, or_, and_
 from sqlalchemy.ext.asyncio import AsyncSession
 
 from app.models import FhirResource
+from app.services.compiler import compile_and_store
 from app.services.embeddings import EmbeddingService, resource_to_text
 from app.services.graph import KnowledgeGraph
 
@@ -154,6 +155,12 @@ async def load_bundle(
         _generate_embeddings(all_fhir_resources),
         graph.build_from_fhir(str(patient_id), resources_data),
     )
+
+    # Compile and store patient summary (requires graph + Postgres to be populated)
+    try:
+        await compile_and_store(patient_id, graph, db)
+    except Exception as e:
+        logger.warning("Failed to compile patient summary during bundle load: %s", e)
 
     return patient_id
 

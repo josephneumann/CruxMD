@@ -15,7 +15,7 @@ Provides functions to:
 import copy
 import logging
 import uuid
-from datetime import date, datetime, timedelta
+from datetime import date, datetime, timedelta, timezone
 from typing import Any
 
 from sqlalchemy import DateTime, func, or_, select
@@ -1261,3 +1261,81 @@ async def compile_patient_summary(
     summary["safety_constraints"] = safety_constraints
 
     return summary
+
+
+# =============================================================================
+# Compilation Storage
+# =============================================================================
+
+
+async def compile_and_store(
+    patient_id: uuid.UUID | str,
+    graph: KnowledgeGraph,
+    db: AsyncSession,
+) -> dict[str, Any]:
+    """Compile a patient summary and persist it to the Patient FhirResource row.
+
+    Calls compile_patient_summary, then writes the result to the
+    compiled_summary JSONB column and sets compiled_at on the Patient's
+    FhirResource row.
+
+    Args:
+        patient_id: The canonical patient UUID.
+        graph: KnowledgeGraph instance for traversal.
+        db: Async SQLAlchemy session.
+
+    Returns:
+        The compiled summary dict.
+
+    Raises:
+        ValueError: If no Patient FhirResource exists for the given ID.
+    """
+    if isinstance(patient_id, str):
+        patient_id = uuid.UUID(patient_id)
+
+    summary = await compile_patient_summary(patient_id, graph, db)
+
+    # Fetch the Patient FhirResource row
+    result = await db.execute(
+        select(FhirResource).where(
+            FhirResource.patient_id == patient_id,
+            FhirResource.resource_type == "Patient",
+        )
+    )
+    patient_row = result.scalar_one_or_none()
+    if patient_row is None:
+        raise ValueError(f"No Patient FhirResource found for patient_id={patient_id}")
+
+    patient_row.compiled_summary = summary
+    patient_row.compiled_at = datetime.now(timezone.utc)
+
+    logger.info("Compiled and stored summary for patient %s", patient_id)
+    return summary
+
+
+async def get_compiled_summary(
+    db: AsyncSession,
+    patient_id: uuid.UUID | str,
+) -> dict[str, Any] | None:
+    """Read a previously stored compiled patient summary.
+
+    Args:
+        db: Async SQLAlchemy session.
+        patient_id: The canonical patient UUID.
+
+    Returns:
+        The compiled summary dict, or None if not yet compiled.
+    """
+    if isinstance(patient_id, str):
+        patient_id = uuid.UUID(patient_id)
+
+    result = await db.execute(
+        select(FhirResource.compiled_summary).where(
+            FhirResource.patient_id == patient_id,
+            FhirResource.resource_type == "Patient",
+        )
+    )
+    row = result.first()
+    if row is None:
+        return None
+    return row.compiled_summary
