@@ -313,7 +313,7 @@ def _prune_fhir_resource(resource: dict[str, Any]) -> dict[str, Any]:
 
     Removes FHIR boilerplate (meta, system URIs, identifiers, narrative HTML),
     simplifies CodeableConcepts and References to display strings, decodes
-    base64 clinical note content, and truncates dates. The result contains
+    base64 clinical note content, and truncates dates.  The result contains
     every clinically relevant field in a compact, readable form.
     """
     # Pre-process: handle DocumentReference base64 content before recursion
@@ -324,8 +324,6 @@ def _prune_fhir_resource(resource: dict[str, Any]) -> dict[str, Any]:
             if attachment.get("data") and "text/plain" in attachment.get("contentType", ""):
                 try:
                     decoded = base64.b64decode(attachment["data"]).decode("utf-8")
-                    if len(decoded) > 1500:
-                        decoded = decoded[:1500] + "\n... (truncated)"
                     extra["clinical_note"] = decoded
                 except Exception:
                     pass

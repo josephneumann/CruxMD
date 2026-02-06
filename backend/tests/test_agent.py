@@ -3,6 +3,7 @@
 Tests LLM agent service with mocked OpenAI client to avoid real API calls.
 """
 
+import base64
 import json
 import uuid
 from unittest.mock import AsyncMock, MagicMock, patch
@@ -32,6 +33,7 @@ from app.services.agent import (
     _format_retrieved_context,
     _format_constraints,
     _get_display_name,
+    _prune_fhir_resource,
 )
 from app.services.agent_tools import TOOL_SCHEMAS, execute_tool
 
@@ -1149,3 +1151,132 @@ class TestToolUseStreamLoop:
         # .parse() called for tool rounds, .stream() for final
         assert mock_client.responses.parse.call_count == 2
         mock_client.responses.stream.assert_called_once()
+
+
+# =============================================================================
+# _prune_fhir_resource Tests
+# =============================================================================
+
+
+def _make_document_reference(note_text: str) -> dict:
+    """Build a minimal DocumentReference with base64-encoded note text."""
+    return {
+        "resourceType": "DocumentReference",
+        "id": "docref-test",
+        "status": "current",
+        "content": [
+            {
+                "attachment": {
+                    "contentType": "text/plain",
+                    "data": base64.b64encode(note_text.encode("utf-8")).decode("ascii"),
+                }
+            }
+        ],
+    }
+
+
+class TestPruneFhirResourceDocumentReference:
+    """Tests for _prune_fhir_resource handling of DocumentReference resources."""
+
+    def test_short_note_preserved(self):
+        """A clinical note under 1500 chars is fully preserved."""
+        note = "Patient presents with mild headache."
+        resource = _make_document_reference(note)
+        pruned = _prune_fhir_resource(resource)
+        assert pruned["clinical_note"] == note
+
+    def test_long_note_not_truncated(self):
+        """A clinical note over 1500 chars must NOT be truncated."""
+        note = "A" * 3000
+        resource = _make_document_reference(note)
+        pruned = _prune_fhir_resource(resource)
+        assert pruned["clinical_note"] == note
+        assert len(pruned["clinical_note"]) == 3000
+        assert "truncated" not in pruned["clinical_note"]
+
+    def test_raw_content_replaced_by_clinical_note(self):
+        """The raw base64 'content' key is dropped when clinical_note is decoded."""
+        note = "Decoded note text"
+        resource = _make_document_reference(note)
+        pruned = _prune_fhir_resource(resource)
+        assert "content" not in pruned
+        assert pruned["clinical_note"] == note
+
+    def test_non_text_plain_attachment_ignored(self):
+        """Attachments with non-text/plain contentType are not decoded."""
+        resource = {
+            "resourceType": "DocumentReference",
+            "id": "docref-pdf",
+            "status": "current",
+            "content": [
+                {
+                    "attachment": {
+                        "contentType": "application/pdf",
+                        "data": base64.b64encode(b"binary").decode("ascii"),
+                    }
+                }
+            ],
+        }
+        pruned = _prune_fhir_resource(resource)
+        assert "clinical_note" not in pruned
+
+    def test_strip_keys_removed(self):
+        """Standard FHIR boilerplate keys are stripped from DocumentReferences."""
+        resource = _make_document_reference("note")
+        resource["meta"] = {"versionId": "1"}
+        resource["text"] = {"div": "<div>html</div>"}
+        pruned = _prune_fhir_resource(resource)
+        assert "meta" not in pruned
+        assert "text" not in pruned
+
+    def test_enrichment_fields_pass_through(self):
+        """Enrichment fields (_trend, _recency, _inferred, _duration_days) survive pruning."""
+        resource = _make_document_reference("note")
+        resource["_trend"] = "improving"
+        resource["_recency"] = "recent"
+        resource["_inferred"] = True
+        resource["_duration_days"] = 30
+        pruned = _prune_fhir_resource(resource)
+        assert pruned["_trend"] == "improving"
+        assert pruned["_recency"] == "recent"
+        assert pruned["_inferred"] is True
+        assert pruned["_duration_days"] == 30
+
+
+class TestPruneFhirResourceGeneral:
+    """Tests for _prune_fhir_resource on non-DocumentReference resources."""
+
+    def test_enrichment_fields_pass_through_on_observation(self):
+        """Enrichment fields survive pruning on Observation resources."""
+        resource = {
+            "resourceType": "Observation",
+            "id": "obs-1",
+            "status": "final",
+            "_trend": "stable",
+            "_recency": "old",
+            "_inferred": False,
+            "_duration_days": 90,
+        }
+        pruned = _prune_fhir_resource(resource)
+        assert pruned["_trend"] == "stable"
+        assert pruned["_recency"] == "old"
+        assert pruned["_inferred"] is False
+        assert pruned["_duration_days"] == 90
+
+    def test_meta_and_text_stripped(self):
+        """Standard FHIR boilerplate is stripped from any resource type."""
+        resource = {
+            "resourceType": "Condition",
+            "id": "cond-1",
+            "meta": {"versionId": "1"},
+            "text": {"div": "<div>html</div>"},
+            "identifier": [{"value": "abc"}],
+            "clinicalStatus": {
+                "coding": [{"code": "active", "display": "Active"}]
+            },
+        }
+        pruned = _prune_fhir_resource(resource)
+        assert "meta" not in pruned
+        assert "text" not in pruned
+        assert "identifier" not in pruned
+        assert pruned["clinicalStatus"] == "Active"
