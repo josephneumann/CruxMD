@@ -236,7 +236,7 @@ async def chat(
 
     This endpoint:
     1. Validates the patient exists
-    2. Builds patient context using hybrid retrieval (graph + vector)
+    2. Loads pre-compiled patient summary (or compiles on-demand)
     3. Generates a structured response using the LLM agent
     4. Returns the response with conversation metadata
 

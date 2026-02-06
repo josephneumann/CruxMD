@@ -102,17 +102,6 @@ async def patient_in_db(test_engine, sample_patient_data: dict) -> uuid.UUID:
     return patient_uuid
 
 
-def _chat_patches():
-    """Return the standard set of patches for the v2 chat flow."""
-    return {
-        "get_compiled_summary": patch("app.routes.chat.get_compiled_summary"),
-        "compile_and_store": patch("app.routes.chat.compile_and_store"),
-        "build_system_prompt_v2": patch("app.routes.chat.build_system_prompt_v2"),
-        "agent_service": patch("app.routes.chat.AgentService"),
-        "knowledge_graph": patch("app.routes.chat.KnowledgeGraph"),
-    }
-
-
 # =============================================================================
 # Request Validation Tests
 # =============================================================================

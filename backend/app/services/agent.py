@@ -1238,7 +1238,9 @@ class AgentService:
 
         if system_prompt is not None:
             input_messages = self._build_input_messages_v2(system_prompt, message, history)
-            resolved_patient_id = patient_id or ""
+            if not patient_id:
+                raise ValueError("patient_id is required when using system_prompt")
+            resolved_patient_id = patient_id
         elif context is not None:
             input_messages = self._build_input_messages(context, message, history)
             resolved_patient_id = context.meta.patient_id
@@ -1339,7 +1341,9 @@ class AgentService:
 
         if system_prompt is not None:
             input_messages = self._build_input_messages_v2(system_prompt, message, history)
-            resolved_patient_id = patient_id or ""
+            if not patient_id:
+                raise ValueError("patient_id is required when using system_prompt")
+            resolved_patient_id = patient_id
         elif context is not None:
             input_messages = self._build_input_messages(context, message, history)
             resolved_patient_id = context.meta.patient_id
