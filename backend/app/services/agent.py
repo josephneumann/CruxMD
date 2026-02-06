@@ -603,9 +603,15 @@ def _unlinked_med_display(med: dict[str, Any]) -> str:
 
 def _care_plan_display(cp: dict[str, Any]) -> str:
     """Format a standalone care plan for display."""
-    display = _get_display_name(cp) or cp.get("title", "Unknown care plan")
-    if display in ("Unknown care plan",) and isinstance(cp.get("category"), str):
-        display = cp["category"]
+    cat_val = cp.get("category")
+    if isinstance(cat_val, str):
+        display = cat_val
+    else:
+        code_val = cp.get("code")
+        if isinstance(code_val, str):
+            display = code_val
+        else:
+            display = _get_display_name(cp) or cp.get("title", "Unknown care plan")
     status = cp.get("status", "unknown")
     return f"{display} (status: {status})"
 
@@ -645,9 +651,11 @@ def _format_tier2_encounters(encounters: list[dict[str, Any]]) -> str:
             if not resources:
                 continue
             for r in resources:
-                r_display = _get_display_name(r) or r.get("resourceType", "?")
-                if r_display in ("?",) and isinstance(r.get("code"), str):
-                    r_display = r["code"]
+                code_val = r.get("code")
+                if isinstance(code_val, str):
+                    r_display = code_val
+                else:
+                    r_display = _get_display_name(r) or r.get("resourceType", "?")
                 lines.append(f"    {rel_type}: {r_display}")
 
         # Clinical notes
@@ -675,9 +683,11 @@ def _format_tier3_observations(obs_by_category: dict[str, list[dict[str, Any]]])
         label = category_labels.get(category, category.title())
         lines.append(f"\n  {label}:")
         for obs in obs_list:
-            obs_display = _get_display_name(obs) or "Unknown observation"
-            if obs_display == "Unknown observation" and isinstance(obs.get("code"), str):
-                obs_display = obs["code"]
+            code_val = obs.get("code")
+            if isinstance(code_val, str):
+                obs_display = code_val
+            else:
+                obs_display = _get_display_name(obs) or "Unknown observation"
 
             value_str = ""
             vq = obs.get("valueQuantity")
