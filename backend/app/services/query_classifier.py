@@ -1,12 +1,16 @@
-"""Adaptive query classifier for fast chart lookups vs standard clinical reasoning.
+"""Adaptive query classifier for three-tier query routing.
 
-Classifies user messages into FAST (chart lookup) or STANDARD (clinical reasoning)
-tiers using a pure heuristic approach — no LLM call, zero I/O.
+Classifies user messages into LIGHTNING (pure fact extraction), QUICK (light
+reasoning with tools), or DEEP (full clinical reasoning) tiers using a pure
+heuristic approach — no LLM call, zero I/O.
 
-FAST queries (meds, allergies, labs, conditions, vitals) are answerable directly
-from the pre-compiled patient summary with lower reasoning effort and no tools.
+LIGHTNING queries (meds, allergies, labs, conditions, vitals) are answerable
+directly from the pre-compiled patient summary with a non-reasoning model.
 
-STANDARD queries (interactions, trends, interpretations) require full clinical
+QUICK queries need light reasoning or tool access — date-filtered lookups,
+conversation follow-ups with chart entities.
+
+DEEP queries (interactions, trends, interpretations) require full clinical
 reasoning with tools and higher token limits.
 """
 
@@ -19,34 +23,59 @@ from typing import Literal
 
 
 class QueryTier(str, Enum):
-    FAST = "fast"         # Chart lookup answerable from compiled summary
-    STANDARD = "standard" # Clinical reasoning, tool use, complex analysis
+    LIGHTNING = "lightning"  # Pure fact extraction, no reasoning
+    QUICK = "quick"          # Light reasoning, optional tools
+    DEEP = "deep"            # Full clinical reasoning
 
 
 @dataclass(frozen=True, slots=True)
 class QueryProfile:
     tier: QueryTier
+    model: str
+    reasoning: bool
     reasoning_effort: Literal["low", "medium", "high"]
     include_tools: bool
     max_output_tokens: int
-    system_prompt_mode: Literal["fast", "standard"]
+    system_prompt_mode: Literal["lightning", "fast", "standard"]
+    response_schema: str
 
 
-FAST_PROFILE = QueryProfile(
-    tier=QueryTier.FAST,
+LIGHTNING_PROFILE = QueryProfile(
+    tier=QueryTier.LIGHTNING,
+    model="gpt-4o-mini",
+    reasoning=False,
     reasoning_effort="low",
     include_tools=False,
-    max_output_tokens=4096,
-    system_prompt_mode="fast",
+    max_output_tokens=2048,
+    system_prompt_mode="lightning",
+    response_schema="lightning",
 )
 
-STANDARD_PROFILE = QueryProfile(
-    tier=QueryTier.STANDARD,
+QUICK_PROFILE = QueryProfile(
+    tier=QueryTier.QUICK,
+    model="gpt-5-mini",
+    reasoning=True,
+    reasoning_effort="low",
+    include_tools=True,
+    max_output_tokens=4096,
+    system_prompt_mode="fast",
+    response_schema="full",
+)
+
+DEEP_PROFILE = QueryProfile(
+    tier=QueryTier.DEEP,
+    model="gpt-5-mini",
+    reasoning=True,
     reasoning_effort="medium",
     include_tools=True,
     max_output_tokens=16384,
     system_prompt_mode="standard",
+    response_schema="full",
 )
+
+# Backward-compatible aliases for downstream consumers not yet updated
+FAST_PROFILE = LIGHTNING_PROFILE
+STANDARD_PROFILE = DEEP_PROFILE
 
 
 # ── Keyword / phrase sets ────────────────────────────────────────────────────
@@ -123,6 +152,17 @@ _SEARCH_PATTERNS = (
     "search for", "search ", "look up", "look for", "find ",
 )
 
+# Temporal modifiers that upgrade LIGHTNING → QUICK
+_TEMPORAL_MODIFIERS = (
+    "from ", "since ", "after ", "before ", "during ",
+    "in the last ", "in the past ", "over the last ",
+    "last month", "last year", "last week",
+    "this month", "this year", "this week",
+    "january", "february", "march", "april", "may", "june",
+    "july", "august", "september", "october", "november", "december",
+    "2024", "2025", "2026",
+)
+
 # Word boundary pattern for matching chart entities
 _WORD_BOUNDARY = re.compile(r"\b\w+\b")
 
@@ -177,45 +217,59 @@ def _has_search_pattern(msg: str) -> bool:
     return False
 
 
-def classify_query(message: str) -> QueryProfile:
-    """Classify a user message into FAST or STANDARD query profile.
+def _has_temporal_modifier(msg: str) -> bool:
+    """Check if message contains date-filtering language."""
+    for modifier in _TEMPORAL_MODIFIERS:
+        if modifier in msg:
+            return True
+    return False
 
-    Pure function, zero I/O. Three independent paths to FAST;
-    default is always STANDARD.
+
+def classify_query(message: str, *, has_history: bool = False) -> QueryProfile:
+    """Classify a user message into LIGHTNING, QUICK, or DEEP query profile.
+
+    Pure function, zero I/O. Three independent paths to LIGHTNING;
+    temporal modifiers and conversation history upgrade to QUICK;
+    default is always DEEP.
 
     Args:
         message: The user's chat message.
+        has_history: Whether conversation history is present. When True,
+            queries that would be LIGHTNING are upgraded to QUICK because
+            a non-reasoning model can't handle conversational context.
 
     Returns:
-        QueryProfile (FAST_PROFILE or STANDARD_PROFILE).
+        QueryProfile (LIGHTNING_PROFILE, QUICK_PROFILE, or DEEP_PROFILE).
     """
     # 1. Normalize
     msg = message.strip().lower()
 
-    # 2. STANDARD if empty, >200 chars, conversation refs, search requests
+    # 2. DEEP if empty, >200 chars, conversation refs, search requests
     if not msg:
-        return STANDARD_PROFILE
+        return DEEP_PROFILE
     if len(msg) > 200:
-        return STANDARD_PROFILE
+        return DEEP_PROFILE
     if _has_conversation_ref(msg):
-        return STANDARD_PROFILE
+        return DEEP_PROFILE
     if _has_search_pattern(msg):
-        return STANDARD_PROFILE
+        return DEEP_PROFILE
 
-    # 3. STANDARD if reasoning keyword present
+    # 3. DEEP if reasoning keyword present
     if _has_reasoning_keyword(msg):
-        return STANDARD_PROFILE
+        return DEEP_PROFILE
 
-    # 3b. STANDARD if analytical phrase present
+    # 3b. DEEP if analytical phrase present
     if _has_analytical_phrase(msg):
-        return STANDARD_PROFILE
+        return DEEP_PROFILE
 
     # Extract words for entity matching
     words = set(_WORD_BOUNDARY.findall(msg))
 
-    # 4A. Chart entity + lookup prefix → FAST
+    # 4A. Chart entity + lookup prefix → LIGHTNING (or QUICK with guards)
     if _has_chart_entity(msg, words) and _has_lookup_prefix(msg):
-        return FAST_PROFILE
+        if _has_temporal_modifier(msg) or has_history:
+            return QUICK_PROFILE
+        return LIGHTNING_PROFILE
 
     # 4B. Bare entity shortcut (≤30 chars after stripping punctuation)
     # Excludes follow-up shorthand ("and the ...", "also ...", "how about ...")
@@ -224,13 +278,17 @@ def classify_query(message: str) -> QueryProfile:
     if len(bare) <= 30 and _has_chart_entity(msg, words) and not any(
         bare.startswith(s) for s in _follow_up_starts
     ):
-        return FAST_PROFILE
+        if _has_temporal_modifier(msg) or has_history:
+            return QUICK_PROFILE
+        return LIGHTNING_PROFILE
 
     # 4C. Specific-item patterns (≤100 chars)
     if len(msg) <= 100:
         for starter in _SPECIFIC_ITEM_STARTERS:
             if msg.startswith(starter):
-                return FAST_PROFILE
+                if _has_temporal_modifier(msg) or has_history:
+                    return QUICK_PROFILE
+                return LIGHTNING_PROFILE
 
-    # 5. Default → STANDARD
-    return STANDARD_PROFILE
+    # 5. Default → DEEP
+    return DEEP_PROFILE
