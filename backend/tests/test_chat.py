@@ -15,12 +15,9 @@ from unittest.mock import AsyncMock, MagicMock, patch
 
 import pytest
 import pytest_asyncio
-from httpx import ASGITransport, AsyncClient
+from httpx import AsyncClient
 from sqlalchemy.ext.asyncio import AsyncSession, async_sessionmaker
 
-from app.config import settings
-from app.database import Base, get_db
-from app.main import app
 from app.models import FhirResource
 from app.schemas import AgentResponse, FollowUp, Insight
 from app.schemas.context import (

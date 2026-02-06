@@ -13,6 +13,7 @@ export function useThinkingAnimation(isThinking: boolean): string {
   useEffect(() => {
     if (!isThinking) return;
 
+    // eslint-disable-next-line react-hooks/set-state-in-effect -- reset index before starting interval
     setVerbIndex(0);
 
     const interval = setInterval(() => {

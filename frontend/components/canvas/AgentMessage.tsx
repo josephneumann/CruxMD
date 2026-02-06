@@ -50,6 +50,7 @@ function useTypewriter(
   const [charCount, setCharCount] = useState(active ? 0 : fullText.length);
   const intervalRef = useRef<ReturnType<typeof setInterval> | null>(null);
   const onTickRef = useRef(onTick);
+  // eslint-disable-next-line react-hooks/refs -- sync ref pattern for stable callback in interval
   onTickRef.current = onTick;
 
   useEffect(() => {

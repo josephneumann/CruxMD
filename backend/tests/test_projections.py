@@ -2,9 +2,8 @@
 
 import json
 import uuid
-from datetime import date, datetime, timezone
+from datetime import date
 
-import pytest
 
 from app.projections.registry import FieldExtractor, ProjectionConfig, ProjectionRegistry
 from app.projections.serializers.task import TaskFhirSerializer

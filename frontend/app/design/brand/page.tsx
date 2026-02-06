@@ -1,5 +1,5 @@
 import NextImage from "next/image";
-import { AlertCircle, Check, X } from "lucide-react";
+import { Check, X } from "lucide-react";
 
 function Principle({ number, title, description }: { number: number; title: string; description: string }) {
   return (

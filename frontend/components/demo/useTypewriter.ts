@@ -51,6 +51,7 @@ export function useTypewriter(
 
   // Reset when text changes
   useEffect(() => {
+    // eslint-disable-next-line react-hooks/set-state-in-effect -- reset on text change
     setCharIndex(0);
     lastGrowCallRef.current = 0;
   }, [text]);
@@ -121,6 +122,7 @@ export function useTypewriter(
     if (!active) return;
 
     // Reset to start when activating
+    // eslint-disable-next-line react-hooks/set-state-in-effect -- reset before starting interval
     setCharIndex(0);
     lastGrowCallRef.current = 0;
 

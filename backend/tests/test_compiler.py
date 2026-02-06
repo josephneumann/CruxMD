@@ -824,7 +824,6 @@ class TestFetchResourcesByFhirIds:
     @pytest.mark.asyncio
     async def test_no_patient_scoping(self, db_session: AsyncSession):
         """Without patient_id, returns all matching resources."""
-        patient_a = uuid.uuid4()
         r1 = FhirResource(
             fhir_id="med-shared",
             resource_type="Medication",

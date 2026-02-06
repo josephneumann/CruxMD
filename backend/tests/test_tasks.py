@@ -1,6 +1,5 @@
 """Tests for task API routes."""
 
-import uuid
 
 import pytest
 import pytest_asyncio

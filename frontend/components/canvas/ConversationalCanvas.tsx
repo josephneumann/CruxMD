@@ -1,7 +1,6 @@
 "use client";
 
 import { useState, useEffect, useCallback, useRef } from "react";
-import Image from "next/image";
 import { useTheme } from "next-themes";
 import { useChat } from "@/hooks";
 import { MessageHistory } from "./MessageHistory";

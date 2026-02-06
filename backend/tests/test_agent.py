@@ -23,7 +23,6 @@ from app.services.agent import (
     DEFAULT_MODEL,
     DEFAULT_REASONING_EFFORT,
     DEFAULT_MAX_OUTPUT_TOKENS,
-    MAX_TOOL_ROUNDS,
     build_system_prompt,
     _format_patient_info,
     _format_resource_list,

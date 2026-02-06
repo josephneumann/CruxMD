@@ -476,7 +476,8 @@ export function DemoCanvas({ scenario, phase: rawPhase, avatar, onContentGrow }:
   }, [scenario.id]);
 
   // Set up timers for agent_task items to transition from "in progress" to "completed"
-  const completions = scenario.epilogue?.completions ?? [];
+  // eslint-disable-next-line react-hooks/exhaustive-deps -- completions derived from scenario prop
+  const completions = useMemo(() => scenario.epilogue?.completions ?? [], [scenario.id]);
   const interactionPhases = scenario.interactions.length * PHASES_PER_INTERACTION;
   const interactionPhase = phase - TRIAGE_PHASES;
   const epiloguePhase = interactionPhase - interactionPhases;
@@ -499,8 +500,9 @@ export function DemoCanvas({ scenario, phase: rawPhase, avatar, onContentGrow }:
     }
 
     // Cleanup timers on unmount
+    const timers = timersRef.current;
     return () => {
-      timersRef.current.forEach((timer) => clearTimeout(timer));
+      timers.forEach((timer) => clearTimeout(timer));
     };
   }, [checkedCount, completions, completedAgentTasks]);
 

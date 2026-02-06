@@ -31,14 +31,6 @@ import {
   DialogTitle,
   DialogFooter,
 } from "@/components/ui/dialog";
-import {
-  Table,
-  TableBody,
-  TableCell,
-  TableHead,
-  TableHeader,
-  TableRow,
-} from "@/components/ui/table";
 import { useSessions } from "@/hooks";
 import type { PatientListItem, SessionResponse } from "@/lib/types";
 import { parsePatientList } from "@/lib/types";
@@ -46,7 +38,6 @@ import {
   getPatientDisplayName,
   getPatientInitials,
   getPatientAvatarUrl,
-  formatFhirDate,
 } from "@/lib/utils";
 
 /**

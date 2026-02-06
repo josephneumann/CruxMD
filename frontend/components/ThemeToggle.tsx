@@ -13,12 +13,11 @@ import {
 } from "@/components/ui/select";
 
 export function ThemeToggle() {
-  const { theme, setTheme, resolvedTheme } = useTheme();
+  const { theme, setTheme } = useTheme();
   const [mounted, setMounted] = useState(false);
 
-  useEffect(() => {
-    setMounted(true);
-  }, []);
+  // eslint-disable-next-line react-hooks/set-state-in-effect -- standard hydration pattern
+  useEffect(() => { setMounted(true); }, []);
 
   if (!mounted) {
     return (

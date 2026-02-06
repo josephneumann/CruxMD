@@ -664,6 +664,7 @@ export function useChat(patientId: string | null, sessionId?: string): UseChatRe
         setIsLoading(false);
       }
     },
+    // eslint-disable-next-line react-hooks/exhaustive-deps -- sessionId used for cache key
     [patientId, sessionId, model, reasoningEffort, sendStreaming, sendNonStreaming]
   );
 

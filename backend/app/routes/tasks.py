@@ -10,6 +10,7 @@ from fastapi import APIRouter, Depends, HTTPException, Query, status
 from sqlalchemy.ext.asyncio import AsyncSession
 
 from app.auth import verify_bearer_token
+from app.constants import DEFAULT_PAGE_SIZE, MAX_PAGE_SIZE
 from app.database import get_db
 from app.repositories.task import TaskNotFoundError, TaskRepository, projection_to_response
 from app.schemas.task import (
@@ -24,8 +25,6 @@ from app.schemas.task import (
 )
 
 router = APIRouter(prefix="/tasks", tags=["tasks"])
-
-from app.constants import DEFAULT_PAGE_SIZE, MAX_PAGE_SIZE
 
 
 @router.get("", response_model=TaskListResponse)

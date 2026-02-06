@@ -1,6 +1,5 @@
 """Tests for shared FHIR helper utilities."""
 
-import pytest
 
 from app.utils.fhir_helpers import (
     extract_clinical_status,

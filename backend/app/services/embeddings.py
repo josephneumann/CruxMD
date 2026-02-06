@@ -586,12 +586,10 @@ def _template_explanation_of_benefit(resource: dict[str, Any]) -> str:
 
     # Total amount
     total_amount = ""
-    total_currency = ""
     totals = resource.get("total", [])
     if totals:
         amount_obj = totals[0].get("amount", {})
         total_amount = amount_obj.get("value", "")
-        total_currency = amount_obj.get("currency", "USD")
 
     # Payment amount
     payment_amount = ""

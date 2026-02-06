@@ -45,22 +45,14 @@ export function Sidebar({ className }: SidebarProps) {
   const isOnChat = pathname?.startsWith("/chat");
 
   const userName = session?.user?.name || "User";
-  const userInitials = userName
-    .split(" ")
-    .map((n) => n[0])
-    .join("")
-    .slice(0, 2)
-    .toUpperCase();
 
   // Avoid hydration mismatch by only rendering theme-dependent content after mount
-  useEffect(() => {
-    setMounted(true);
-  }, []);
+  // eslint-disable-next-line react-hooks/set-state-in-effect -- standard hydration pattern
+  useEffect(() => { setMounted(true); }, []);
 
   // Close mobile sidebar on route change
-  useEffect(() => {
-    setMobileOpen(false);
-  }, [pathname]);
+  // eslint-disable-next-line react-hooks/set-state-in-effect -- reset on navigation
+  useEffect(() => { setMobileOpen(false); }, [pathname]);
 
   // Close user menu on outside click
   useEffect(() => {

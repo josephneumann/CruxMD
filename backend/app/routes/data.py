@@ -10,13 +10,11 @@ from sqlalchemy import select
 from sqlalchemy.ext.asyncio import AsyncSession
 
 from app.auth import verify_bearer_token
+from app.constants import DEFAULT_PAGE_SIZE, MAX_PAGE_SIZE
 from app.database import get_db
 from app.models import FhirResource
 
 router = APIRouter(prefix="/patients", tags=["patient-data"])
-
-
-from app.constants import DEFAULT_PAGE_SIZE, MAX_PAGE_SIZE
 
 # Clinical status constants
 ACTIVE_MEDICATION_STATUSES = {"active", "on-hold"}

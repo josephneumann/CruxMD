@@ -120,6 +120,7 @@ export function useAutoplay(triggerRef: React.RefObject<HTMLElement | null>, sce
     return () => {
       if (timerRef.current) clearTimeout(timerRef.current);
     };
+  // eslint-disable-next-line react-hooks/exhaustive-deps -- totalPhases derived from scenario
   }, [phase, isPlaying, advance, scenario]);
 
   // IntersectionObserver — start when visible

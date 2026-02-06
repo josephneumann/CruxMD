@@ -17,6 +17,7 @@ export function StreamingText({ text, isStreaming, onComplete }: StreamingTextPr
 
   useEffect(() => {
     if (!isStreaming) {
+      // eslint-disable-next-line react-hooks/set-state-in-effect -- sync display when not streaming
       setDisplayedChars(text.length);
       return;
     }

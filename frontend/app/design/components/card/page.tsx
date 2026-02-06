@@ -8,13 +8,11 @@ import {
   CardDescription,
   CardContent,
   CardFooter,
-  CardAction,
 } from "@/components/ui/card";
 import { Button } from "@/components/ui/button";
 import { Badge } from "@/components/ui/badge";
-import { Avatar, AvatarFallback } from "@/components/ui/avatar";
 import { PatientSummaryCard } from "@/components/patient/PatientSummaryCard";
-import { ComponentPreview, PreviewGrid } from "@/components/design-system/ComponentPreview";
+import { PreviewGrid } from "@/components/design-system/ComponentPreview";
 import { PropsTable } from "@/components/design-system/PropsTable";
 import { cn } from "@/lib/utils";
 import {

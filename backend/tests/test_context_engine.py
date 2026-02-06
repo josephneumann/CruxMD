@@ -6,16 +6,14 @@ constraint generation.
 """
 
 import uuid
-from unittest.mock import AsyncMock, MagicMock, patch
+from unittest.mock import AsyncMock, MagicMock
 
 import pytest
 import pytest_asyncio
-from sqlalchemy.ext.asyncio import AsyncSession
 
 from app.schemas.context import (
     PatientContext,
     RetrievedLayer,
-    RetrievedResource,
     VerifiedLayer,
 )
 from app.schemas.quick_actions import QuickAction
@@ -24,8 +22,6 @@ from app.services.context_engine import (
     CLINICALLY_SIGNIFICANT_TERMS,
     ContextEngine,
     DEFAULT_TOKEN_BUDGET,
-    DEFAULT_RETRIEVAL_LIMIT,
-    DEFAULT_SIMILARITY_THRESHOLD,
     _generate_allergy_constraints,
     _generate_condition_constraints,
     _generate_medication_constraints,
@@ -540,7 +536,7 @@ class TestBuildGraphTraversalLayer:
             "medication_administrations": [],
         }
 
-        result = await context_engine._build_graph_traversal_layer(
+        await context_engine._build_graph_traversal_layer(
             patient_id, "office visit"
         )
 

@@ -37,9 +37,8 @@ export function DocsSidebar() {
   const [mobileOpen, setMobileOpen] = useState(false);
 
   // Close mobile sidebar on route change
-  useEffect(() => {
-    setMobileOpen(false);
-  }, [pathname]);
+  // eslint-disable-next-line react-hooks/set-state-in-effect -- reset on navigation
+  useEffect(() => { setMobileOpen(false); }, [pathname]);
 
   const closeMobile = useCallback(() => setMobileOpen(false), []);
 

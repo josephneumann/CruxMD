@@ -29,7 +29,8 @@ def _strip_numbers_from_name(name_obj: dict[str, Any]) -> dict[str, Any]:
     Synthea appends numeric suffixes to patient names (e.g. "Andrés117").
     This cleans given, family, text, and prefix/suffix fields.
     """
-    strip = lambda s: re.sub(r"\d+", "", s).strip() if isinstance(s, str) else s
+    def strip(s: str | Any) -> str | Any:
+        return re.sub(r"\d+", "", s).strip() if isinstance(s, str) else s
 
     for field in ("family", "text"):
         if field in name_obj:

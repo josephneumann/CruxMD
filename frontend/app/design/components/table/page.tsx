@@ -3,7 +3,7 @@
 import { Badge } from "@/components/ui/badge";
 import { Card, CardHeader, CardTitle, CardContent } from "@/components/ui/card";
 import { CodeBlock } from "@/components/design-system/CodeBlock";
-import { TrendingUp, TrendingDown, Minus } from "lucide-react";
+import { TrendingUp, TrendingDown } from "lucide-react";
 
 const labResults = [
   { test: "White Blood Cells", value: "7.5", unit: "K/uL", range: "4.5-11.0", status: "normal", date: "01/25/2026" },
@@ -190,12 +190,12 @@ export default function TablePage() {
               <tr>
                 <td className="p-3 font-mono text-sm">variant</td>
                 <td className="p-3 text-sm text-muted-foreground">string</td>
-                <td className="p-3 font-mono text-sm">"default"</td>
+                <td className="p-3 font-mono text-sm">&quot;default&quot;</td>
               </tr>
               <tr>
                 <td className="p-3 font-mono text-sm">size</td>
                 <td className="p-3 text-sm text-muted-foreground">string</td>
-                <td className="p-3 font-mono text-sm">"md"</td>
+                <td className="p-3 font-mono text-sm">&quot;md&quot;</td>
               </tr>
             </tbody>
           </table>
