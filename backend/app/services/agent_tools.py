@@ -28,15 +28,6 @@ _SEMANTIC_FALLBACK_THRESHOLD = 3
 # Similarity threshold for pgvector semantic search (0-1)
 _SEMANTIC_SIMILARITY_THRESHOLD = 0.4
 
-# Valid FHIR resource types for the resource_type filter
-_VALID_RESOURCE_TYPES = frozenset([
-    "Condition", "MedicationRequest", "AllergyIntolerance", "Observation",
-    "Procedure", "DiagnosticReport", "Encounter", "Immunization",
-    "CarePlan", "DocumentReference", "ImagingStudy", "Device",
-    "CareTeam", "MedicationAdministration", "Claim",
-    "ExplanationOfBenefit", "SupplyDelivery",
-])
-
 
 # =============================================================================
 # Tool Schemas (OpenAI function calling format)
@@ -319,7 +310,7 @@ async def query_patient_data(
             return json.dumps({
                 "results": [],
                 "total": 0,
-                "message": f"No results found for the given criteria.",
+                "message": "No results found for the given criteria.",
             })
 
         return json.dumps({
@@ -352,8 +343,10 @@ async def _query_exact(
         conditions.append(FhirResource.resource_type == resource_type)
 
     if name:
+        # Escape SQL LIKE wildcards in user-provided search term
+        safe_name = name.replace("%", r"\%").replace("_", r"\_")
         conditions.append(
-            FhirResource.embedding_text.ilike(f"%{name}%")
+            FhirResource.embedding_text.ilike(f"%{safe_name}%")
         )
 
     if status:
