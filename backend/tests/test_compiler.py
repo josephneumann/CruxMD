@@ -31,12 +31,14 @@ from app.services.compiler import (
     _extract_loinc_code,
     _extract_med_display,
     _parse_fhir_datetime,
+    compile_and_store,
     compile_node_context,
     compile_patient_summary,
     compute_dose_history,
     compute_medication_recency,
     compute_observation_trends,
     fetch_resources_by_fhir_ids,
+    get_compiled_summary,
     get_latest_observations_by_category,
     infer_medication_condition_links,
     prune_and_enrich,
@@ -2996,3 +2998,228 @@ class TestCompilePatientSummary:
 
         # Should have today's date
         assert result["compilation_date"] == date.today().isoformat()
+
+
+# =============================================================================
+# Tests for compile_and_store
+# =============================================================================
+
+
+class TestCompileAndStore:
+    """Tests for compile_and_store() — compile + persist to DB."""
+
+    @pytest.mark.asyncio
+    async def test_stores_summary_and_compiled_at(self, db_session: AsyncSession):
+        """Should persist compiled_summary and compiled_at on Patient row."""
+        patient_id = uuid.uuid4()
+        patient_data = _make_patient_resource()
+        db_session.add(FhirResource(
+            id=patient_id,
+            fhir_id="patient-1",
+            resource_type="Patient",
+            patient_id=patient_id,
+            data=patient_data,
+        ))
+        await db_session.flush()
+
+        mock_graph = _setup_mock_graph()
+
+        result = await compile_and_store(patient_id, mock_graph, db_session)
+
+        # Verify the summary was returned
+        assert "patient_orientation" in result
+        assert "compilation_date" in result
+
+        # Verify it was persisted on the Patient row
+        from sqlalchemy import select as sa_select
+        row = await db_session.execute(
+            sa_select(FhirResource).where(
+                FhirResource.patient_id == patient_id,
+                FhirResource.resource_type == "Patient",
+            )
+        )
+        patient_row = row.scalar_one()
+        assert patient_row.compiled_summary is not None
+        assert patient_row.compiled_summary["patient_orientation"] == result["patient_orientation"]
+        assert patient_row.compiled_at is not None
+
+    @pytest.mark.asyncio
+    async def test_accepts_string_patient_id(self, db_session: AsyncSession):
+        """Should accept patient_id as string and convert to UUID."""
+        patient_id = uuid.uuid4()
+        db_session.add(FhirResource(
+            id=patient_id,
+            fhir_id="patient-str",
+            resource_type="Patient",
+            patient_id=patient_id,
+            data=_make_patient_resource(fhir_id="patient-str"),
+        ))
+        await db_session.flush()
+
+        mock_graph = _setup_mock_graph()
+        result = await compile_and_store(str(patient_id), mock_graph, db_session)
+        assert "patient_orientation" in result
+
+    @pytest.mark.asyncio
+    async def test_raises_for_missing_patient(self, db_session: AsyncSession):
+        """Should raise ValueError if no Patient FhirResource exists."""
+        mock_graph = _setup_mock_graph()
+        with pytest.raises(ValueError, match="No Patient FhirResource found"):
+            await compile_and_store(uuid.uuid4(), mock_graph, db_session)
+
+    @pytest.mark.asyncio
+    async def test_overwrites_existing_summary(self, db_session: AsyncSession):
+        """Re-compilation should overwrite existing compiled_summary."""
+        patient_id = uuid.uuid4()
+        db_session.add(FhirResource(
+            id=patient_id,
+            fhir_id="patient-overwrite",
+            resource_type="Patient",
+            patient_id=patient_id,
+            data=_make_patient_resource(fhir_id="patient-overwrite"),
+            compiled_summary={"old": "summary"},
+        ))
+        await db_session.flush()
+
+        mock_graph = _setup_mock_graph()
+        result = await compile_and_store(patient_id, mock_graph, db_session)
+
+        # Should have the new summary, not the old one
+        assert "old" not in result
+        assert "patient_orientation" in result
+
+        from sqlalchemy import select as sa_select
+        row = await db_session.execute(
+            sa_select(FhirResource).where(
+                FhirResource.patient_id == patient_id,
+                FhirResource.resource_type == "Patient",
+            )
+        )
+        patient_row = row.scalar_one()
+        assert "old" not in patient_row.compiled_summary
+        assert patient_row.compiled_summary["patient_orientation"] == result["patient_orientation"]
+
+
+# =============================================================================
+# Tests for get_compiled_summary
+# =============================================================================
+
+
+class TestGetCompiledSummary:
+    """Tests for get_compiled_summary() — read stored summary."""
+
+    @pytest.mark.asyncio
+    async def test_returns_stored_summary(self, db_session: AsyncSession):
+        """Should return the stored compiled_summary dict."""
+        patient_id = uuid.uuid4()
+        summary_data = {"patient_orientation": "Jane Doe", "compilation_date": "2026-02-05"}
+        db_session.add(FhirResource(
+            id=patient_id,
+            fhir_id="patient-get",
+            resource_type="Patient",
+            patient_id=patient_id,
+            data=_make_patient_resource(fhir_id="patient-get"),
+            compiled_summary=summary_data,
+        ))
+        await db_session.flush()
+
+        result = await get_compiled_summary(patient_id, db_session)
+        assert result is not None
+        assert result["patient_orientation"] == "Jane Doe"
+
+    @pytest.mark.asyncio
+    async def test_returns_none_when_not_compiled(self, db_session: AsyncSession):
+        """Should return None if compiled_summary is NULL."""
+        patient_id = uuid.uuid4()
+        db_session.add(FhirResource(
+            id=patient_id,
+            fhir_id="patient-null",
+            resource_type="Patient",
+            patient_id=patient_id,
+            data=_make_patient_resource(fhir_id="patient-null"),
+        ))
+        await db_session.flush()
+
+        result = await get_compiled_summary(patient_id, db_session)
+        assert result is None
+
+    @pytest.mark.asyncio
+    async def test_returns_none_for_nonexistent_patient(self, db_session: AsyncSession):
+        """Should return None if no Patient row exists."""
+        result = await get_compiled_summary(uuid.uuid4(), db_session)
+        assert result is None
+
+    @pytest.mark.asyncio
+    async def test_accepts_string_patient_id(self, db_session: AsyncSession):
+        """Should accept patient_id as string and convert to UUID."""
+        patient_id = uuid.uuid4()
+        summary_data = {"test": True}
+        db_session.add(FhirResource(
+            id=patient_id,
+            fhir_id="patient-str-get",
+            resource_type="Patient",
+            patient_id=patient_id,
+            data=_make_patient_resource(fhir_id="patient-str-get"),
+            compiled_summary=summary_data,
+        ))
+        await db_session.flush()
+
+        result = await get_compiled_summary(str(patient_id), db_session)
+        assert result is not None
+        assert result["test"] is True
+
+
+# =============================================================================
+# Tests for on-demand fallback pattern
+# =============================================================================
+
+
+class TestOnDemandFallback:
+    """Tests for the on-demand fallback: compile if get_compiled_summary returns None."""
+
+    @pytest.mark.asyncio
+    async def test_fallback_compiles_when_none(self, db_session: AsyncSession):
+        """When get_compiled_summary returns None, compile_and_store as fallback."""
+        patient_id = uuid.uuid4()
+        db_session.add(FhirResource(
+            id=patient_id,
+            fhir_id="patient-fallback",
+            resource_type="Patient",
+            patient_id=patient_id,
+            data=_make_patient_resource(fhir_id="patient-fallback"),
+        ))
+        await db_session.flush()
+
+        # First: no compiled summary
+        summary = await get_compiled_summary(patient_id, db_session)
+        assert summary is None
+
+        # Fallback: compile synchronously
+        mock_graph = _setup_mock_graph()
+        summary = await compile_and_store(patient_id, mock_graph, db_session)
+        assert summary is not None
+        assert "patient_orientation" in summary
+
+        # Now get_compiled_summary should return the stored result
+        stored = await get_compiled_summary(patient_id, db_session)
+        assert stored is not None
+        assert stored["patient_orientation"] == summary["patient_orientation"]
+
+    @pytest.mark.asyncio
+    async def test_no_fallback_when_already_compiled(self, db_session: AsyncSession):
+        """When get_compiled_summary returns a value, no fallback needed."""
+        patient_id = uuid.uuid4()
+        existing_summary = {"patient_orientation": "Pre-compiled", "compilation_date": "2026-01-01"}
+        db_session.add(FhirResource(
+            id=patient_id,
+            fhir_id="patient-precompiled",
+            resource_type="Patient",
+            patient_id=patient_id,
+            data=_make_patient_resource(fhir_id="patient-precompiled"),
+            compiled_summary=existing_summary,
+        ))
+        await db_session.flush()
+
+        summary = await get_compiled_summary(patient_id, db_session)
+        assert summary is not None
+        assert summary["patient_orientation"] == "Pre-compiled"
