@@ -26,6 +26,8 @@ class TestFhirResourceModel:
             "created_at",
             "embedding",
             "embedding_text",
+            "compiled_summary",
+            "compiled_at",
         }
         assert expected == column_names
 

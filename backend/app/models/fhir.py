@@ -50,6 +50,12 @@ class FhirResource(Base):
     # Text used to generate the embedding (for debugging/inspection)
     embedding_text: Mapped[str | None] = mapped_column(Text, nullable=True)
 
+    # Compiled patient summary (populated for Patient-type resources only)
+    compiled_summary: Mapped[dict | None] = mapped_column(JSONB, nullable=True)
+    compiled_at: Mapped[datetime | None] = mapped_column(
+        DateTime(timezone=True), nullable=True
+    )
+
     # Metadata
     created_at: Mapped[datetime] = mapped_column(
         DateTime(timezone=True),
