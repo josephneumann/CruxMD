@@ -464,6 +464,522 @@ def build_system_prompt(context: PatientContext) -> str:
     )
 
 
+def _format_tier1_conditions(conditions: list[dict[str, Any]]) -> str:
+    """Format Tier 1 active conditions with treating meds, care plans, and procedures."""
+    if not conditions:
+        return "No active conditions recorded."
+
+    lines: list[str] = []
+    for entry in conditions:
+        cond = entry.get("condition", {})
+        # In pruned resources, code may be simplified to a string
+        code_val = cond.get("code")
+        if isinstance(code_val, str):
+            cond_display = code_val
+        else:
+            cond_display = _get_display_name(cond) or cond.get("resourceType", "Unknown condition")
+        clinical_status = cond.get("clinicalStatus", "unknown")
+        if isinstance(clinical_status, dict):
+            status_codings = clinical_status.get("coding", [])
+            clinical_status = status_codings[0].get("code") if status_codings else "unknown"
+
+        onset = cond.get("onsetDateTime", "")
+        if onset:
+            onset = onset[:10]
+
+        cond_line = f"  - {cond_display} (status: {clinical_status}"
+        if onset:
+            cond_line += f", onset: {onset}"
+        cond_line += f", id: {cond.get('id', 'unknown')})"
+        lines.append(cond_line)
+
+        # Treating medications
+        treating_meds = entry.get("treating_medications", [])
+        if treating_meds:
+            for med in treating_meds:
+                # In pruned resources, medicationCodeableConcept may be simplified to a string
+                mcc = med.get("medicationCodeableConcept")
+                if isinstance(mcc, str):
+                    med_display = mcc
+                else:
+                    med_display = _get_display_name(med, "medicationCodeableConcept") or "Unknown medication"
+                med_status = med.get("status", "unknown")
+                parts = [f"      Rx: {med_display} (status: {med_status}"]
+                if med.get("_recency"):
+                    parts.append(f", recency: {med['_recency']}")
+                if med.get("_duration_days") is not None:
+                    parts.append(f", {med['_duration_days']}d on therapy")
+                if med.get("_inferred"):
+                    parts.append(", link: inferred via encounter")
+                if med.get("_dose_history"):
+                    dose_hist = med["_dose_history"]
+                    changes = [f"{d.get('dose', '?')} on {(d.get('authoredOn', ''))[:10]}" for d in dose_hist]
+                    parts.append(f", _dose_history: [{', '.join(changes)}]")
+                parts.append(")")
+                lines.append("".join(parts))
+
+        # Care plans
+        care_plans = entry.get("care_plans", [])
+        if care_plans:
+            for cp in care_plans:
+                cat_val = cp.get("category")
+                if isinstance(cat_val, str):
+                    cp_display = cat_val
+                else:
+                    cp_display = _get_display_name(cp) or cp.get("title", "Unknown care plan")
+                    if cp_display == "Unknown care plan" and isinstance(cat_val, str):
+                        cp_display = cat_val
+                cp_status = cp.get("status", "unknown")
+                lines.append(f"      CarePlan: {cp_display} (status: {cp_status})")
+
+        # Related procedures
+        procedures = entry.get("related_procedures", [])
+        if procedures:
+            for proc in procedures:
+                code_val = proc.get("code")
+                if isinstance(code_val, str):
+                    proc_display = code_val
+                else:
+                    proc_display = _get_display_name(proc) or "Unknown procedure"
+                lines.append(f"      Procedure: {proc_display}")
+
+    return "\n".join(lines)
+
+
+def _format_tier1_section(label: str, items: list[dict[str, Any]], display_fn) -> str:
+    """Format a simple Tier 1 section (allergies, immunizations, care plans, unlinked meds)."""
+    if not items:
+        return ""
+    lines = [f"\n  {label}:"]
+    for item in items:
+        lines.append(f"    - {display_fn(item)}")
+    return "\n".join(lines)
+
+
+def _allergy_display(a: dict[str, Any]) -> str:
+    """Format a single allergy for display."""
+    code = a.get("code")
+    if isinstance(code, str):
+        display = code
+    else:
+        display = _get_display_name(a) or "Unknown allergen"
+    criticality = a.get("criticality", "unknown")
+    categories = a.get("category", [])
+    cat = categories[0] if isinstance(categories, list) and categories else (categories if isinstance(categories, str) else "unknown")
+    return f"{display} (criticality: {criticality}, category: {cat})"
+
+
+def _immunization_display(im: dict[str, Any]) -> str:
+    """Format a single immunization for display."""
+    vc = im.get("vaccineCode")
+    if isinstance(vc, str):
+        display = vc
+    else:
+        display = _get_display_name(im, "vaccineCode") or "Unknown vaccine"
+    occ = im.get("occurrenceDateTime", "")
+    if occ:
+        occ = occ[:10]
+    return f"{display} ({occ})" if occ else display
+
+
+def _unlinked_med_display(med: dict[str, Any]) -> str:
+    """Format a single unlinked medication for display."""
+    mcc = med.get("medicationCodeableConcept")
+    if isinstance(mcc, str):
+        display = mcc
+    else:
+        display = _get_display_name(med, "medicationCodeableConcept") or "Unknown medication"
+    status = med.get("status", "unknown")
+    parts = [f"{display} (status: {status}"]
+    if med.get("_recency"):
+        parts.append(f", recency: {med['_recency']}")
+    if med.get("_dose_history"):
+        dose_hist = med["_dose_history"]
+        changes = [f"{d.get('dose', '?')} on {(d.get('authoredOn', ''))[:10]}" for d in dose_hist]
+        parts.append(f", _dose_history: [{', '.join(changes)}]")
+    parts.append(")")
+    return "".join(parts)
+
+
+def _care_plan_display(cp: dict[str, Any]) -> str:
+    """Format a standalone care plan for display."""
+    display = _get_display_name(cp) or cp.get("title", "Unknown care plan")
+    if display in ("Unknown care plan",) and isinstance(cp.get("category"), str):
+        display = cp["category"]
+    status = cp.get("status", "unknown")
+    return f"{display} (status: {status})"
+
+
+def _format_tier2_encounters(encounters: list[dict[str, Any]]) -> str:
+    """Format Tier 2 recent encounters."""
+    if not encounters:
+        return "No recent encounters."
+
+    lines: list[str] = []
+    for enc_entry in encounters:
+        enc = enc_entry.get("encounter", {})
+        enc_type = enc.get("type", "Unknown")
+        if isinstance(enc_type, list):
+            enc_type = enc_type[0] if enc_type else "Unknown"
+        period = enc.get("period", {})
+        start = ""
+        if isinstance(period, dict):
+            start = period.get("start", "")
+        elif isinstance(period, str):
+            start = period
+        if start:
+            start = start[:10]
+
+        class_info = enc.get("class", {})
+        class_code = class_info.get("code", "") if isinstance(class_info, dict) else str(class_info)
+
+        header = f"  [{start}] {enc_type}"
+        if class_code:
+            header += f" ({class_code})"
+        header += f" id:{enc.get('id', '?')}"
+        lines.append(header)
+
+        # Events by relationship type
+        events = enc_entry.get("events", {})
+        for rel_type, resources in events.items():
+            if not resources:
+                continue
+            for r in resources:
+                r_display = _get_display_name(r) or r.get("resourceType", "?")
+                if r_display in ("?",) and isinstance(r.get("code"), str):
+                    r_display = r["code"]
+                lines.append(f"    {rel_type}: {r_display}")
+
+        # Clinical notes
+        notes = enc_entry.get("clinical_notes", [])
+        for note in notes:
+            # Truncate long notes in the summary
+            note_preview = note[:500] + "..." if len(note) > 500 else note
+            lines.append(f"    NOTE: {note_preview}")
+
+    return "\n".join(lines)
+
+
+def _format_tier3_observations(obs_by_category: dict[str, list[dict[str, Any]]]) -> str:
+    """Format Tier 3 latest observations by category."""
+    category_labels = {
+        "laboratory": "Lab Results",
+        "vital-signs": "Vital Signs",
+        "survey": "Surveys",
+        "social-history": "Social History",
+    }
+    lines: list[str] = []
+    for category, obs_list in obs_by_category.items():
+        if not obs_list:
+            continue
+        label = category_labels.get(category, category.title())
+        lines.append(f"\n  {label}:")
+        for obs in obs_list:
+            obs_display = _get_display_name(obs) or "Unknown observation"
+            if obs_display == "Unknown observation" and isinstance(obs.get("code"), str):
+                obs_display = obs["code"]
+
+            value_str = ""
+            vq = obs.get("valueQuantity")
+            if isinstance(vq, dict):
+                val = vq.get("value")
+                unit = vq.get("unit", "")
+                if val is not None:
+                    value_str = f" = {val} {unit}".rstrip()
+            elif obs.get("valueString"):
+                value_str = f" = {obs['valueString']}"
+
+            # Reference range
+            ref_str = ""
+            ref_range = obs.get("referenceRange", [])
+            if ref_range and isinstance(ref_range, list) and ref_range[0]:
+                rr = ref_range[0]
+                low = rr.get("low", {})
+                high = rr.get("high", {})
+                if isinstance(low, dict) and isinstance(high, dict):
+                    low_val = low.get("value")
+                    high_val = high.get("value")
+                    if low_val is not None and high_val is not None:
+                        ref_str = f" [ref: {low_val}-{high_val}]"
+
+            date_str = ""
+            eff_dt = obs.get("effectiveDateTime", "")
+            if eff_dt:
+                date_str = f" ({eff_dt[:10]})"
+
+            trend_str = ""
+            trend = obs.get("_trend")
+            if isinstance(trend, dict):
+                direction = trend.get("direction", "")
+                prev_val = trend.get("previous_value")
+                prev_date = (trend.get("previous_date", "") or "")[:10]
+                trend_str = f" _trend: {direction}"
+                if prev_val is not None:
+                    trend_str += f", prev={prev_val}"
+                if prev_date:
+                    trend_str += f" on {prev_date}"
+
+            line = f"    - {obs_display}{value_str}{ref_str}{date_str}"
+            if trend_str:
+                line += f" [{trend_str}]"
+            lines.append(line)
+
+    if not lines:
+        return "No recent observations."
+    return "\n".join(lines)
+
+
+def _format_safety_constraints_v2(safety: dict[str, Any]) -> str:
+    """Format safety constraints from the compiled summary."""
+    lines: list[str] = []
+
+    allergies = safety.get("active_allergies", [])
+    if allergies:
+        for a in allergies:
+            if a.get("note") == "None recorded":
+                lines.append("- No known allergies recorded.")
+                continue
+            code = a.get("code")
+            if isinstance(code, str):
+                display = code
+            else:
+                display = _get_display_name(a) or "Unknown allergen"
+            criticality = a.get("criticality", "unknown")
+            lines.append(f"- ALLERGY: {display} (criticality: {criticality})")
+
+    note = safety.get("drug_interactions_note")
+    if note:
+        lines.append(f"- {note}")
+
+    if not lines:
+        return "No specific safety constraints."
+    return "\n".join(lines)
+
+
+def build_system_prompt_v2(
+    compiled_summary: dict[str, Any],
+    patient_profile: str | None = None,
+) -> str:
+    """Build a v2 system prompt from a pre-compiled patient summary.
+
+    This replaces the v1 prompt by consuming the output of compile_patient_summary()
+    directly, embedding the full structured summary in the prompt instead of
+    formatting raw FHIR resources at prompt-build time.
+
+    Structure:
+      1. Role + PCP context persona
+      2. Pre-compiled patient summary (structured text)
+      3. Agent reasoning directives
+      4. Tool descriptions + usage guidance
+      5. Safety constraints
+
+    Args:
+        compiled_summary: Dict from compile_patient_summary().
+        patient_profile: Optional non-clinical patient profile narrative.
+
+    Returns:
+        Formatted system prompt string.
+    """
+    # ── Section 1: Role + PCP Context Persona ────────────────────────────────
+    role_section = (
+        "You are a clinical reasoning assistant acting as an intelligent chart review partner "
+        "for a primary care physician (PCP). You have deep access to this patient's medical "
+        "record and can retrieve additional data on demand using your tools.\n"
+        "\n"
+        "Your persona:\n"
+        "- You think like a PCP: holistic, longitudinal, focused on the whole patient\n"
+        "- You proactively surface cross-condition interactions and medication conflicts\n"
+        "- You cite specific data points (dates, values, FHIR IDs) to support assertions\n"
+        "- You flag when data is absent or when the record may be incomplete\n"
+        "- You never fabricate clinical data — if uncertain, say so and offer to search"
+    )
+
+    # ── Section 2: Pre-compiled Patient Summary ──────────────────────────────
+    patient_orientation = compiled_summary.get("patient_orientation", "Unknown patient")
+    compilation_date = compiled_summary.get("compilation_date", "unknown")
+
+    summary_parts: list[str] = [
+        f"## Patient Summary (compiled {compilation_date})\n",
+        f"**Patient:** {patient_orientation}\n",
+    ]
+
+    if patient_profile:
+        summary_parts.append(f"**Profile:** {patient_profile}\n")
+
+    # Tier 1: Active conditions
+    tier1_conditions = compiled_summary.get("tier1_active_conditions", [])
+    summary_parts.append("### Active Conditions & Treatments")
+    summary_parts.append(_format_tier1_conditions(tier1_conditions))
+
+    # Tier 1: Recently resolved conditions
+    tier1_resolved = compiled_summary.get("tier1_recently_resolved", [])
+    if tier1_resolved:
+        summary_parts.append("\n### Recently Resolved Conditions (last 6 months)")
+        summary_parts.append(_format_tier1_conditions(tier1_resolved))
+
+    # Tier 1: Allergies
+    tier1_allergies = compiled_summary.get("tier1_allergies", [])
+    allergy_lines = _format_tier1_section("Allergies", tier1_allergies, _allergy_display)
+    if allergy_lines:
+        summary_parts.append(allergy_lines)
+
+    # Tier 1: Unlinked medications
+    tier1_unlinked = compiled_summary.get("tier1_unlinked_medications", [])
+    if tier1_unlinked:
+        unlinked_lines = _format_tier1_section(
+            "Medications (not linked to a condition)", tier1_unlinked, _unlinked_med_display
+        )
+        if unlinked_lines:
+            summary_parts.append(unlinked_lines)
+
+    # Tier 1: Immunizations
+    tier1_immunizations = compiled_summary.get("tier1_immunizations", [])
+    if tier1_immunizations:
+        imm_lines = _format_tier1_section("Immunizations", tier1_immunizations, _immunization_display)
+        if imm_lines:
+            summary_parts.append(imm_lines)
+
+    # Tier 1: Standalone care plans
+    tier1_care_plans = compiled_summary.get("tier1_care_plans", [])
+    if tier1_care_plans:
+        cp_lines = _format_tier1_section("Standalone Care Plans", tier1_care_plans, _care_plan_display)
+        if cp_lines:
+            summary_parts.append(cp_lines)
+
+    # Tier 2: Recent encounters
+    tier2 = compiled_summary.get("tier2_recent_encounters", [])
+    summary_parts.append("\n### Recent Encounters")
+    summary_parts.append(_format_tier2_encounters(tier2))
+
+    # Tier 3: Latest observations
+    tier3 = compiled_summary.get("tier3_latest_observations", {})
+    summary_parts.append("\n### Latest Observations")
+    summary_parts.append(_format_tier3_observations(tier3))
+
+    summary_section = "\n".join(summary_parts)
+
+    # ── Section 3: Agent Reasoning Directives ────────────────────────────────
+    reasoning_section = (
+        "## Reasoning Directives\n"
+        "\n"
+        "Follow these reasoning principles when analyzing the patient summary:\n"
+        "\n"
+        "1. **Absence reporting**: When asked about data that is NOT in the summary, "
+        "explicitly state it is absent from the record. Do not assume absence means "
+        "normal — it may indicate a gap in documentation. Suggest using a tool to "
+        "search for it.\n"
+        "\n"
+        "2. **Cross-condition reasoning**: Actively look for interactions between "
+        "conditions, medications, and lab values. For example, if a patient has "
+        "diabetes and is on a statin, note the relevance of liver function tests. "
+        "Consider how one condition's treatment may affect another.\n"
+        "\n"
+        "3. **Tool-chain self-checking**: After receiving tool results, verify they "
+        "answer the original question. If the results are insufficient or ambiguous, "
+        "call another tool or refine your query rather than guessing. Chain tools "
+        "when needed: e.g., find a condition ID, then explore_connections to see "
+        "its treating medications.\n"
+        "\n"
+        "4. **Temporal awareness**: Pay attention to dates. Note when values are "
+        "stale (>6 months old) and flag them. Consider whether recent changes "
+        "in medications may explain lab trends.\n"
+        "\n"
+        "5. **Confidence calibration**: Distinguish between what is confirmed in "
+        "the record vs what you are inferring. Use phrases like 'the record shows' "
+        "for confirmed data and 'this may suggest' for clinical inference."
+    )
+
+    # ── Section 4: Tool Descriptions + Usage Guidance ────────────────────────
+    tool_section = (
+        "## Tools\n"
+        "\n"
+        "You have three tools to retrieve additional patient data on demand. "
+        "Use them when the pre-compiled summary does not contain enough detail "
+        "to fully answer the question. You can call multiple tools in a single "
+        "round and make multiple rounds of calls.\n"
+        "\n"
+        "**Do NOT guess or fabricate clinical data — if you need it, call a tool.**\n"
+        "\n"
+        "### query_patient_data\n"
+        "Search patient data by name, resource type, and filters. Performs exact "
+        "matching with automatic semantic search fallback.\n"
+        "- Use for: finding specific conditions, medications, observations, procedures\n"
+        "- Example: search for all HbA1c results, or all active medications\n"
+        "\n"
+        "### explore_connections\n"
+        "Explore graph connections from a specific FHIR resource by its ID. Returns "
+        "related resources grouped by relationship type (TREATS, DIAGNOSED, PRESCRIBED, etc.).\n"
+        "- Use for: understanding how a condition relates to medications, or what "
+        "happened during an encounter\n"
+        "- Tip: use a FHIR ID from the summary (e.g., a condition ID) as the starting point\n"
+        "\n"
+        "### get_patient_timeline\n"
+        "Get the patient's encounter timeline, optionally filtered by date range. "
+        "Shows encounters chronologically with associated events.\n"
+        "- Use for: understanding visit history, what happened when, clinical notes\n"
+        "\n"
+        "### Important: Understanding enrichment fields in the summary\n"
+        "\n"
+        "**`_trend`**: Shows the direction of change and ONE previous value for an "
+        "observation. This is a point-in-time comparison, not a full trend analysis. "
+        "For multi-point trend analysis or to see the complete history of a lab value, "
+        "use `query_patient_data` with the appropriate LOINC code or name.\n"
+        "\n"
+        "**`_dose_history`**: Shows recent dose changes for a medication. This captures "
+        "only dose changes (not same-dose refills) and may not include the complete "
+        "medication history. For the full prescribing history of a medication, "
+        "use `query_patient_data` with resource_type='MedicationRequest'.\n"
+        "\n"
+        "**`_recency`**: Indicates how recently a medication was started "
+        "('new' <30d, 'recent' <180d, 'established' >=180d).\n"
+        "\n"
+        "**`_inferred`**: When true, the medication-condition link was inferred via "
+        "shared encounter traversal, not a direct TREATS relationship in the graph."
+    )
+
+    # ── Section 5: Safety Constraints ────────────────────────────────────────
+    safety = compiled_summary.get("safety_constraints", {})
+    safety_text = _format_safety_constraints_v2(safety)
+
+    safety_section = (
+        "## Safety Constraints\n"
+        "\n"
+        "The following constraints MUST be respected in every response:\n"
+        "\n"
+        f"{safety_text}\n"
+        "\n"
+        "Additional safety rules:\n"
+        "- Always highlight drug allergies when discussing medication changes\n"
+        "- Flag critical lab values that require immediate attention\n"
+        "- Never recommend starting, stopping, or changing medications — only surface "
+        "relevant data and considerations for the physician's decision\n"
+        "- If unsure about a clinical fact, state the uncertainty rather than guessing"
+    )
+
+    # ── Section 6: Response Format ───────────────────────────────────────────
+    format_section = (
+        "## Response Format\n"
+        "Provide your response as a structured JSON object with:\n"
+        "- thinking: Your reasoning process (optional, for transparency)\n"
+        "- narrative: Main response in markdown format\n"
+        "- insights: Important clinical insights to highlight (info, warning, critical, positive)\n"
+        "- visualizations: Charts/graphs if data warrants visualization\n"
+        "- tables: Structured data displays if helpful\n"
+        "- actions: Suggested clinical actions if appropriate\n"
+        "- follow_ups: 2-3 SHORT follow-up questions (under 80 chars each) displayed as clickable chips"
+    )
+
+    # ── Assemble ─────────────────────────────────────────────────────────────
+    return "\n\n".join([
+        role_section,
+        summary_section,
+        reasoning_section,
+        tool_section,
+        safety_section,
+        format_section,
+    ])
+
+
 class AgentService:
     """LLM agent service for clinical reasoning with structured output.
 
