@@ -358,6 +358,46 @@ def sample_condition_inactive() -> dict:
 
 
 @pytest.fixture
+def sample_condition_recurrence() -> dict:
+    """Sample FHIR Condition with recurrence clinical status."""
+    return {
+        "resourceType": "Condition",
+        "id": "condition-test-recurrence",
+        "subject": {"reference": "Patient/patient-test-123"},
+        "code": {
+            "coding": [
+                {
+                    "system": "http://snomed.info/sct",
+                    "code": "195662009",
+                    "display": "Acute viral pharyngitis",
+                }
+            ]
+        },
+        "clinicalStatus": {"coding": [{"code": "recurrence"}]},
+    }
+
+
+@pytest.fixture
+def sample_condition_relapse() -> dict:
+    """Sample FHIR Condition with relapse clinical status."""
+    return {
+        "resourceType": "Condition",
+        "id": "condition-test-relapse",
+        "subject": {"reference": "Patient/patient-test-123"},
+        "code": {
+            "coding": [
+                {
+                    "system": "http://snomed.info/sct",
+                    "code": "40055000",
+                    "display": "Chronic sinusitis",
+                }
+            ]
+        },
+        "clinicalStatus": {"coding": [{"code": "relapse"}]},
+    }
+
+
+@pytest.fixture
 def sample_medication_stopped() -> dict:
     """Sample stopped FHIR MedicationRequest for testing filtering."""
     return {

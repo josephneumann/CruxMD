@@ -645,13 +645,14 @@ class KnowledgeGraph:
             patient_id: The canonical patient UUID.
 
         Returns:
-            List of FHIR Condition resources with clinical_status = 'active'.
+            List of FHIR Condition resources with active clinical status
+            (active, recurrence, or relapse).
         """
         async with self._driver.session() as session:
             result = await session.run(
                 """
                 MATCH (p:Patient {id: $patient_id})-[:HAS_CONDITION]->(c:Condition)
-                WHERE c.clinical_status = 'active'
+                WHERE c.clinical_status IN ['active', 'recurrence', 'relapse']
                 RETURN c.fhir_resource as resource
                 """,
                 patient_id=patient_id,
