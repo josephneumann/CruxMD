@@ -3,6 +3,9 @@
 Provides functions to:
 1. Fetch the latest observation per LOINC code, grouped by category
 2. Compute trend metadata for numeric observations with historical data
+3. Compile node context: batch-fetch and prune all connections from a graph node
+4. Batch-fetch FHIR resources from Postgres by fhir_id
+5. Prune and enrich FHIR resources for LLM consumption
 """
 
 import copy
@@ -11,10 +14,12 @@ import uuid
 from datetime import datetime
 from typing import Any
 
-from sqlalchemy import DateTime, func, select
+from sqlalchemy import DateTime, func, or_, select
 from sqlalchemy.ext.asyncio import AsyncSession
 
 from app.models import FhirResource
+from app.services.agent import _prune_fhir_resource
+from app.services.graph import KnowledgeGraph
 
 logger = logging.getLogger(__name__)
 
@@ -354,3 +359,137 @@ def _parse_fhir_datetime(dt_str: str) -> datetime:
     # Strip trailing Z and replace with +00:00 for fromisoformat
     cleaned = dt_str.replace("Z", "+00:00")
     return datetime.fromisoformat(cleaned)
+
+
+# =============================================================================
+# Node Context Compilation
+# =============================================================================
+
+
+async def fetch_resources_by_fhir_ids(
+    db: AsyncSession,
+    fhir_ids: list[str],
+    patient_id: uuid.UUID | str | None = None,
+) -> dict[str, dict[str, Any]]:
+    """Batch-fetch full FHIR resources from Postgres by fhir_id.
+
+    Args:
+        db: Async SQLAlchemy session.
+        fhir_ids: List of FHIR IDs to fetch.
+        patient_id: Optional patient UUID to scope the query.
+
+    Returns:
+        Dict mapping fhir_id to the full FHIR resource data dict.
+    """
+    if not fhir_ids:
+        return {}
+
+    if isinstance(patient_id, str):
+        patient_id = uuid.UUID(patient_id)
+
+    query = select(FhirResource.fhir_id, FhirResource.data).where(
+        FhirResource.fhir_id.in_(fhir_ids),
+    )
+    if patient_id is not None:
+        query = query.where(FhirResource.patient_id == patient_id)
+
+    result = await db.execute(query)
+    rows = result.all()
+
+    return {row.fhir_id: row.data for row in rows}
+
+
+def prune_and_enrich(
+    resource_data: dict[str, Any],
+    enrichments: dict[str, Any] | None = None,
+) -> dict[str, Any]:
+    """Prune a FHIR resource and attach enrichment fields.
+
+    Runs the resource through _prune_fhir_resource() to strip FHIR
+    boilerplate, then attaches any synthetic enrichment fields (e.g.
+    _trend, _recency, _inferred, _duration_days).
+
+    Args:
+        resource_data: Raw FHIR resource dict.
+        enrichments: Optional dict of synthetic fields to attach.
+            Keys should be underscore-prefixed (e.g. _trend).
+
+    Returns:
+        Pruned resource dict with enrichments attached.
+    """
+    pruned = _prune_fhir_resource(resource_data)
+    if enrichments:
+        pruned.update(enrichments)
+    return pruned
+
+
+async def compile_node_context(
+    fhir_id: str,
+    patient_id: uuid.UUID | str,
+    graph: KnowledgeGraph,
+    db: AsyncSession,
+) -> dict[str, list[dict[str, Any]]]:
+    """Get all connections from a node, fetch full resources, prune.
+
+    This is the shared building block for both batch compilation (pre-compiled
+    patient summaries) and live tool calls (explore_connections). It:
+
+    1. Calls graph.get_all_connections() to discover connected nodes
+    2. Batch-fetches full FHIR resources from Postgres (canonical source)
+    3. Prunes each resource with _prune_fhir_resource()
+    4. For DocumentReference resources, note text is already decoded by the pruner
+
+    Args:
+        fhir_id: The FHIR ID of the node to compile context for.
+        patient_id: The canonical patient UUID string.
+        graph: KnowledgeGraph instance for traversal.
+        db: Async SQLAlchemy session for resource fetching.
+
+    Returns:
+        Dict keyed by relationship type (e.g. "TREATS", "DIAGNOSED"),
+        each value a list of pruned FHIR resource dicts.
+    """
+    # Step 1: Discover all connections via graph traversal
+    connections = await graph.get_all_connections(fhir_id, patient_id=patient_id)
+
+    if not connections:
+        return {}
+
+    # Step 2: Collect fhir_ids for batch Postgres fetch
+    connected_fhir_ids = [c["fhir_id"] for c in connections if c["fhir_id"]]
+
+    # Step 3: Batch-fetch full resources from Postgres (canonical source)
+    # Single query fetches both patient-scoped and shared resources (e.g.
+    # Medication nodes which have patient_id=NULL)
+    if isinstance(patient_id, str):
+        pid = uuid.UUID(patient_id)
+    else:
+        pid = patient_id
+    query = select(FhirResource.fhir_id, FhirResource.data).where(
+        FhirResource.fhir_id.in_(connected_fhir_ids),
+        or_(
+            FhirResource.patient_id == pid,
+            FhirResource.patient_id.is_(None),
+        ),
+    )
+    result = await db.execute(query)
+    resources_by_id = {row.fhir_id: row.data for row in result.all()}
+
+    # Step 4: Prune each resource and group by relationship type
+    grouped: dict[str, list[dict[str, Any]]] = {}
+    for conn in connections:
+        rel_type = conn["relationship"]
+        conn_fhir_id = conn["fhir_id"]
+
+        resource_data = resources_by_id.get(conn_fhir_id)
+        if resource_data is None:
+            # Resource exists in graph but not in Postgres — skip
+            logger.warning(
+                "Resource %s found in graph but not in Postgres", conn_fhir_id
+            )
+            continue
+
+        pruned = prune_and_enrich(resource_data)
+        grouped.setdefault(rel_type, []).append(pruned)
+
+    return grouped

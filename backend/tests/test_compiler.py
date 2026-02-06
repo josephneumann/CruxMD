@@ -3,22 +3,31 @@
 Tests the pre-computed patient summary functions:
 - get_latest_observations_by_category: latest obs per LOINC per category
 - compute_observation_trends: trend computation for numeric observations
+- compile_node_context: batch-fetch and prune all connections from a graph node
+- fetch_resources_by_fhir_ids: batch Postgres lookup
+- prune_and_enrich: prune + attach synthetic fields
 """
 
+import base64
 import uuid
+from unittest.mock import AsyncMock, MagicMock
 
 import pytest
 from sqlalchemy.ext.asyncio import AsyncSession
 
 from app.models import FhirResource
+from app.services.graph import KnowledgeGraph
 from app.services.compiler import (
     OBSERVATION_CATEGORIES,
     TREND_THRESHOLD,
     _compute_trend,
     _extract_loinc_code,
     _parse_fhir_datetime,
+    compile_node_context,
     compute_observation_trends,
+    fetch_resources_by_fhir_ids,
     get_latest_observations_by_category,
+    prune_and_enrich,
 )
 
 
@@ -647,3 +656,518 @@ class TestParseFhirDatetime:
         assert dt.year == 2024
         assert dt.month == 1
         assert dt.day == 15
+
+
+# =============================================================================
+# prune_and_enrich tests
+# =============================================================================
+
+
+class TestPruneAndEnrich:
+    """Tests for prune_and_enrich()."""
+
+    def test_prunes_fhir_boilerplate(self):
+        """FHIR boilerplate keys like meta and text are stripped."""
+        resource = {
+            "resourceType": "Condition",
+            "id": "cond-1",
+            "meta": {"versionId": "1", "lastUpdated": "2024-01-01"},
+            "text": {"div": "<div>HTML</div>"},
+            "code": {
+                "coding": [{"system": "http://snomed.info/sct", "code": "123", "display": "Hypertension"}],
+            },
+            "clinicalStatus": {
+                "coding": [{"code": "active"}],
+            },
+        }
+        result = prune_and_enrich(resource)
+        assert "meta" not in result
+        assert "text" not in result
+        assert result["resourceType"] == "Condition"
+        assert result["id"] == "cond-1"
+
+    def test_attaches_enrichments(self):
+        """Enrichment fields are attached to the pruned resource."""
+        resource = {
+            "resourceType": "Observation",
+            "id": "obs-1",
+            "code": {"coding": [{"code": "12345", "display": "Glucose"}]},
+        }
+        enrichments = {
+            "_trend": {"direction": "rising", "delta": 10.0},
+            "_recency": "new",
+        }
+        result = prune_and_enrich(resource, enrichments=enrichments)
+        assert result["_trend"]["direction"] == "rising"
+        assert result["_recency"] == "new"
+
+    def test_no_enrichments(self):
+        """Works without enrichments."""
+        resource = {
+            "resourceType": "Condition",
+            "id": "cond-1",
+            "code": {"coding": [{"code": "123", "display": "Diabetes"}]},
+        }
+        result = prune_and_enrich(resource)
+        assert result["id"] == "cond-1"
+        assert "_trend" not in result
+
+    def test_document_reference_decodes_note(self):
+        """DocumentReference base64 content is decoded to clinical_note."""
+        note_text = "Patient presents with chest pain and shortness of breath."
+        encoded = base64.b64encode(note_text.encode()).decode()
+        resource = {
+            "resourceType": "DocumentReference",
+            "id": "doc-1",
+            "content": [
+                {
+                    "attachment": {
+                        "contentType": "text/plain",
+                        "data": encoded,
+                    }
+                }
+            ],
+        }
+        result = prune_and_enrich(resource)
+        assert result["clinical_note"] == note_text
+        assert "content" not in result  # raw content replaced
+
+
+# =============================================================================
+# fetch_resources_by_fhir_ids tests
+# =============================================================================
+
+
+class TestFetchResourcesByFhirIds:
+    """Tests for fetch_resources_by_fhir_ids() with real DB."""
+
+    @pytest.mark.asyncio
+    async def test_returns_matching_resources(self, db_session: AsyncSession):
+        """Returns resources matching the given fhir_ids."""
+        patient_id = uuid.uuid4()
+        r1 = FhirResource(
+            fhir_id="cond-abc",
+            resource_type="Condition",
+            patient_id=patient_id,
+            data={"resourceType": "Condition", "id": "cond-abc", "code": {"text": "Diabetes"}},
+        )
+        r2 = FhirResource(
+            fhir_id="med-xyz",
+            resource_type="MedicationRequest",
+            patient_id=patient_id,
+            data={"resourceType": "MedicationRequest", "id": "med-xyz", "status": "active"},
+        )
+        db_session.add_all([r1, r2])
+        await db_session.flush()
+
+        result = await fetch_resources_by_fhir_ids(
+            db_session, ["cond-abc", "med-xyz"], patient_id=patient_id
+        )
+        assert len(result) == 2
+        assert "cond-abc" in result
+        assert "med-xyz" in result
+        assert result["cond-abc"]["resourceType"] == "Condition"
+
+    @pytest.mark.asyncio
+    async def test_returns_empty_for_no_matches(self, db_session: AsyncSession):
+        """Returns empty dict when no fhir_ids match."""
+        result = await fetch_resources_by_fhir_ids(
+            db_session, ["nonexistent-id"], patient_id=uuid.uuid4()
+        )
+        assert result == {}
+
+    @pytest.mark.asyncio
+    async def test_returns_empty_for_empty_input(self, db_session: AsyncSession):
+        """Returns empty dict for empty fhir_ids list."""
+        result = await fetch_resources_by_fhir_ids(db_session, [])
+        assert result == {}
+
+    @pytest.mark.asyncio
+    async def test_patient_scoping(self, db_session: AsyncSession):
+        """Only returns resources belonging to the specified patient."""
+        patient_a = uuid.uuid4()
+        patient_b = uuid.uuid4()
+        r1 = FhirResource(
+            fhir_id="cond-a",
+            resource_type="Condition",
+            patient_id=patient_a,
+            data={"resourceType": "Condition", "id": "cond-a"},
+        )
+        r2 = FhirResource(
+            fhir_id="cond-b",
+            resource_type="Condition",
+            patient_id=patient_b,
+            data={"resourceType": "Condition", "id": "cond-b"},
+        )
+        db_session.add_all([r1, r2])
+        await db_session.flush()
+
+        result = await fetch_resources_by_fhir_ids(
+            db_session, ["cond-a", "cond-b"], patient_id=patient_a
+        )
+        assert len(result) == 1
+        assert "cond-a" in result
+        assert "cond-b" not in result
+
+    @pytest.mark.asyncio
+    async def test_no_patient_scoping(self, db_session: AsyncSession):
+        """Without patient_id, returns all matching resources."""
+        patient_a = uuid.uuid4()
+        r1 = FhirResource(
+            fhir_id="med-shared",
+            resource_type="Medication",
+            patient_id=None,
+            data={"resourceType": "Medication", "id": "med-shared"},
+        )
+        db_session.add(r1)
+        await db_session.flush()
+
+        result = await fetch_resources_by_fhir_ids(db_session, ["med-shared"])
+        assert len(result) == 1
+        assert "med-shared" in result
+
+    @pytest.mark.asyncio
+    async def test_string_patient_id(self, db_session: AsyncSession):
+        """Accepts string patient_id and converts to UUID."""
+        patient_id = uuid.uuid4()
+        r1 = FhirResource(
+            fhir_id="obs-1",
+            resource_type="Observation",
+            patient_id=patient_id,
+            data={"resourceType": "Observation", "id": "obs-1"},
+        )
+        db_session.add(r1)
+        await db_session.flush()
+
+        result = await fetch_resources_by_fhir_ids(
+            db_session, ["obs-1"], patient_id=str(patient_id)
+        )
+        assert len(result) == 1
+
+
+# =============================================================================
+# compile_node_context tests (mocked graph + db)
+# =============================================================================
+
+
+class TestCompileNodeContext:
+    """Tests for compile_node_context() with mocked graph and db."""
+
+    @pytest.mark.asyncio
+    async def test_returns_grouped_connections_for_condition(self):
+        """Given a Condition, returns connections grouped by relationship."""
+        patient_id = str(uuid.uuid4())
+
+        # Mock graph returns connections
+        mock_graph = AsyncMock(spec=KnowledgeGraph)
+        mock_graph.get_all_connections.return_value = [
+            {
+                "relationship": "TREATS",
+                "direction": "incoming",
+                "fhir_id": "med-1",
+                "resource_type": "MedicationRequest",
+                "name": None,
+                "fhir_resource": None,
+            },
+            {
+                "relationship": "ADDRESSES",
+                "direction": "incoming",
+                "fhir_id": "cp-1",
+                "resource_type": "CarePlan",
+                "name": None,
+                "fhir_resource": None,
+            },
+        ]
+
+        # Mock db session that returns resources
+        med_data = {
+            "resourceType": "MedicationRequest",
+            "id": "med-1",
+            "status": "active",
+            "medicationCodeableConcept": {
+                "coding": [{"display": "Metformin"}],
+            },
+        }
+        cp_data = {
+            "resourceType": "CarePlan",
+            "id": "cp-1",
+            "status": "active",
+        }
+
+        mock_db = AsyncMock(spec=AsyncSession)
+        mock_result = MagicMock()
+        mock_result.all.return_value = [
+            MagicMock(fhir_id="med-1", data=med_data),
+            MagicMock(fhir_id="cp-1", data=cp_data),
+        ]
+        mock_db.execute.return_value = mock_result
+
+        result = await compile_node_context("cond-1", patient_id, mock_graph, mock_db)
+
+        assert "TREATS" in result
+        assert "ADDRESSES" in result
+        assert len(result["TREATS"]) == 1
+        assert len(result["ADDRESSES"]) == 1
+        assert result["TREATS"][0]["id"] == "med-1"
+        assert result["ADDRESSES"][0]["id"] == "cp-1"
+
+        mock_graph.get_all_connections.assert_called_once_with(
+            "cond-1", patient_id=patient_id
+        )
+
+    @pytest.mark.asyncio
+    async def test_returns_empty_for_no_connections(self):
+        """Returns empty dict when the node has no connections."""
+        mock_graph = AsyncMock(spec=KnowledgeGraph)
+        mock_graph.get_all_connections.return_value = []
+
+        mock_db = AsyncMock(spec=AsyncSession)
+
+        result = await compile_node_context(
+            "isolated-node", str(uuid.uuid4()), mock_graph, mock_db
+        )
+        assert result == {}
+        mock_db.execute.assert_not_called()
+
+    @pytest.mark.asyncio
+    async def test_document_reference_has_decoded_note(self):
+        """DocumentReference connections have decoded clinical_note."""
+        patient_id = str(uuid.uuid4())
+        note_text = "Assessment: Patient stable. Plan: Continue current medications."
+        encoded = base64.b64encode(note_text.encode()).decode()
+
+        mock_graph = AsyncMock(spec=KnowledgeGraph)
+        mock_graph.get_all_connections.return_value = [
+            {
+                "relationship": "DOCUMENTED",
+                "direction": "outgoing",
+                "fhir_id": "doc-1",
+                "resource_type": "DocumentReference",
+                "name": None,
+                "fhir_resource": None,
+            },
+        ]
+
+        doc_data = {
+            "resourceType": "DocumentReference",
+            "id": "doc-1",
+            "content": [
+                {
+                    "attachment": {
+                        "contentType": "text/plain",
+                        "data": encoded,
+                    }
+                }
+            ],
+        }
+
+        mock_db = AsyncMock(spec=AsyncSession)
+        mock_result = MagicMock()
+        mock_result.all.return_value = [
+            MagicMock(fhir_id="doc-1", data=doc_data),
+        ]
+        mock_db.execute.return_value = mock_result
+
+        result = await compile_node_context("enc-1", patient_id, mock_graph, mock_db)
+
+        assert "DOCUMENTED" in result
+        assert len(result["DOCUMENTED"]) == 1
+        assert result["DOCUMENTED"][0]["clinical_note"] == note_text
+
+    @pytest.mark.asyncio
+    async def test_resources_are_pruned(self):
+        """Resources have FHIR boilerplate stripped."""
+        patient_id = str(uuid.uuid4())
+
+        mock_graph = AsyncMock(spec=KnowledgeGraph)
+        mock_graph.get_all_connections.return_value = [
+            {
+                "relationship": "TREATS",
+                "direction": "incoming",
+                "fhir_id": "med-1",
+                "resource_type": "MedicationRequest",
+                "name": None,
+                "fhir_resource": None,
+            },
+        ]
+
+        med_data = {
+            "resourceType": "MedicationRequest",
+            "id": "med-1",
+            "meta": {"versionId": "1", "lastUpdated": "2024-01-01"},
+            "text": {"div": "<div>HTML</div>"},
+            "status": "active",
+        }
+
+        mock_db = AsyncMock(spec=AsyncSession)
+        mock_result = MagicMock()
+        mock_result.all.return_value = [
+            MagicMock(fhir_id="med-1", data=med_data),
+        ]
+        mock_db.execute.return_value = mock_result
+
+        result = await compile_node_context("cond-1", patient_id, mock_graph, mock_db)
+
+        pruned_med = result["TREATS"][0]
+        assert "meta" not in pruned_med
+        assert "text" not in pruned_med
+        assert pruned_med["status"] == "active"
+
+    @pytest.mark.asyncio
+    async def test_batch_fetch_not_n_plus_1(self):
+        """All resources fetched in batch, not one-by-one."""
+        patient_id = str(uuid.uuid4())
+
+        mock_graph = AsyncMock(spec=KnowledgeGraph)
+        mock_graph.get_all_connections.return_value = [
+            {
+                "relationship": "TREATS",
+                "direction": "incoming",
+                "fhir_id": f"med-{i}",
+                "resource_type": "MedicationRequest",
+                "name": None,
+                "fhir_resource": None,
+            }
+            for i in range(5)
+        ]
+
+        resources = [
+            MagicMock(
+                fhir_id=f"med-{i}",
+                data={"resourceType": "MedicationRequest", "id": f"med-{i}", "status": "active"},
+            )
+            for i in range(5)
+        ]
+
+        mock_db = AsyncMock(spec=AsyncSession)
+        mock_result = MagicMock()
+        mock_result.all.return_value = resources
+        mock_db.execute.return_value = mock_result
+
+        result = await compile_node_context("cond-1", patient_id, mock_graph, mock_db)
+
+        assert len(result["TREATS"]) == 5
+        # Single batch query for all resources
+        assert mock_db.execute.call_count == 1
+
+    @pytest.mark.asyncio
+    async def test_medication_without_patient_id_fetched(self):
+        """Medication nodes (no patient_id) are fetched via OR condition."""
+        patient_id = str(uuid.uuid4())
+
+        mock_graph = AsyncMock(spec=KnowledgeGraph)
+        mock_graph.get_all_connections.return_value = [
+            {
+                "relationship": "TREATS",
+                "direction": "incoming",
+                "fhir_id": "med-shared",
+                "resource_type": "Medication",
+                "name": None,
+                "fhir_resource": None,
+            },
+        ]
+
+        med_data = {
+            "resourceType": "Medication",
+            "id": "med-shared",
+            "code": {"coding": [{"display": "Aspirin"}]},
+        }
+
+        # Single query returns shared medication (patient_id=NULL matches OR condition)
+        mock_db = AsyncMock(spec=AsyncSession)
+        mock_result = MagicMock()
+        mock_result.all.return_value = [MagicMock(fhir_id="med-shared", data=med_data)]
+        mock_db.execute.return_value = mock_result
+
+        result = await compile_node_context("cond-1", patient_id, mock_graph, mock_db)
+
+        assert "TREATS" in result
+        assert len(result["TREATS"]) == 1
+        assert result["TREATS"][0]["id"] == "med-shared"
+        # Single DB call with OR condition
+        assert mock_db.execute.call_count == 1
+
+    @pytest.mark.asyncio
+    async def test_skips_resource_missing_from_postgres(self):
+        """Resources in graph but not in Postgres are skipped."""
+        patient_id = str(uuid.uuid4())
+
+        mock_graph = AsyncMock(spec=KnowledgeGraph)
+        mock_graph.get_all_connections.return_value = [
+            {
+                "relationship": "TREATS",
+                "direction": "incoming",
+                "fhir_id": "ghost-med",
+                "resource_type": "MedicationRequest",
+                "name": None,
+                "fhir_resource": None,
+            },
+        ]
+
+        mock_db = AsyncMock(spec=AsyncSession)
+        empty_result = MagicMock()
+        empty_result.all.return_value = []
+        mock_db.execute.return_value = empty_result
+
+        result = await compile_node_context("cond-1", patient_id, mock_graph, mock_db)
+
+        # Ghost resource skipped — no TREATS key since it was the only connection
+        assert result == {}
+
+    @pytest.mark.asyncio
+    async def test_multiple_relationship_types(self):
+        """Connections are properly grouped by relationship type."""
+        patient_id = str(uuid.uuid4())
+
+        mock_graph = AsyncMock(spec=KnowledgeGraph)
+        mock_graph.get_all_connections.return_value = [
+            {
+                "relationship": "DIAGNOSED",
+                "direction": "outgoing",
+                "fhir_id": "cond-1",
+                "resource_type": "Condition",
+                "name": None,
+                "fhir_resource": None,
+            },
+            {
+                "relationship": "PRESCRIBED",
+                "direction": "outgoing",
+                "fhir_id": "med-1",
+                "resource_type": "MedicationRequest",
+                "name": None,
+                "fhir_resource": None,
+            },
+            {
+                "relationship": "DIAGNOSED",
+                "direction": "outgoing",
+                "fhir_id": "cond-2",
+                "resource_type": "Condition",
+                "name": None,
+                "fhir_resource": None,
+            },
+        ]
+
+        resources = [
+            MagicMock(
+                fhir_id="cond-1",
+                data={"resourceType": "Condition", "id": "cond-1"},
+            ),
+            MagicMock(
+                fhir_id="med-1",
+                data={"resourceType": "MedicationRequest", "id": "med-1", "status": "active"},
+            ),
+            MagicMock(
+                fhir_id="cond-2",
+                data={"resourceType": "Condition", "id": "cond-2"},
+            ),
+        ]
+
+        mock_db = AsyncMock(spec=AsyncSession)
+        mock_result = MagicMock()
+        mock_result.all.return_value = resources
+        mock_db.execute.return_value = mock_result
+
+        result = await compile_node_context("enc-1", patient_id, mock_graph, mock_db)
+
+        assert len(result["DIAGNOSED"]) == 2
+        assert len(result["PRESCRIBED"]) == 1
