@@ -5,12 +5,13 @@ Provides functions to:
 2. Compute trend metadata for numeric observations with historical data
 """
 
+import copy
 import logging
 import uuid
 from datetime import datetime
 from typing import Any
 
-from sqlalchemy import func, select, text
+from sqlalchemy import DateTime, func, select
 from sqlalchemy.ext.asyncio import AsyncSession
 
 from app.models import FhirResource
@@ -69,7 +70,7 @@ async def get_latest_observations_by_category(
             func.row_number()
             .over(
                 partition_by=[loinc_code, category_code],
-                order_by=effective_dt.desc(),
+                order_by=func.cast(effective_dt, DateTime).desc(),
             )
             .label("rn"),
         )
@@ -127,28 +128,36 @@ async def compute_observation_trends(
     if isinstance(patient_id, str):
         patient_id = uuid.UUID(patient_id)
 
-    result = []
-    for obs in observations:
-        obs_copy = dict(obs)
-
-        # Only compute trends for numeric valueQuantity observations
+    # Collect LOINC codes and dates for observations that need trend computation
+    trend_candidates: list[tuple[int, str, str]] = []  # (index, loinc, date_str)
+    for i, obs in enumerate(observations):
         value_quantity = obs.get("valueQuantity")
         if not value_quantity or not isinstance(value_quantity.get("value"), (int, float)):
-            result.append(obs_copy)
             continue
+        loinc = _extract_loinc_code(obs)
+        date_str = obs.get("effectiveDateTime")
+        if loinc and date_str:
+            trend_candidates.append((i, loinc, date_str))
 
-        current_value = float(value_quantity["value"])
-        current_loinc = _extract_loinc_code(obs)
-        current_date_str = obs.get("effectiveDateTime")
-
-        if not current_loinc or not current_date_str:
-            result.append(obs_copy)
-            continue
-
-        # Fetch the previous observation for the same LOINC code
-        previous = await _get_previous_observation(
-            db, patient_id, current_loinc, current_date_str
+    # Batch-fetch previous observations for all candidates in ONE query
+    previous_map: dict[tuple[str, str], dict[str, Any]] = {}
+    if trend_candidates:
+        previous_map = await _get_previous_observations_batch(
+            db, patient_id, [(loinc, date_str) for _, loinc, date_str in trend_candidates]
         )
+
+    # Build result with trends
+    result = []
+    candidate_lookup = {i: (loinc, date_str) for i, loinc, date_str in trend_candidates}
+    for i, obs in enumerate(observations):
+        obs_copy = copy.deepcopy(obs)
+
+        if i not in candidate_lookup:
+            result.append(obs_copy)
+            continue
+
+        loinc, date_str = candidate_lookup[i]
+        previous = previous_map.get((loinc, date_str))
 
         if previous is None:
             result.append(obs_copy)
@@ -159,14 +168,14 @@ async def compute_observation_trends(
             result.append(obs_copy)
             continue
 
+        current_value = float(obs["valueQuantity"]["value"])
         previous_value = float(prev_vq["value"])
         previous_date_str = previous.get("effectiveDateTime", "")
 
-        # Compute trend
         trend = _compute_trend(
             current_value=current_value,
             previous_value=previous_value,
-            current_date_str=current_date_str,
+            current_date_str=date_str,
             previous_date_str=previous_date_str,
         )
         obs_copy["_trend"] = trend
@@ -183,41 +192,89 @@ def _extract_loinc_code(obs: dict[str, Any]) -> str | None:
         return None
 
 
-async def _get_previous_observation(
+async def _get_previous_observations_batch(
     db: AsyncSession,
     patient_id: uuid.UUID,
-    loinc_code: str,
-    before_date: str,
-) -> dict[str, Any] | None:
-    """Fetch the most recent observation before the given date for the same LOINC code.
+    loinc_date_pairs: list[tuple[str, str]],
+) -> dict[tuple[str, str], dict[str, Any]]:
+    """Fetch the most recent previous observation for each (LOINC code, date) pair.
+
+    Uses a single query with window functions to avoid N+1 queries.
 
     Args:
         db: Async SQLAlchemy session.
         patient_id: The canonical patient UUID.
-        loinc_code: The LOINC code to match.
-        before_date: ISO datetime string; only observations before this are considered.
+        loinc_date_pairs: List of (loinc_code, before_date_str) tuples.
 
     Returns:
-        The previous FHIR Observation dict, or None if no prior observation exists.
+        Dict mapping (loinc_code, before_date_str) to the previous Observation dict.
+        Pairs with no previous observation are omitted.
     """
+    if not loinc_date_pairs:
+        return {}
+
+    # Collect unique LOINC codes to filter DB rows
+    unique_loincs = {loinc for loinc, _ in loinc_date_pairs}
+
     loinc_expr = FhirResource.data["code"]["coding"][0]["code"].as_string()
     effective_dt = FhirResource.data["effectiveDateTime"].as_string()
 
-    query = (
-        select(FhirResource.data)
+    # Fetch all candidate previous observations for these LOINC codes,
+    # ranked by date descending within each LOINC code
+    ranked = (
+        select(
+            FhirResource.data,
+            loinc_expr.label("loinc_code"),
+            effective_dt.label("effective_dt"),
+            func.row_number()
+            .over(
+                partition_by=loinc_expr,
+                order_by=func.cast(effective_dt, DateTime).desc(),
+            )
+            .label("rn"),
+        )
         .where(
             FhirResource.patient_id == patient_id,
             FhirResource.resource_type == "Observation",
-            loinc_expr == loinc_code,
-            effective_dt < before_date,
+            loinc_expr.in_(unique_loincs),
         )
-        .order_by(effective_dt.desc())
-        .limit(1)
+        .subquery()
+    )
+
+    # Fetch all ranked rows (we need enough to find the "previous" for each pair)
+    query = select(
+        ranked.c.data,
+        ranked.c.loinc_code,
+        ranked.c.effective_dt,
     )
 
     result = await db.execute(query)
-    row = result.first()
-    return row.data if row else None
+    rows = result.all()
+
+    # Group rows by LOINC code, sorted by date descending
+    by_loinc: dict[str, list[dict[str, Any]]] = {}
+    for row in rows:
+        by_loinc.setdefault(row.loinc_code, []).append(row.data)
+
+    # Sort each group by effectiveDateTime descending (using parsed dates)
+    for loinc_code in by_loinc:
+        by_loinc[loinc_code].sort(
+            key=lambda obs: _parse_fhir_datetime(obs.get("effectiveDateTime", "")),
+            reverse=True,
+        )
+
+    # For each (loinc, date) pair, find the first observation strictly before the date
+    previous_map: dict[tuple[str, str], dict[str, Any]] = {}
+    for loinc_code, before_date_str in loinc_date_pairs:
+        obs_list = by_loinc.get(loinc_code, [])
+        before_dt = _parse_fhir_datetime(before_date_str)
+        for obs in obs_list:
+            obs_dt = _parse_fhir_datetime(obs.get("effectiveDateTime", ""))
+            if obs_dt < before_dt:
+                previous_map[(loinc_code, before_date_str)] = obs
+                break
+
+    return previous_map
 
 
 def _compute_trend(
@@ -242,8 +299,10 @@ def _compute_trend(
 
     # Direction with 5% threshold
     if previous_value == 0:
-        if current_value != 0:
+        if current_value > 0:
             direction = "rising"
+        elif current_value < 0:
+            direction = "falling"
         else:
             direction = "stable"
         delta_percent = None
@@ -279,7 +338,7 @@ def _compute_timespan_days(current_date_str: str, previous_date_str: str) -> int
         # Handle both datetime and date-only formats
         current_dt = _parse_fhir_datetime(current_date_str)
         previous_dt = _parse_fhir_datetime(previous_date_str)
-        return (current_dt - previous_dt).days
+        return abs((current_dt - previous_dt).days)
     except (ValueError, TypeError):
         return None
 

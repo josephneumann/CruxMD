@@ -6,10 +6,8 @@ Tests the pre-computed patient summary functions:
 """
 
 import uuid
-from unittest.mock import AsyncMock, MagicMock
 
 import pytest
-import pytest_asyncio
 from sqlalchemy.ext.asyncio import AsyncSession
 
 from app.models import FhirResource
@@ -517,6 +515,41 @@ class TestComputeObservationTrends:
         assert result[0]["_trend"]["previous_value"] == 100.0
         assert result[0]["_trend"]["delta"] == 20.0
 
+    @pytest.mark.asyncio
+    async def test_patient_isolation_for_trends(self, db_session: AsyncSession):
+        """Trends for patient A should not use patient B's observation history."""
+        patient_a = uuid.uuid4()
+        patient_b = uuid.uuid4()
+
+        # Patient B has a previous glucose of 200.0
+        prev_b = make_observation("2345-7", "laboratory", "2024-01-01T10:00:00Z", 200.0)
+        db_session.add(FhirResource(
+            fhir_id=prev_b["id"] + "-b",
+            resource_type="Observation",
+            patient_id=patient_b,
+            data=prev_b,
+        ))
+
+        # Patient A has a previous glucose of 100.0
+        prev_a = make_observation("2345-7", "laboratory", "2024-01-01T10:00:00Z", 100.0)
+        db_session.add(FhirResource(
+            fhir_id=prev_a["id"] + "-a",
+            resource_type="Observation",
+            patient_id=patient_a,
+            data=prev_a,
+        ))
+        await db_session.flush()
+
+        # Compute trends for patient A with current glucose 120.0
+        current_a = make_observation("2345-7", "laboratory", "2024-06-01T10:00:00Z", 120.0)
+        result = await compute_observation_trends(db_session, patient_a, [current_a])
+
+        assert len(result) == 1
+        assert "_trend" in result[0]
+        # Delta should be 20.0 (120 - 100), NOT -80.0 (120 - 200)
+        assert result[0]["_trend"]["previous_value"] == 100.0
+        assert result[0]["_trend"]["delta"] == 20.0
+
 
 # =============================================================================
 # Tests for pure helper functions
@@ -568,6 +601,11 @@ class TestComputeTrend:
         assert trend["direction"] == "rising"
         assert trend["delta_percent"] is None
 
+    def test_zero_previous_negative_current(self):
+        trend = _compute_trend(-3.0, 0.0, "2024-06-01T10:00:00Z", "2024-01-01T10:00:00Z")
+        assert trend["direction"] == "falling"
+        assert trend["delta_percent"] is None
+
     def test_zero_previous_zero_current(self):
         trend = _compute_trend(0.0, 0.0, "2024-06-01T10:00:00Z", "2024-01-01T10:00:00Z")
         assert trend["direction"] == "stable"
@@ -588,6 +626,21 @@ class TestParseFhirDatetime:
     def test_offset_format(self):
         dt = _parse_fhir_datetime("2024-01-15T10:30:00+00:00")
         assert dt.year == 2024
+
+    def test_non_utc_offset(self):
+        dt = _parse_fhir_datetime("2024-01-15T10:30:00+05:30")
+        assert dt.year == 2024
+        assert dt.month == 1
+        assert dt.day == 15
+        assert dt.hour == 10
+        assert dt.minute == 30
+        assert dt.utcoffset().total_seconds() == 5 * 3600 + 30 * 60
+
+    def test_negative_offset(self):
+        dt = _parse_fhir_datetime("2024-01-15T10:30:00-04:00")
+        assert dt.year == 2024
+        assert dt.hour == 10
+        assert dt.utcoffset().total_seconds() == -4 * 3600
 
     def test_date_only(self):
         dt = _parse_fhir_datetime("2024-01-15")
