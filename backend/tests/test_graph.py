@@ -2968,3 +2968,109 @@ async def test_get_all_connections_without_patient_id(
     # Patient nodes still excluded
     resource_types = {c["resource_type"] for c in connections}
     assert "Patient" not in resource_types
+
+
+@pytest.mark.asyncio
+async def test_get_all_connections_cross_patient_isolation(
+    graph: KnowledgeGraph,
+):
+    """Test that get_all_connections with patient_id scoping excludes other patients' data."""
+    patient_a_id = "patient-isolation-a"
+    patient_b_id = "patient-isolation-b"
+
+    # Patient A resources
+    patient_a = {
+        "resourceType": "Patient",
+        "id": "fhir-patient-a",
+        "name": [{"given": ["Alice"], "family": "Anderson"}],
+        "birthDate": "1990-01-01",
+        "gender": "female",
+    }
+    condition_a = {
+        "resourceType": "Condition",
+        "id": "condition-isolation-a",
+        "subject": {"reference": "Patient/fhir-patient-a"},
+        "code": {
+            "coding": [
+                {
+                    "system": "http://snomed.info/sct",
+                    "code": "73211009",
+                    "display": "Diabetes mellitus",
+                }
+            ]
+        },
+        "clinicalStatus": {"coding": [{"code": "active"}]},
+    }
+    medication_a = {
+        "resourceType": "MedicationRequest",
+        "id": "medication-isolation-a",
+        "subject": {"reference": "Patient/fhir-patient-a"},
+        "reasonReference": [{"reference": "Condition/condition-isolation-a"}],
+        "medicationCodeableConcept": {
+            "coding": [
+                {
+                    "system": "http://www.nlm.nih.gov/research/umls/rxnorm",
+                    "code": "860975",
+                    "display": "Metformin 500 MG",
+                }
+            ]
+        },
+        "status": "active",
+    }
+
+    # Patient B resources
+    patient_b = {
+        "resourceType": "Patient",
+        "id": "fhir-patient-b",
+        "name": [{"given": ["Bob"], "family": "Brown"}],
+        "birthDate": "1985-06-15",
+        "gender": "male",
+    }
+    condition_b = {
+        "resourceType": "Condition",
+        "id": "condition-isolation-b",
+        "subject": {"reference": "Patient/fhir-patient-b"},
+        "code": {
+            "coding": [
+                {
+                    "system": "http://snomed.info/sct",
+                    "code": "38341003",
+                    "display": "Hypertension",
+                }
+            ]
+        },
+        "clinicalStatus": {"coding": [{"code": "active"}]},
+    }
+    medication_b = {
+        "resourceType": "MedicationRequest",
+        "id": "medication-isolation-b",
+        "subject": {"reference": "Patient/fhir-patient-b"},
+        "reasonReference": [{"reference": "Condition/condition-isolation-b"}],
+        "medicationCodeableConcept": {
+            "coding": [
+                {
+                    "system": "http://www.nlm.nih.gov/research/umls/rxnorm",
+                    "code": "197361",
+                    "display": "Lisinopril 10 MG",
+                }
+            ]
+        },
+        "status": "active",
+    }
+
+    # Build graphs for both patients
+    await graph.build_from_fhir(patient_a_id, [patient_a, condition_a, medication_a])
+    await graph.build_from_fhir(patient_b_id, [patient_b, condition_b, medication_b])
+
+    # Query connections for patient A's condition, scoped to patient A
+    connections = await graph.get_all_connections(
+        condition_a["id"], patient_id=patient_a_id
+    )
+
+    # Should include patient A's medication (TREATS relationship)
+    connected_fhir_ids = {c["fhir_id"] for c in connections}
+    assert medication_a["id"] in connected_fhir_ids
+
+    # Should NOT include any of patient B's resources
+    assert condition_b["id"] not in connected_fhir_ids
+    assert medication_b["id"] not in connected_fhir_ids

@@ -1156,6 +1156,7 @@ class KnowledgeGraph:
         self,
         fhir_id: str,
         patient_id: str | None = None,
+        limit: int = 100,
     ) -> list[ConnectionRecord]:
         """
         Get all graph connections from a node, excluding Patient nodes.
@@ -1169,6 +1170,7 @@ class KnowledgeGraph:
             patient_id: Optional patient UUID to scope the query. When provided,
                 the source node must be owned by this patient (connected via a
                 HAS_* relationship) or have no patient ownership (e.g. Medication).
+            limit: Maximum number of connections to return (default 100).
 
         Returns:
             List of ConnectionRecord dicts with relationship, direction,
@@ -1193,8 +1195,9 @@ class KnowledgeGraph:
                        m.name as name,
                        m.fhir_resource as fhir_resource
                 ORDER BY relationship, resource_type
+                LIMIT $limit
             """
-            params = {"fhir_id": fhir_id, "patient_id": patient_id}
+            params = {"fhir_id": fhir_id, "patient_id": patient_id, "limit": limit}
         else:
             query = """
                 MATCH (n {fhir_id: $fhir_id})-[r]-(m)
@@ -1206,8 +1209,9 @@ class KnowledgeGraph:
                        m.name as name,
                        m.fhir_resource as fhir_resource
                 ORDER BY relationship, resource_type
+                LIMIT $limit
             """
-            params = {"fhir_id": fhir_id}
+            params = {"fhir_id": fhir_id, "limit": limit}
 
         async with self._driver.session() as session:
             result = await session.run(query, **params)
