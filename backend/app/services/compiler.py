@@ -1314,14 +1314,14 @@ async def compile_and_store(
 
 
 async def get_compiled_summary(
-    db: AsyncSession,
     patient_id: uuid.UUID | str,
+    db: AsyncSession,
 ) -> dict[str, Any] | None:
     """Read a previously stored compiled patient summary.
 
     Args:
-        db: Async SQLAlchemy session.
         patient_id: The canonical patient UUID.
+        db: Async SQLAlchemy session.
 
     Returns:
         The compiled summary dict, or None if not yet compiled.

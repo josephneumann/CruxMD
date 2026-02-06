@@ -3124,7 +3124,7 @@ class TestGetCompiledSummary:
         ))
         await db_session.flush()
 
-        result = await get_compiled_summary(db_session, patient_id)
+        result = await get_compiled_summary(patient_id, db_session)
         assert result is not None
         assert result["patient_orientation"] == "Jane Doe"
 
@@ -3141,13 +3141,13 @@ class TestGetCompiledSummary:
         ))
         await db_session.flush()
 
-        result = await get_compiled_summary(db_session, patient_id)
+        result = await get_compiled_summary(patient_id, db_session)
         assert result is None
 
     @pytest.mark.asyncio
     async def test_returns_none_for_nonexistent_patient(self, db_session: AsyncSession):
         """Should return None if no Patient row exists."""
-        result = await get_compiled_summary(db_session, uuid.uuid4())
+        result = await get_compiled_summary(uuid.uuid4(), db_session)
         assert result is None
 
     @pytest.mark.asyncio
@@ -3165,7 +3165,7 @@ class TestGetCompiledSummary:
         ))
         await db_session.flush()
 
-        result = await get_compiled_summary(db_session, str(patient_id))
+        result = await get_compiled_summary(str(patient_id), db_session)
         assert result is not None
         assert result["test"] is True
 
@@ -3192,7 +3192,7 @@ class TestOnDemandFallback:
         await db_session.flush()
 
         # First: no compiled summary
-        summary = await get_compiled_summary(db_session, patient_id)
+        summary = await get_compiled_summary(patient_id, db_session)
         assert summary is None
 
         # Fallback: compile synchronously
@@ -3202,7 +3202,7 @@ class TestOnDemandFallback:
         assert "patient_orientation" in summary
 
         # Now get_compiled_summary should return the stored result
-        stored = await get_compiled_summary(db_session, patient_id)
+        stored = await get_compiled_summary(patient_id, db_session)
         assert stored is not None
         assert stored["patient_orientation"] == summary["patient_orientation"]
 
@@ -3221,6 +3221,6 @@ class TestOnDemandFallback:
         ))
         await db_session.flush()
 
-        summary = await get_compiled_summary(db_session, patient_id)
+        summary = await get_compiled_summary(patient_id, db_session)
         assert summary is not None
         assert summary["patient_orientation"] == "Pre-compiled"
