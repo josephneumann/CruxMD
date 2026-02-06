@@ -2750,3 +2750,327 @@ async def test_search_nodes_finds_device(
     results = await graph.search_nodes_by_name(patient_id, ["pacemaker"])
     fhir_ids = [r["fhir_id"] for r in results]
     assert sample_device["id"] in fhir_ids
+
+
+# =============================================================================
+# get_all_connections tests
+# =============================================================================
+
+
+@pytest.mark.asyncio
+async def test_get_all_connections_from_condition(
+    graph: KnowledgeGraph,
+    patient_id: str,
+    sample_patient,
+    sample_encounter,
+    sample_condition_with_encounter,
+    sample_medication_with_encounter_and_reason,
+    sample_careplan_with_addresses,
+):
+    """Test get_all_connections returns TREATS, ADDRESSES, DIAGNOSED edges from a Condition."""
+    await graph.build_from_fhir(
+        patient_id,
+        [
+            sample_patient,
+            sample_encounter,
+            sample_condition_with_encounter,
+            sample_medication_with_encounter_and_reason,
+            sample_careplan_with_addresses,
+        ],
+    )
+
+    connections = await graph.get_all_connections(
+        sample_condition_with_encounter["id"], patient_id=patient_id
+    )
+
+    rel_types = {c["relationship"] for c in connections}
+    # Condition should have incoming TREATS from MedicationRequest,
+    # incoming ADDRESSES from CarePlan, and incoming DIAGNOSED from Encounter
+    assert "TREATS" in rel_types
+    assert "ADDRESSES" in rel_types
+    assert "DIAGNOSED" in rel_types
+
+    # Verify no Patient nodes in results
+    resource_types = {c["resource_type"] for c in connections}
+    assert "Patient" not in resource_types
+
+    # Verify direction: TREATS and ADDRESSES should be incoming to the Condition
+    treats = [c for c in connections if c["relationship"] == "TREATS"]
+    assert all(c["direction"] == "incoming" for c in treats)
+
+    addresses = [c for c in connections if c["relationship"] == "ADDRESSES"]
+    assert all(c["direction"] == "incoming" for c in addresses)
+
+
+@pytest.mark.asyncio
+async def test_get_all_connections_from_encounter(
+    graph: KnowledgeGraph,
+    patient_id: str,
+    sample_patient,
+    sample_encounter,
+    sample_condition_with_encounter,
+    sample_medication_with_encounter_and_reason,
+    sample_observation_with_encounter,
+):
+    """Test get_all_connections returns DIAGNOSED, PRESCRIBED, RECORDED edges from an Encounter."""
+    await graph.build_from_fhir(
+        patient_id,
+        [
+            sample_patient,
+            sample_encounter,
+            sample_condition_with_encounter,
+            sample_medication_with_encounter_and_reason,
+            sample_observation_with_encounter,
+        ],
+    )
+
+    connections = await graph.get_all_connections(
+        sample_encounter["id"], patient_id=patient_id
+    )
+
+    rel_types = {c["relationship"] for c in connections}
+    assert "DIAGNOSED" in rel_types
+    assert "PRESCRIBED" in rel_types
+    assert "RECORDED" in rel_types
+
+    # Verify no Patient nodes
+    resource_types = {c["resource_type"] for c in connections}
+    assert "Patient" not in resource_types
+
+    # Encounter relationships should be outgoing
+    diagnosed = [c for c in connections if c["relationship"] == "DIAGNOSED"]
+    assert all(c["direction"] == "outgoing" for c in diagnosed)
+
+
+@pytest.mark.asyncio
+async def test_get_all_connections_empty_for_no_edges(
+    graph: KnowledgeGraph,
+    patient_id: str,
+    sample_patient,
+    sample_condition,
+):
+    """Test get_all_connections returns empty list for node with no non-Patient edges."""
+    await graph.build_from_fhir(patient_id, [sample_patient, sample_condition])
+
+    # Condition has a HAS_CONDITION from Patient but no other edges.
+    # Patient nodes are excluded, so result should be empty.
+    connections = await graph.get_all_connections(
+        sample_condition["id"], patient_id=patient_id
+    )
+    assert connections == []
+
+
+@pytest.mark.asyncio
+async def test_get_all_connections_empty_for_nonexistent_node(
+    graph: KnowledgeGraph,
+):
+    """Test get_all_connections returns empty list for nonexistent fhir_id."""
+    connections = await graph.get_all_connections("nonexistent-fhir-id-999")
+    assert connections == []
+
+
+@pytest.mark.asyncio
+async def test_get_all_connections_medication_node(
+    graph: KnowledgeGraph,
+    patient_id: str,
+    sample_patient,
+    sample_encounter,
+    sample_condition_with_encounter,
+    sample_medication_administration_with_reason,
+    sample_medication_catalog,
+):
+    """Test get_all_connections works for Medication nodes (no patient_id ownership)."""
+    # Build a MedicationAdministration that references both a Condition and a Medication
+    med_admin = dict(sample_medication_administration_with_reason)
+    med_admin["medicationReference"] = {
+        "reference": f"Medication/{sample_medication_catalog['id']}"
+    }
+
+    await graph.build_from_fhir(
+        patient_id,
+        [
+            sample_patient,
+            sample_encounter,
+            sample_condition_with_encounter,
+            med_admin,
+            sample_medication_catalog,
+        ],
+    )
+
+    # Query the Medication node with patient_id scoping — should still work
+    # because Medication has no patient ownership
+    connections = await graph.get_all_connections(
+        sample_medication_catalog["id"], patient_id=patient_id
+    )
+
+    # Medication should have incoming USES_MEDICATION from MedicationAdministration
+    rel_types = {c["relationship"] for c in connections}
+    assert "USES_MEDICATION" in rel_types
+
+    uses_med = [c for c in connections if c["relationship"] == "USES_MEDICATION"]
+    assert all(c["direction"] == "incoming" for c in uses_med)
+    assert uses_med[0]["resource_type"] == "MedicationAdministration"
+
+
+@pytest.mark.asyncio
+async def test_get_all_connections_filters_patient_nodes(
+    graph: KnowledgeGraph,
+    patient_id: str,
+    sample_patient,
+    sample_encounter,
+    sample_condition_with_encounter,
+):
+    """Test that Patient nodes (HAS_* relationships) are excluded from results."""
+    await graph.build_from_fhir(
+        patient_id,
+        [sample_patient, sample_encounter, sample_condition_with_encounter],
+    )
+
+    connections = await graph.get_all_connections(
+        sample_condition_with_encounter["id"], patient_id=patient_id
+    )
+
+    # Should only see Encounter DIAGNOSED, not Patient HAS_CONDITION
+    for conn in connections:
+        assert conn["resource_type"] != "Patient"
+
+    # HAS_CONDITION should not appear as a relationship type
+    rel_types = {c["relationship"] for c in connections}
+    assert "HAS_CONDITION" not in rel_types
+
+
+@pytest.mark.asyncio
+async def test_get_all_connections_without_patient_id(
+    graph: KnowledgeGraph,
+    patient_id: str,
+    sample_patient,
+    sample_encounter,
+    sample_condition_with_encounter,
+    sample_medication_with_encounter_and_reason,
+):
+    """Test get_all_connections works without patient_id parameter."""
+    await graph.build_from_fhir(
+        patient_id,
+        [
+            sample_patient,
+            sample_encounter,
+            sample_condition_with_encounter,
+            sample_medication_with_encounter_and_reason,
+        ],
+    )
+
+    connections = await graph.get_all_connections(sample_condition_with_encounter["id"])
+
+    rel_types = {c["relationship"] for c in connections}
+    assert "TREATS" in rel_types
+    assert "DIAGNOSED" in rel_types
+
+    # Patient nodes still excluded
+    resource_types = {c["resource_type"] for c in connections}
+    assert "Patient" not in resource_types
+
+
+@pytest.mark.asyncio
+async def test_get_all_connections_cross_patient_isolation(
+    graph: KnowledgeGraph,
+):
+    """Test that get_all_connections with patient_id scoping excludes other patients' data."""
+    patient_a_id = "patient-isolation-a"
+    patient_b_id = "patient-isolation-b"
+
+    # Patient A resources
+    patient_a = {
+        "resourceType": "Patient",
+        "id": "fhir-patient-a",
+        "name": [{"given": ["Alice"], "family": "Anderson"}],
+        "birthDate": "1990-01-01",
+        "gender": "female",
+    }
+    condition_a = {
+        "resourceType": "Condition",
+        "id": "condition-isolation-a",
+        "subject": {"reference": "Patient/fhir-patient-a"},
+        "code": {
+            "coding": [
+                {
+                    "system": "http://snomed.info/sct",
+                    "code": "73211009",
+                    "display": "Diabetes mellitus",
+                }
+            ]
+        },
+        "clinicalStatus": {"coding": [{"code": "active"}]},
+    }
+    medication_a = {
+        "resourceType": "MedicationRequest",
+        "id": "medication-isolation-a",
+        "subject": {"reference": "Patient/fhir-patient-a"},
+        "reasonReference": [{"reference": "Condition/condition-isolation-a"}],
+        "medicationCodeableConcept": {
+            "coding": [
+                {
+                    "system": "http://www.nlm.nih.gov/research/umls/rxnorm",
+                    "code": "860975",
+                    "display": "Metformin 500 MG",
+                }
+            ]
+        },
+        "status": "active",
+    }
+
+    # Patient B resources
+    patient_b = {
+        "resourceType": "Patient",
+        "id": "fhir-patient-b",
+        "name": [{"given": ["Bob"], "family": "Brown"}],
+        "birthDate": "1985-06-15",
+        "gender": "male",
+    }
+    condition_b = {
+        "resourceType": "Condition",
+        "id": "condition-isolation-b",
+        "subject": {"reference": "Patient/fhir-patient-b"},
+        "code": {
+            "coding": [
+                {
+                    "system": "http://snomed.info/sct",
+                    "code": "38341003",
+                    "display": "Hypertension",
+                }
+            ]
+        },
+        "clinicalStatus": {"coding": [{"code": "active"}]},
+    }
+    medication_b = {
+        "resourceType": "MedicationRequest",
+        "id": "medication-isolation-b",
+        "subject": {"reference": "Patient/fhir-patient-b"},
+        "reasonReference": [{"reference": "Condition/condition-isolation-b"}],
+        "medicationCodeableConcept": {
+            "coding": [
+                {
+                    "system": "http://www.nlm.nih.gov/research/umls/rxnorm",
+                    "code": "197361",
+                    "display": "Lisinopril 10 MG",
+                }
+            ]
+        },
+        "status": "active",
+    }
+
+    # Build graphs for both patients
+    await graph.build_from_fhir(patient_a_id, [patient_a, condition_a, medication_a])
+    await graph.build_from_fhir(patient_b_id, [patient_b, condition_b, medication_b])
+
+    # Query connections for patient A's condition, scoped to patient A
+    connections = await graph.get_all_connections(
+        condition_a["id"], patient_id=patient_a_id
+    )
+
+    # Should include patient A's medication (TREATS relationship)
+    connected_fhir_ids = {c["fhir_id"] for c in connections}
+    assert medication_a["id"] in connected_fhir_ids
+
+    # Should NOT include any of patient B's resources
+    assert condition_b["id"] not in connected_fhir_ids
+    assert medication_b["id"] not in connected_fhir_ids
