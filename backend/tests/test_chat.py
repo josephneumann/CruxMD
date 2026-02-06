@@ -20,7 +20,7 @@ from sqlalchemy.ext.asyncio import AsyncSession, async_sessionmaker
 
 from app.models import FhirResource
 from app.schemas import AgentResponse, FollowUp, Insight
-from app.services.query_classifier import FAST_PROFILE, STANDARD_PROFILE
+from app.services.query_classifier import LIGHTNING_PROFILE, STANDARD_PROFILE
 
 
 # =============================================================================
@@ -1069,7 +1069,7 @@ class TestChatQueryRouting:
     """Tests for adaptive query routing (fast vs standard prompt selection)."""
 
     @pytest.mark.asyncio
-    async def test_fast_query_uses_fast_prompt(
+    async def test_lightning_query_uses_lightning_prompt(
         self,
         client: AsyncClient,
         auth_headers: dict,
@@ -1077,9 +1077,10 @@ class TestChatQueryRouting:
         sample_agent_response: AgentResponse,
         sample_compiled_summary: dict,
     ):
-        """'What medications?' → build_system_prompt_fast called."""
+        """LIGHTNING profile → build_system_prompt_lightning called."""
         with patch("app.routes.chat.get_compiled_summary", new_callable=AsyncMock, return_value=sample_compiled_summary), \
-             patch("app.routes.chat.classify_query", return_value=FAST_PROFILE), \
+             patch("app.routes.chat.classify_query", return_value=LIGHTNING_PROFILE), \
+             patch("app.routes.chat.build_system_prompt_lightning", return_value="lightning prompt") as mock_lightning, \
              patch("app.routes.chat.build_system_prompt_fast", return_value="fast prompt") as mock_fast, \
              patch("app.routes.chat.build_system_prompt_v2", return_value="standard prompt") as mock_standard, \
              patch("app.routes.chat.AgentService") as mock_agent_cls, \
@@ -1101,12 +1102,13 @@ class TestChatQueryRouting:
             )
 
             assert response.status_code == 200
-            mock_fast.assert_called_once()
+            mock_lightning.assert_called_once()
+            mock_fast.assert_not_called()
             mock_standard.assert_not_called()
 
-            # Verify the fast prompt was passed to agent
+            # Verify the lightning prompt was passed to agent
             call_kwargs = mock_agent.generate_response.call_args.kwargs
-            assert call_kwargs["system_prompt"] == "fast prompt"
+            assert call_kwargs["system_prompt"] == "lightning prompt"
 
     @pytest.mark.asyncio
     async def test_complex_query_uses_standard_prompt(
@@ -1158,8 +1160,8 @@ class TestChatQueryRouting:
     ):
         """Verify query_profile is propagated to agent.generate_response."""
         with patch("app.routes.chat.get_compiled_summary", new_callable=AsyncMock, return_value=sample_compiled_summary), \
-             patch("app.routes.chat.classify_query", return_value=FAST_PROFILE), \
-             patch("app.routes.chat.build_system_prompt_fast", return_value="fast prompt"), \
+             patch("app.routes.chat.classify_query", return_value=LIGHTNING_PROFILE), \
+             patch("app.routes.chat.build_system_prompt_lightning", return_value="lightning prompt"), \
              patch("app.routes.chat.AgentService") as mock_agent_cls, \
              patch("app.routes.chat.KnowledgeGraph") as mock_graph_cls:
 
@@ -1181,19 +1183,20 @@ class TestChatQueryRouting:
             assert response.status_code == 200
 
             call_kwargs = mock_agent.generate_response.call_args.kwargs
-            assert call_kwargs["query_profile"] is FAST_PROFILE
+            assert call_kwargs["query_profile"] is LIGHTNING_PROFILE
 
     @pytest.mark.asyncio
-    async def test_stream_fast_query_uses_fast_prompt(
+    async def test_stream_lightning_query_uses_lightning_prompt(
         self,
         client: AsyncClient,
         auth_headers: dict,
         patient_in_db: uuid.UUID,
         sample_compiled_summary: dict,
     ):
-        """Streaming endpoint also uses fast prompt for FAST queries."""
+        """Streaming endpoint uses lightning prompt for LIGHTNING queries."""
         with patch("app.routes.chat.get_compiled_summary", new_callable=AsyncMock, return_value=sample_compiled_summary), \
-             patch("app.routes.chat.classify_query", return_value=FAST_PROFILE), \
+             patch("app.routes.chat.classify_query", return_value=LIGHTNING_PROFILE), \
+             patch("app.routes.chat.build_system_prompt_lightning", return_value="lightning prompt") as mock_lightning, \
              patch("app.routes.chat.build_system_prompt_fast", return_value="fast prompt") as mock_fast, \
              patch("app.routes.chat.build_system_prompt_v2", return_value="standard prompt") as mock_standard, \
              patch("app.routes.chat.AgentService") as mock_agent_cls, \
@@ -1215,7 +1218,8 @@ class TestChatQueryRouting:
             )
 
             assert response.status_code == 200
-            mock_fast.assert_called_once()
+            mock_lightning.assert_called_once()
+            mock_fast.assert_not_called()
             mock_standard.assert_not_called()
 
     @pytest.mark.asyncio
@@ -1228,8 +1232,8 @@ class TestChatQueryRouting:
     ):
         """Verify query_profile is propagated to agent.generate_response_stream."""
         with patch("app.routes.chat.get_compiled_summary", new_callable=AsyncMock, return_value=sample_compiled_summary), \
-             patch("app.routes.chat.classify_query", return_value=FAST_PROFILE), \
-             patch("app.routes.chat.build_system_prompt_fast", return_value="fast prompt"), \
+             patch("app.routes.chat.classify_query", return_value=LIGHTNING_PROFILE), \
+             patch("app.routes.chat.build_system_prompt_lightning", return_value="lightning prompt"), \
              patch("app.routes.chat.AgentService") as mock_agent_cls, \
              patch("app.routes.chat.KnowledgeGraph") as mock_graph_cls:
 
@@ -1251,4 +1255,4 @@ class TestChatQueryRouting:
             assert response.status_code == 200
 
             call_kwargs = mock_agent.generate_response_stream.call_args.kwargs
-            assert call_kwargs["query_profile"] is FAST_PROFILE
+            assert call_kwargs["query_profile"] is LIGHTNING_PROFILE

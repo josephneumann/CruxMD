@@ -11,12 +11,14 @@ from unittest.mock import AsyncMock, MagicMock, patch
 import pytest
 
 from app.schemas import AgentResponse, FollowUp, Insight
+from app.schemas.agent import LightningResponse
 from app.services.agent import (
     AgentService,
     DEFAULT_MODEL,
     DEFAULT_REASONING_EFFORT,
     DEFAULT_MAX_OUTPUT_TOKENS,
     build_system_prompt_fast,
+    build_system_prompt_lightning,
     build_system_prompt_v2,
     _build_patient_summary_section,
     _build_safety_section,
@@ -28,7 +30,11 @@ from app.services.agent import (
     _prune_fhir_resource,
 )
 from app.services.agent_tools import TOOL_SCHEMAS, execute_tool
-from app.services.query_classifier import FAST_PROFILE, STANDARD_PROFILE
+from app.services.query_classifier import (
+    DEEP_PROFILE,
+    LIGHTNING_PROFILE,
+    QUICK_PROFILE,
+)
 
 
 # =============================================================================
@@ -860,7 +866,7 @@ def create_mock_tool_stream(tool_calls: list):
     # No events yielded during tool-decision rounds
     async def mock_aiter(self):
         return
-        yield  # noqa: unreachable — makes this an async generator
+        yield  # noqa: F841 — makes this an async generator
 
     stream = AsyncMock()
     stream.__aiter__ = mock_aiter
@@ -1828,10 +1834,10 @@ class TestGenerateResponseWithQueryProfile:
     """Tests for query_profile parameter on generate methods."""
 
     @pytest.mark.asyncio
-    async def test_fast_profile_sets_low_effort_and_max_tokens(
+    async def test_lightning_profile_sets_params(
         self, system_prompt: str, patient_id: str
     ):
-        """FAST profile → low effort, 4096 max tokens, no tools."""
+        """LIGHTNING profile → gpt-4o-mini, no reasoning, 2048 max tokens, no tools, LightningResponse schema."""
         mock_client = create_mock_openai_client()
         service = AgentService(client=mock_client)
 
@@ -1839,33 +1845,35 @@ class TestGenerateResponseWithQueryProfile:
             system_prompt=system_prompt,
             patient_id=patient_id,
             message="What medications?",
-            query_profile=FAST_PROFILE,
+            query_profile=LIGHTNING_PROFILE,
             graph=AsyncMock(),
             db=AsyncMock(),
         )
 
         call_args = mock_client.responses.parse.call_args
-        assert call_args.kwargs["max_output_tokens"] == 4096
-        reasoning = call_args.kwargs["reasoning"]
-        effort = getattr(reasoning, "effort", None) or reasoning.get("effort")
-        assert effort == "low"
-        # FAST profile disables tools even when graph/db provided
+        assert call_args.kwargs["model"] == "gpt-4o-mini"
+        assert call_args.kwargs["max_output_tokens"] == 2048
+        assert call_args.kwargs["text_format"] is LightningResponse
+        # No reasoning kwarg for gpt-4o-mini
+        assert "reasoning" not in call_args.kwargs
+        # LIGHTNING profile disables tools even when graph/db provided
         assert "tools" not in call_args.kwargs
 
     @pytest.mark.asyncio
     async def test_reasoning_effort_override_trumps_profile(
         self, system_prompt: str, patient_id: str
     ):
-        """Explicit reasoning_effort param overrides query_profile."""
+        """Explicit reasoning_effort param overrides query_profile effort level."""
         mock_client = create_mock_openai_client()
         service = AgentService(client=mock_client)
 
+        # Use QUICK_PROFILE (reasoning=True, effort=low) and override to high
         await service.generate_response(
             system_prompt=system_prompt,
             patient_id=patient_id,
             message="What medications?",
             reasoning_effort="high",
-            query_profile=FAST_PROFILE,
+            query_profile=QUICK_PROFILE,
         )
 
         call_args = mock_client.responses.parse.call_args
@@ -1874,10 +1882,10 @@ class TestGenerateResponseWithQueryProfile:
         assert effort == "high"
 
     @pytest.mark.asyncio
-    async def test_standard_profile_preserves_defaults(
+    async def test_deep_profile_preserves_defaults(
         self, system_prompt: str, patient_id: str
     ):
-        """STANDARD profile keeps medium effort, 16384 max tokens, tools enabled."""
+        """DEEP profile keeps medium effort, 16384 max tokens, tools enabled, full schema."""
         mock_client = create_mock_openai_client()
         service = AgentService(client=mock_client)
 
@@ -1885,14 +1893,16 @@ class TestGenerateResponseWithQueryProfile:
             system_prompt=system_prompt,
             patient_id=patient_id,
             message="Explain the HbA1c trend",
-            query_profile=STANDARD_PROFILE,
+            query_profile=DEEP_PROFILE,
             graph=AsyncMock(),
             db=AsyncMock(),
         )
 
         # First call is inside _execute_tool_calls
         first_call = mock_client.responses.parse.call_args_list[0]
+        assert first_call.kwargs["model"] == "gpt-5-mini"
         assert first_call.kwargs["max_output_tokens"] == 16384
+        assert first_call.kwargs["text_format"] is AgentResponse
         reasoning = first_call.kwargs["reasoning"]
         effort = getattr(reasoning, "effort", None) or reasoning.get("effort")
         assert effort == "medium"
@@ -1920,3 +1930,216 @@ class TestGenerateResponseWithQueryProfile:
         reasoning = call_args.kwargs["reasoning"]
         effort = getattr(reasoning, "effort", None) or reasoning.get("effort")
         assert effort == "medium"
+
+
+# =============================================================================
+# build_system_prompt_lightning Tests
+# =============================================================================
+
+
+class TestBuildSystemPromptLightning:
+    """Tests for the Lightning-tier system prompt."""
+
+    def test_includes_patient_data(self, full_compiled_summary: dict):
+        """Lightning prompt includes patient data."""
+        prompt = build_system_prompt_lightning(full_compiled_summary)
+        assert "John Smith" in prompt
+        assert "Type 2 diabetes mellitus" in prompt
+        assert "Metformin 500 MG" in prompt
+
+    def test_includes_safety(self, full_compiled_summary: dict):
+        """Lightning prompt includes safety constraints."""
+        prompt = build_system_prompt_lightning(full_compiled_summary)
+        assert "Safety Constraints" in prompt
+        assert "ALLERGY: Penicillin" in prompt
+
+    def test_excludes_tool_descriptions(self, full_compiled_summary: dict):
+        """Lightning prompt does NOT include tool descriptions."""
+        prompt = build_system_prompt_lightning(full_compiled_summary)
+        assert "query_patient_data" not in prompt
+        assert "explore_connections" not in prompt
+
+    def test_excludes_reasoning_directives(self, full_compiled_summary: dict):
+        """Lightning prompt does NOT include reasoning directives."""
+        prompt = build_system_prompt_lightning(full_compiled_summary)
+        assert "Reasoning Directives" not in prompt
+        assert "Cross-condition reasoning" not in prompt
+
+    def test_has_concise_role(self, minimal_compiled_summary: dict):
+        """Lightning prompt has a concise chart assistant role."""
+        prompt = build_system_prompt_lightning(minimal_compiled_summary)
+        assert "clinical chart assistant" in prompt
+        assert "Extract and present" in prompt
+
+    def test_has_simple_format_section(self, minimal_compiled_summary: dict):
+        """Lightning prompt format section mentions only narrative and follow_ups."""
+        prompt = build_system_prompt_lightning(minimal_compiled_summary)
+        assert "narrative" in prompt
+        assert "follow_ups" in prompt
+        # Should NOT mention insights, visualizations, tables, actions
+        assert "insights" not in prompt.split("Response Format")[1]
+        assert "visualizations" not in prompt.split("Response Format")[1]
+
+    def test_shorter_than_fast(self, full_compiled_summary: dict):
+        """Lightning prompt is shorter than fast prompt."""
+        lightning = build_system_prompt_lightning(full_compiled_summary)
+        fast = build_system_prompt_fast(full_compiled_summary)
+        assert len(lightning) < len(fast)
+
+    def test_shorter_than_standard(self, full_compiled_summary: dict):
+        """Lightning prompt is significantly shorter than standard."""
+        lightning = build_system_prompt_lightning(full_compiled_summary)
+        standard = build_system_prompt_v2(full_compiled_summary)
+        assert len(lightning) < len(standard) - 2000
+
+    def test_includes_profile_when_provided(self, minimal_compiled_summary: dict):
+        """Lightning prompt includes patient profile when provided."""
+        prompt = build_system_prompt_lightning(
+            minimal_compiled_summary, patient_profile="Active retired teacher."
+        )
+        assert "Active retired teacher" in prompt
+
+
+# =============================================================================
+# Lightning Model Routing & Conditional Reasoning Tests
+# =============================================================================
+
+
+class TestLightningModelRouting:
+    """Tests for Lightning tier model routing and conditional reasoning."""
+
+    @pytest.mark.asyncio
+    async def test_quick_profile_uses_reasoning_and_gpt5_mini(
+        self, system_prompt: str, patient_id: str
+    ):
+        """QUICK profile → gpt-5-mini, low reasoning, tools, full schema."""
+        mock_client = create_mock_openai_client()
+        service = AgentService(client=mock_client)
+
+        await service.generate_response(
+            system_prompt=system_prompt,
+            patient_id=patient_id,
+            message="What were the labs from January?",
+            query_profile=QUICK_PROFILE,
+            graph=AsyncMock(),
+            db=AsyncMock(),
+        )
+
+        first_call = mock_client.responses.parse.call_args_list[0]
+        assert first_call.kwargs["model"] == "gpt-5-mini"
+        assert first_call.kwargs["text_format"] is AgentResponse
+        assert first_call.kwargs["max_output_tokens"] == 4096
+        reasoning = first_call.kwargs["reasoning"]
+        effort = getattr(reasoning, "effort", None) or reasoning.get("effort")
+        assert effort == "low"
+        assert first_call.kwargs["tools"] is TOOL_SCHEMAS
+
+    @pytest.mark.asyncio
+    async def test_lightning_wraps_response_to_agent_response(
+        self, system_prompt: str, patient_id: str
+    ):
+        """Lightning tier wraps LightningResponse into AgentResponse."""
+        mock_client = AsyncMock()
+        lightning_resp = LightningResponse(
+            narrative="Metformin 500mg, Lisinopril 10mg",
+            follow_ups=[FollowUp(question="What are the allergies?")],
+        )
+        mock_response = MagicMock()
+        mock_response.output_parsed = lightning_resp
+        mock_response.output_text = lightning_resp.model_dump_json()
+        mock_client.responses.parse = AsyncMock(return_value=mock_response)
+
+        service = AgentService(client=mock_client)
+
+        result = await service.generate_response(
+            system_prompt=system_prompt,
+            patient_id=patient_id,
+            message="What medications?",
+            query_profile=LIGHTNING_PROFILE,
+        )
+
+        # Result should be AgentResponse, not LightningResponse
+        assert isinstance(result, AgentResponse)
+        assert result.narrative == "Metformin 500mg, Lisinopril 10mg"
+        assert len(result.follow_ups) == 1
+        assert result.follow_ups[0].question == "What are the allergies?"
+        # Optional fields should be None
+        assert result.insights is None
+        assert result.visualizations is None
+        assert result.tables is None
+        assert result.actions is None
+
+    @pytest.mark.asyncio
+    async def test_stream_lightning_wraps_response(
+        self, system_prompt: str, patient_id: str
+    ):
+        """Streaming Lightning tier wraps LightningResponse into AgentResponse in done event."""
+        lightning_resp = LightningResponse(
+            narrative="No known allergies.",
+            follow_ups=[FollowUp(question="Show medications")],
+        )
+
+        # Create a stream that returns LightningResponse
+        text_event = MagicMock()
+        text_event.type = "response.output_text.delta"
+        text_event.delta = "No known allergies."
+
+        async def mock_aiter(self):
+            yield text_event
+
+        mock_final = MagicMock()
+        mock_final.output_parsed = lightning_resp
+        mock_final.output_text = lightning_resp.model_dump_json()
+        mock_final.output = [_make_text_item()]
+
+        stream = AsyncMock()
+        stream.__aiter__ = mock_aiter
+        stream.get_final_response = AsyncMock(return_value=mock_final)
+
+        ctx = AsyncMock()
+        ctx.__aenter__ = AsyncMock(return_value=stream)
+        ctx.__aexit__ = AsyncMock(return_value=False)
+
+        mock_client = AsyncMock()
+        mock_client.responses.stream = MagicMock(return_value=ctx)
+
+        service = AgentService(client=mock_client)
+
+        events = []
+        async for et, data in service.generate_response_stream(
+            system_prompt=system_prompt,
+            patient_id=patient_id,
+            message="allergies?",
+            query_profile=LIGHTNING_PROFILE,
+        ):
+            events.append((et, data))
+
+        done_events = [e for e in events if e[0] == "done"]
+        assert len(done_events) == 1
+        # The done payload should be AgentResponse, not LightningResponse
+        parsed = AgentResponse.model_validate_json(done_events[0][1])
+        assert parsed.narrative == "No known allergies."
+        assert len(parsed.follow_ups) == 1
+
+    @pytest.mark.asyncio
+    async def test_stream_lightning_omits_reasoning_kwarg(
+        self, system_prompt: str, patient_id: str
+    ):
+        """Streaming Lightning tier does not pass reasoning kwarg."""
+        mock_client = AsyncMock()
+        mock_client.responses.stream = MagicMock(return_value=create_mock_stream())
+
+        service = AgentService(client=mock_client)
+
+        async for _ in service.generate_response_stream(
+            system_prompt=system_prompt,
+            patient_id=patient_id,
+            message="What medications?",
+            query_profile=LIGHTNING_PROFILE,
+        ):
+            pass
+
+        call_kwargs = mock_client.responses.stream.call_args.kwargs
+        assert "reasoning" not in call_kwargs
+        assert call_kwargs["model"] == "gpt-4o-mini"
+        assert call_kwargs["text_format"] is LightningResponse
