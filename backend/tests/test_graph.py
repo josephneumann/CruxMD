@@ -547,6 +547,40 @@ async def test_get_verified_conditions_excludes_inactive(
 
 
 @pytest.mark.asyncio
+async def test_get_verified_conditions_includes_recurrence_and_relapse(
+    graph: KnowledgeGraph,
+    patient_id: str,
+    sample_patient,
+    sample_condition,
+    sample_condition_recurrence,
+    sample_condition_relapse,
+    sample_condition_inactive,
+):
+    """Test that get_verified_conditions returns recurrence and relapse conditions."""
+    await graph.build_from_fhir(
+        patient_id,
+        [
+            sample_patient,
+            sample_condition,
+            sample_condition_recurrence,
+            sample_condition_relapse,
+            sample_condition_inactive,
+        ],
+    )
+
+    conditions = await graph.get_verified_conditions(patient_id)
+
+    # Should return active, recurrence, and relapse — but not inactive
+    assert len(conditions) == 3
+    returned_ids = {c["id"] for c in conditions}
+    assert returned_ids == {
+        sample_condition["id"],
+        sample_condition_recurrence["id"],
+        sample_condition_relapse["id"],
+    }
+
+
+@pytest.mark.asyncio
 async def test_get_verified_conditions_returns_empty_for_nonexistent_patient(
     graph: KnowledgeGraph,
 ):
@@ -667,6 +701,40 @@ async def test_get_verified_allergies_excludes_inactive(
     # Should only return the active allergy
     assert len(allergies) == 1
     assert allergies[0]["id"] == sample_allergy["id"]
+
+
+@pytest.mark.asyncio
+async def test_get_verified_allergies_includes_recurrence_and_relapse(
+    graph: KnowledgeGraph,
+    patient_id: str,
+    sample_patient,
+    sample_allergy,
+    sample_allergy_recurrence,
+    sample_allergy_relapse,
+    sample_allergy_inactive,
+):
+    """Test that get_verified_allergies returns recurrence and relapse allergies."""
+    await graph.build_from_fhir(
+        patient_id,
+        [
+            sample_patient,
+            sample_allergy,
+            sample_allergy_recurrence,
+            sample_allergy_relapse,
+            sample_allergy_inactive,
+        ],
+    )
+
+    allergies = await graph.get_verified_allergies(patient_id)
+
+    # Should return active, recurrence, and relapse — but not inactive
+    assert len(allergies) == 3
+    returned_ids = {a["id"] for a in allergies}
+    assert returned_ids == {
+        sample_allergy["id"],
+        sample_allergy_recurrence["id"],
+        sample_allergy_relapse["id"],
+    }
 
 
 @pytest.mark.asyncio

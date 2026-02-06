@@ -358,6 +358,46 @@ def sample_condition_inactive() -> dict:
 
 
 @pytest.fixture
+def sample_condition_recurrence() -> dict:
+    """Sample FHIR Condition with recurrence clinical status."""
+    return {
+        "resourceType": "Condition",
+        "id": "condition-test-recurrence",
+        "subject": {"reference": "Patient/patient-test-123"},
+        "code": {
+            "coding": [
+                {
+                    "system": "http://snomed.info/sct",
+                    "code": "195662009",
+                    "display": "Acute viral pharyngitis",
+                }
+            ]
+        },
+        "clinicalStatus": {"coding": [{"code": "recurrence"}]},
+    }
+
+
+@pytest.fixture
+def sample_condition_relapse() -> dict:
+    """Sample FHIR Condition with relapse clinical status."""
+    return {
+        "resourceType": "Condition",
+        "id": "condition-test-relapse",
+        "subject": {"reference": "Patient/patient-test-123"},
+        "code": {
+            "coding": [
+                {
+                    "system": "http://snomed.info/sct",
+                    "code": "40055000",
+                    "display": "Chronic sinusitis",
+                }
+            ]
+        },
+        "clinicalStatus": {"coding": [{"code": "relapse"}]},
+    }
+
+
+@pytest.fixture
 def sample_medication_stopped() -> dict:
     """Sample stopped FHIR MedicationRequest for testing filtering."""
     return {
@@ -416,6 +456,50 @@ def sample_allergy_inactive() -> dict:
             ]
         },
         "clinicalStatus": {"coding": [{"code": "inactive"}]},
+        "category": ["medication"],
+        "criticality": "low",
+    }
+
+
+@pytest.fixture
+def sample_allergy_recurrence() -> dict:
+    """Sample FHIR AllergyIntolerance with recurrence clinical status."""
+    return {
+        "resourceType": "AllergyIntolerance",
+        "id": "allergy-test-recurrence",
+        "subject": {"reference": "Patient/patient-test-123"},
+        "code": {
+            "coding": [
+                {
+                    "system": "http://snomed.info/sct",
+                    "code": "300913006",
+                    "display": "Allergy to shellfish",
+                }
+            ]
+        },
+        "clinicalStatus": {"coding": [{"code": "recurrence"}]},
+        "category": ["food"],
+        "criticality": "high",
+    }
+
+
+@pytest.fixture
+def sample_allergy_relapse() -> dict:
+    """Sample FHIR AllergyIntolerance with relapse clinical status."""
+    return {
+        "resourceType": "AllergyIntolerance",
+        "id": "allergy-test-relapse",
+        "subject": {"reference": "Patient/patient-test-123"},
+        "code": {
+            "coding": [
+                {
+                    "system": "http://snomed.info/sct",
+                    "code": "419511003",
+                    "display": "Allergy to propofol",
+                }
+            ]
+        },
+        "clinicalStatus": {"coding": [{"code": "relapse"}]},
         "category": ["medication"],
         "criticality": "low",
     }
