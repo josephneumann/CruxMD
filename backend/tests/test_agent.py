@@ -1179,14 +1179,14 @@ class TestPruneFhirResourceDocumentReference:
     """Tests for _prune_fhir_resource handling of DocumentReference resources."""
 
     def test_short_note_preserved(self):
-        """A clinical note under 1500 chars is fully preserved."""
+        """Short clinical notes are fully preserved."""
         note = "Patient presents with mild headache."
         resource = _make_document_reference(note)
         pruned = _prune_fhir_resource(resource)
         assert pruned["clinical_note"] == note
 
     def test_long_note_not_truncated(self):
-        """A clinical note over 1500 chars must NOT be truncated."""
+        """Long clinical notes are fully preserved without truncation."""
         note = "A" * 3000
         resource = _make_document_reference(note)
         pruned = _prune_fhir_resource(resource)

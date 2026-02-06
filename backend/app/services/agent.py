@@ -313,7 +313,7 @@ def _prune_fhir_resource(resource: dict[str, Any]) -> dict[str, Any]:
 
     Removes FHIR boilerplate (meta, system URIs, identifiers, narrative HTML),
     simplifies CodeableConcepts and References to display strings, decodes
-    base64 clinical note content, and truncates dates.  The result contains
+    base64 clinical note content, and truncates dates. The result contains
     every clinically relevant field in a compact, readable form.
     """
     # Pre-process: handle DocumentReference base64 content before recursion
