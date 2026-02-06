@@ -6,10 +6,15 @@ Tests the pre-computed patient summary functions:
 - compile_node_context: batch-fetch and prune all connections from a graph node
 - fetch_resources_by_fhir_ids: batch Postgres lookup
 - prune_and_enrich: prune + attach synthetic fields
+- compute_medication_recency: recency signals for medications
+- compute_dose_history: dose history for active medications
+- infer_medication_condition_links: encounter-inferred med-condition links
 """
 
 import base64
+import copy
 import uuid
+from datetime import date
 from unittest.mock import AsyncMock, MagicMock
 
 import pytest
@@ -19,14 +24,19 @@ from app.models import FhirResource
 from app.services.graph import KnowledgeGraph
 from app.services.compiler import (
     OBSERVATION_CATEGORIES,
-    TREND_THRESHOLD,
+    TREND_THRESHOLD,  # noqa: F401 — used by TestComputeTrend for threshold assertions
     _compute_trend,
+    _extract_dosage_text,
     _extract_loinc_code,
+    _extract_med_display,
     _parse_fhir_datetime,
     compile_node_context,
+    compute_dose_history,
+    compute_medication_recency,
     compute_observation_trends,
     fetch_resources_by_fhir_ids,
     get_latest_observations_by_category,
+    infer_medication_condition_links,
     prune_and_enrich,
 )
 
@@ -1171,3 +1181,749 @@ class TestCompileNodeContext:
 
         assert len(result["DIAGNOSED"]) == 2
         assert len(result["PRESCRIBED"]) == 1
+
+
+# =============================================================================
+# Tests for compute_medication_recency
+# =============================================================================
+
+
+def _make_med_request(
+    fhir_id: str = "med-1",
+    display: str = "Lisinopril 10 MG",
+    status: str = "active",
+    authored_on: str | None = "2025-06-01",
+    dosage_text: str | None = None,
+    dose_value: float | None = None,
+    dose_unit: str | None = None,
+) -> dict:
+    """Build a minimal FHIR MedicationRequest dict for testing."""
+    med: dict = {
+        "resourceType": "MedicationRequest",
+        "id": fhir_id,
+        "status": status,
+        "medicationCodeableConcept": {
+            "coding": [{"display": display}],
+        },
+    }
+    if authored_on:
+        med["authoredOn"] = authored_on
+    if dosage_text or dose_value is not None:
+        instruction: dict = {}
+        if dosage_text:
+            instruction["text"] = dosage_text
+        if dose_value is not None:
+            instruction["doseAndRate"] = [
+                {"doseQuantity": {"value": dose_value, "unit": dose_unit or "MG"}}
+            ]
+        med["dosageInstruction"] = [instruction]
+    return med
+
+
+class TestComputeMedicationRecency:
+    """Tests for compute_medication_recency()."""
+
+    def test_new_medication(self):
+        """Medication authored <30 days ago should be 'new'."""
+        med = _make_med_request(authored_on="2026-01-15")
+        result = compute_medication_recency(med, date(2026, 2, 1))
+        assert result["_recency"] == "new"
+        assert result["_duration_days"] == 17
+
+    def test_recent_medication(self):
+        """Medication authored 30-180 days ago should be 'recent'."""
+        med = _make_med_request(authored_on="2025-09-01")
+        result = compute_medication_recency(med, date(2026, 2, 1))
+        assert result["_recency"] == "recent"
+        assert result["_duration_days"] == 153
+
+    def test_established_medication(self):
+        """Medication authored >180 days ago should be 'established'."""
+        med = _make_med_request(authored_on="2025-01-01")
+        result = compute_medication_recency(med, date(2026, 2, 1))
+        assert result["_recency"] == "established"
+        assert result["_duration_days"] == 396
+
+    def test_boundary_new_to_recent(self):
+        """At exactly 30 days, should be 'recent' (not 'new')."""
+        med = _make_med_request(authored_on="2026-01-02")
+        result = compute_medication_recency(med, date(2026, 2, 1))
+        assert result["_recency"] == "recent"
+        assert result["_duration_days"] == 30
+
+    def test_boundary_recent_to_established(self):
+        """At exactly 180 days, should be 'recent' (<=180)."""
+        med = _make_med_request(authored_on="2025-08-05")
+        result = compute_medication_recency(med, date(2026, 2, 1))
+        assert result["_recency"] == "recent"
+        assert result["_duration_days"] == 180
+
+    def test_boundary_181_days_is_established(self):
+        """At 181 days, should be 'established'."""
+        med = _make_med_request(authored_on="2025-08-04")
+        result = compute_medication_recency(med, date(2026, 2, 1))
+        assert result["_recency"] == "established"
+        assert result["_duration_days"] == 181
+
+    def test_missing_authored_on(self):
+        """Should return empty dict if authoredOn is missing."""
+        med = _make_med_request(authored_on=None)
+        result = compute_medication_recency(med, date(2026, 2, 1))
+        assert result == {}
+
+    def test_unparseable_authored_on(self):
+        """Should return empty dict if authoredOn can't be parsed."""
+        med = _make_med_request(authored_on="not-a-date")
+        result = compute_medication_recency(med, date(2026, 2, 1))
+        assert result == {}
+
+    def test_datetime_format_authored_on(self):
+        """Should handle full datetime format for authoredOn."""
+        med = _make_med_request(authored_on="2026-01-20T10:30:00Z")
+        result = compute_medication_recency(med, date(2026, 2, 1))
+        assert result["_recency"] == "new"
+        assert result["_duration_days"] == 12
+
+    def test_zero_day_duration(self):
+        """Same-day medication should be 'new' with 0 duration."""
+        med = _make_med_request(authored_on="2026-02-01")
+        result = compute_medication_recency(med, date(2026, 2, 1))
+        assert result["_recency"] == "new"
+        assert result["_duration_days"] == 0
+
+
+# =============================================================================
+# Tests for helper functions: _extract_dosage_text, _extract_med_display
+# =============================================================================
+
+
+class TestExtractDosageText:
+    """Tests for _extract_dosage_text()."""
+
+    def test_structured_dose(self):
+        med = _make_med_request(dose_value=20, dose_unit="MG")
+        assert _extract_dosage_text(med) == "20 MG"
+
+    def test_text_fallback(self):
+        med = _make_med_request(dosage_text="Take 2 tablets daily")
+        assert _extract_dosage_text(med) == "Take 2 tablets daily"
+
+    def test_structured_preferred_over_text(self):
+        med: dict = {
+            "dosageInstruction": [
+                {
+                    "text": "fallback text",
+                    "doseAndRate": [
+                        {"doseQuantity": {"value": 10, "unit": "MG"}}
+                    ],
+                }
+            ],
+        }
+        assert _extract_dosage_text(med) == "10 MG"
+
+    def test_no_dosage_instruction(self):
+        med: dict = {"resourceType": "MedicationRequest"}
+        assert _extract_dosage_text(med) is None
+
+    def test_empty_dosage_instruction(self):
+        med: dict = {"dosageInstruction": []}
+        assert _extract_dosage_text(med) is None
+
+
+class TestExtractMedDisplay:
+    """Tests for _extract_med_display()."""
+
+    def test_extracts_display(self):
+        med = _make_med_request(display="Metformin 500 MG")
+        assert _extract_med_display(med) == "Metformin 500 MG"
+
+    def test_no_medication_concept(self):
+        med: dict = {"resourceType": "MedicationRequest"}
+        assert _extract_med_display(med) is None
+
+    def test_text_fallback(self):
+        med: dict = {
+            "medicationCodeableConcept": {
+                "text": "Aspirin",
+            },
+        }
+        assert _extract_med_display(med) == "Aspirin"
+
+
+# =============================================================================
+# Tests for compute_dose_history
+# =============================================================================
+
+
+class TestComputeDoseHistory:
+    """Tests for compute_dose_history() with real DB."""
+
+    @pytest.mark.asyncio
+    async def test_returns_prior_records_with_different_dose(self, db_session: AsyncSession):
+        """Should return prior MedicationRequests with different dosages."""
+        patient_id = uuid.uuid4()
+
+        # Prior med: stopped, different dose
+        prior_med = _make_med_request(
+            fhir_id="med-old",
+            display="Lisinopril 10 MG",
+            status="stopped",
+            authored_on="2025-01-01",
+            dose_value=5,
+            dose_unit="MG",
+        )
+        db_session.add(FhirResource(
+            fhir_id="med-old",
+            resource_type="MedicationRequest",
+            patient_id=patient_id,
+            data=prior_med,
+        ))
+
+        # Current active med: different dose
+        active_med = _make_med_request(
+            fhir_id="med-current",
+            display="Lisinopril 10 MG",
+            status="active",
+            authored_on="2025-06-01",
+            dose_value=10,
+            dose_unit="MG",
+        )
+        db_session.add(FhirResource(
+            fhir_id="med-current",
+            resource_type="MedicationRequest",
+            patient_id=patient_id,
+            data=active_med,
+        ))
+        await db_session.flush()
+
+        result = await compute_dose_history(db_session, patient_id, active_med)
+
+        assert len(result) == 1
+        assert result[0]["dose"] == "5 MG"
+        assert result[0]["authoredOn"] == "2025-01-01"
+        assert result[0]["status"] == "stopped"
+
+    @pytest.mark.asyncio
+    async def test_excludes_same_dose_refills(self, db_session: AsyncSession):
+        """Same-dose refills should be excluded from dose history."""
+        patient_id = uuid.uuid4()
+
+        # Prior med: same dose, completed (refill)
+        refill_med = _make_med_request(
+            fhir_id="med-refill",
+            display="Lisinopril 10 MG",
+            status="completed",
+            authored_on="2025-03-01",
+            dose_value=10,
+            dose_unit="MG",
+        )
+        db_session.add(FhirResource(
+            fhir_id="med-refill",
+            resource_type="MedicationRequest",
+            patient_id=patient_id,
+            data=refill_med,
+        ))
+
+        active_med = _make_med_request(
+            fhir_id="med-current",
+            display="Lisinopril 10 MG",
+            status="active",
+            authored_on="2025-06-01",
+            dose_value=10,
+            dose_unit="MG",
+        )
+        db_session.add(FhirResource(
+            fhir_id="med-current",
+            resource_type="MedicationRequest",
+            patient_id=patient_id,
+            data=active_med,
+        ))
+        await db_session.flush()
+
+        result = await compute_dose_history(db_session, patient_id, active_med)
+
+        assert len(result) == 0
+
+    @pytest.mark.asyncio
+    async def test_empty_when_no_prior_records(self, db_session: AsyncSession):
+        """Should return empty list when no prior records exist."""
+        patient_id = uuid.uuid4()
+
+        active_med = _make_med_request(
+            fhir_id="med-only",
+            display="Metformin 500 MG",
+            status="active",
+            authored_on="2025-06-01",
+            dose_value=500,
+            dose_unit="MG",
+        )
+        db_session.add(FhirResource(
+            fhir_id="med-only",
+            resource_type="MedicationRequest",
+            patient_id=patient_id,
+            data=active_med,
+        ))
+        await db_session.flush()
+
+        result = await compute_dose_history(db_session, patient_id, active_med)
+
+        assert result == []
+
+    @pytest.mark.asyncio
+    async def test_chronological_order(self, db_session: AsyncSession):
+        """Dose history should be in chronological (ascending) order."""
+        patient_id = uuid.uuid4()
+
+        # Two prior meds with different doses
+        old_med = _make_med_request(
+            fhir_id="med-old",
+            display="Lisinopril 10 MG",
+            status="stopped",
+            authored_on="2024-01-01",
+            dose_value=5,
+            dose_unit="MG",
+        )
+        mid_med = _make_med_request(
+            fhir_id="med-mid",
+            display="Lisinopril 10 MG",
+            status="stopped",
+            authored_on="2024-06-01",
+            dose_value=15,
+            dose_unit="MG",
+        )
+
+        for med in [mid_med, old_med]:  # Insert out of order to test sorting
+            db_session.add(FhirResource(
+                fhir_id=med["id"],
+                resource_type="MedicationRequest",
+                patient_id=patient_id,
+                data=med,
+            ))
+
+        active_med = _make_med_request(
+            fhir_id="med-current",
+            display="Lisinopril 10 MG",
+            status="active",
+            authored_on="2025-01-01",
+            dose_value=20,
+            dose_unit="MG",
+        )
+        db_session.add(FhirResource(
+            fhir_id="med-current",
+            resource_type="MedicationRequest",
+            patient_id=patient_id,
+            data=active_med,
+        ))
+        await db_session.flush()
+
+        result = await compute_dose_history(db_session, patient_id, active_med)
+
+        assert len(result) == 2
+        assert result[0]["dose"] == "5 MG"
+        assert result[1]["dose"] == "15 MG"
+
+    @pytest.mark.asyncio
+    async def test_excludes_current_medication(self, db_session: AsyncSession):
+        """The active medication itself should not appear in its dose history."""
+        patient_id = uuid.uuid4()
+
+        active_med = _make_med_request(
+            fhir_id="med-current",
+            display="Lisinopril 10 MG",
+            status="active",
+            authored_on="2025-06-01",
+            dose_value=10,
+            dose_unit="MG",
+        )
+        db_session.add(FhirResource(
+            fhir_id="med-current",
+            resource_type="MedicationRequest",
+            patient_id=patient_id,
+            data=active_med,
+        ))
+        await db_session.flush()
+
+        result = await compute_dose_history(db_session, patient_id, active_med)
+
+        assert len(result) == 0
+
+    @pytest.mark.asyncio
+    async def test_no_display_returns_empty(self, db_session: AsyncSession):
+        """Should return empty list if medication has no display name."""
+        patient_id = uuid.uuid4()
+
+        med: dict = {
+            "resourceType": "MedicationRequest",
+            "id": "med-no-display",
+            "status": "active",
+            "medicationCodeableConcept": {"coding": [{}]},
+        }
+
+        result = await compute_dose_history(db_session, patient_id, med)
+
+        assert result == []
+
+    @pytest.mark.asyncio
+    async def test_string_patient_id(self, db_session: AsyncSession):
+        """Should accept patient_id as a string."""
+        patient_id = uuid.uuid4()
+
+        prior_med = _make_med_request(
+            fhir_id="med-old",
+            display="Metformin 500 MG",
+            status="stopped",
+            authored_on="2025-01-01",
+            dose_value=250,
+            dose_unit="MG",
+        )
+        db_session.add(FhirResource(
+            fhir_id="med-old",
+            resource_type="MedicationRequest",
+            patient_id=patient_id,
+            data=prior_med,
+        ))
+
+        active_med = _make_med_request(
+            fhir_id="med-current",
+            display="Metformin 500 MG",
+            status="active",
+            authored_on="2025-06-01",
+            dose_value=500,
+            dose_unit="MG",
+        )
+        db_session.add(FhirResource(
+            fhir_id="med-current",
+            resource_type="MedicationRequest",
+            patient_id=patient_id,
+            data=active_med,
+        ))
+        await db_session.flush()
+
+        result = await compute_dose_history(db_session, str(patient_id), active_med)
+
+        assert len(result) == 1
+
+    @pytest.mark.asyncio
+    async def test_patient_isolation(self, db_session: AsyncSession):
+        """Dose history should not leak across patients."""
+        patient_a = uuid.uuid4()
+        patient_b = uuid.uuid4()
+
+        # Patient B has a prior med with different dose
+        prior_b = _make_med_request(
+            fhir_id="med-b-old",
+            display="Lisinopril 10 MG",
+            status="stopped",
+            authored_on="2025-01-01",
+            dose_value=5,
+            dose_unit="MG",
+        )
+        db_session.add(FhirResource(
+            fhir_id="med-b-old",
+            resource_type="MedicationRequest",
+            patient_id=patient_b,
+            data=prior_b,
+        ))
+
+        active_med = _make_med_request(
+            fhir_id="med-a-current",
+            display="Lisinopril 10 MG",
+            status="active",
+            authored_on="2025-06-01",
+            dose_value=10,
+            dose_unit="MG",
+        )
+        db_session.add(FhirResource(
+            fhir_id="med-a-current",
+            resource_type="MedicationRequest",
+            patient_id=patient_a,
+            data=active_med,
+        ))
+        await db_session.flush()
+
+        result = await compute_dose_history(db_session, patient_a, active_med)
+
+        assert result == []
+
+
+# =============================================================================
+# Tests for infer_medication_condition_links
+# =============================================================================
+
+
+class TestInferMedicationConditionLinks:
+    """Tests for infer_medication_condition_links() with mocked graph."""
+
+    @pytest.mark.asyncio
+    async def test_infers_link_via_encounter(self):
+        """Should infer med->condition link via PRESCRIBED->encounter->DIAGNOSED->condition."""
+        patient_id = str(uuid.uuid4())
+        med = _make_med_request(fhir_id="med-1", display="Lisinopril 10 MG")
+
+        mock_graph = AsyncMock(spec=KnowledgeGraph)
+
+        # First call: get_all_connections for med-1 -> returns PRESCRIBED encounter
+        # Second call: get_all_connections for enc-1 -> returns DIAGNOSED condition
+        mock_graph.get_all_connections.side_effect = [
+            # Connections from med-1
+            [
+                {
+                    "relationship": "PRESCRIBED",
+                    "direction": "incoming",
+                    "fhir_id": "enc-1",
+                    "resource_type": "Encounter",
+                    "name": None,
+                    "fhir_resource": None,
+                },
+            ],
+            # Connections from enc-1
+            [
+                {
+                    "relationship": "DIAGNOSED",
+                    "direction": "outgoing",
+                    "fhir_id": "cond-1",
+                    "resource_type": "Condition",
+                    "name": None,
+                    "fhir_resource": None,
+                },
+            ],
+        ]
+
+        result = await infer_medication_condition_links([med], mock_graph, patient_id)
+
+        assert "cond-1" in result
+        assert len(result["cond-1"]) == 1
+        assert result["cond-1"][0]["_inferred"] is True
+        assert result["cond-1"][0]["id"] == "med-1"
+        assert "unlinked" not in result
+
+    @pytest.mark.asyncio
+    async def test_unlinked_when_no_encounter(self):
+        """Meds with no PRESCRIBED encounter should go to 'unlinked' bucket."""
+        patient_id = str(uuid.uuid4())
+        med = _make_med_request(fhir_id="med-orphan", display="Orphan Drug")
+
+        mock_graph = AsyncMock(spec=KnowledgeGraph)
+        mock_graph.get_all_connections.return_value = [
+            # No PRESCRIBED relationships
+            {
+                "relationship": "TREATS",
+                "direction": "outgoing",
+                "fhir_id": "cond-99",
+                "resource_type": "Condition",
+                "name": None,
+                "fhir_resource": None,
+            },
+        ]
+
+        result = await infer_medication_condition_links([med], mock_graph, patient_id)
+
+        assert "unlinked" in result
+        assert len(result["unlinked"]) == 1
+        assert result["unlinked"][0]["id"] == "med-orphan"
+
+    @pytest.mark.asyncio
+    async def test_unlinked_when_encounter_has_no_conditions(self):
+        """Meds with encounters but no DIAGNOSED conditions should go to 'unlinked'."""
+        patient_id = str(uuid.uuid4())
+        med = _make_med_request(fhir_id="med-no-diag", display="Generic Med")
+
+        mock_graph = AsyncMock(spec=KnowledgeGraph)
+        mock_graph.get_all_connections.side_effect = [
+            # Med -> encounter via PRESCRIBED
+            [
+                {
+                    "relationship": "PRESCRIBED",
+                    "direction": "incoming",
+                    "fhir_id": "enc-empty",
+                    "resource_type": "Encounter",
+                    "name": None,
+                    "fhir_resource": None,
+                },
+            ],
+            # Encounter has no DIAGNOSED conditions
+            [
+                {
+                    "relationship": "RECORDED",
+                    "direction": "outgoing",
+                    "fhir_id": "obs-1",
+                    "resource_type": "Observation",
+                    "name": None,
+                    "fhir_resource": None,
+                },
+            ],
+        ]
+
+        result = await infer_medication_condition_links([med], mock_graph, patient_id)
+
+        assert "unlinked" in result
+        assert len(result["unlinked"]) == 1
+
+    @pytest.mark.asyncio
+    async def test_multiple_conditions_from_one_encounter(self):
+        """One encounter can diagnose multiple conditions linked to the same med."""
+        patient_id = str(uuid.uuid4())
+        med = _make_med_request(fhir_id="med-multi", display="Multi Drug")
+
+        mock_graph = AsyncMock(spec=KnowledgeGraph)
+        mock_graph.get_all_connections.side_effect = [
+            # Med connections
+            [
+                {
+                    "relationship": "PRESCRIBED",
+                    "direction": "incoming",
+                    "fhir_id": "enc-1",
+                    "resource_type": "Encounter",
+                    "name": None,
+                    "fhir_resource": None,
+                },
+            ],
+            # Encounter with two diagnosed conditions
+            [
+                {
+                    "relationship": "DIAGNOSED",
+                    "direction": "outgoing",
+                    "fhir_id": "cond-a",
+                    "resource_type": "Condition",
+                    "name": None,
+                    "fhir_resource": None,
+                },
+                {
+                    "relationship": "DIAGNOSED",
+                    "direction": "outgoing",
+                    "fhir_id": "cond-b",
+                    "resource_type": "Condition",
+                    "name": None,
+                    "fhir_resource": None,
+                },
+            ],
+        ]
+
+        result = await infer_medication_condition_links([med], mock_graph, patient_id)
+
+        assert "cond-a" in result
+        assert "cond-b" in result
+        assert len(result["cond-a"]) == 1
+        assert len(result["cond-b"]) == 1
+        assert all(m["_inferred"] is True for m in result["cond-a"])
+
+    @pytest.mark.asyncio
+    async def test_med_without_id_goes_to_unlinked(self):
+        """A med dict missing 'id' should go to unlinked."""
+        patient_id = str(uuid.uuid4())
+        med: dict = {"resourceType": "MedicationRequest", "status": "active"}
+
+        mock_graph = AsyncMock(spec=KnowledgeGraph)
+
+        result = await infer_medication_condition_links([med], mock_graph, patient_id)
+
+        assert "unlinked" in result
+        assert len(result["unlinked"]) == 1
+        # Graph should not have been called
+        mock_graph.get_all_connections.assert_not_called()
+
+    @pytest.mark.asyncio
+    async def test_does_not_mutate_input(self):
+        """Original med dicts should not be mutated."""
+        patient_id = str(uuid.uuid4())
+        med = _make_med_request(fhir_id="med-1", display="Test Med")
+        original = copy.deepcopy(med)
+
+        mock_graph = AsyncMock(spec=KnowledgeGraph)
+        mock_graph.get_all_connections.side_effect = [
+            [
+                {
+                    "relationship": "PRESCRIBED",
+                    "direction": "incoming",
+                    "fhir_id": "enc-1",
+                    "resource_type": "Encounter",
+                    "name": None,
+                    "fhir_resource": None,
+                },
+            ],
+            [
+                {
+                    "relationship": "DIAGNOSED",
+                    "direction": "outgoing",
+                    "fhir_id": "cond-1",
+                    "resource_type": "Condition",
+                    "name": None,
+                    "fhir_resource": None,
+                },
+            ],
+        ]
+
+        await infer_medication_condition_links([med], mock_graph, patient_id)
+
+        # Original should not have _inferred
+        assert "_inferred" not in med
+        assert med == original
+
+    @pytest.mark.asyncio
+    async def test_empty_input_returns_empty(self):
+        """Empty unlinked_meds list should return empty dict."""
+        patient_id = str(uuid.uuid4())
+        mock_graph = AsyncMock(spec=KnowledgeGraph)
+
+        result = await infer_medication_condition_links([], mock_graph, patient_id)
+
+        assert result == {}
+        mock_graph.get_all_connections.assert_not_called()
+
+    @pytest.mark.asyncio
+    async def test_mixed_linked_and_unlinked(self):
+        """Should properly separate meds with/without encounter links."""
+        patient_id = str(uuid.uuid4())
+        med_linked = _make_med_request(fhir_id="med-linked", display="Drug A")
+        med_unlinked = _make_med_request(fhir_id="med-unlinked", display="Drug B")
+
+        mock_graph = AsyncMock(spec=KnowledgeGraph)
+        mock_graph.get_all_connections.side_effect = [
+            # med-linked -> has PRESCRIBED encounter
+            [
+                {
+                    "relationship": "PRESCRIBED",
+                    "direction": "incoming",
+                    "fhir_id": "enc-1",
+                    "resource_type": "Encounter",
+                    "name": None,
+                    "fhir_resource": None,
+                },
+            ],
+            # enc-1 -> has DIAGNOSED condition
+            [
+                {
+                    "relationship": "DIAGNOSED",
+                    "direction": "outgoing",
+                    "fhir_id": "cond-1",
+                    "resource_type": "Condition",
+                    "name": None,
+                    "fhir_resource": None,
+                },
+            ],
+            # med-unlinked -> no PRESCRIBED encounters
+            [],
+        ]
+
+        result = await infer_medication_condition_links(
+            [med_linked, med_unlinked], mock_graph, patient_id
+        )
+
+        assert "cond-1" in result
+        assert result["cond-1"][0]["_inferred"] is True
+        assert "unlinked" in result
+        assert result["unlinked"][0]["id"] == "med-unlinked"
+
+    @pytest.mark.asyncio
+    async def test_no_connections_at_all(self):
+        """Med with zero graph connections goes to unlinked."""
+        patient_id = str(uuid.uuid4())
+        med = _make_med_request(fhir_id="med-isolated", display="Isolated Drug")
+
+        mock_graph = AsyncMock(spec=KnowledgeGraph)
+        mock_graph.get_all_connections.return_value = []
+
+        result = await infer_medication_condition_links([med], mock_graph, patient_id)
+
+        assert "unlinked" in result
+        assert len(result["unlinked"]) == 1

@@ -6,12 +6,15 @@ Provides functions to:
 3. Compile node context: batch-fetch and prune all connections from a graph node
 4. Batch-fetch FHIR resources from Postgres by fhir_id
 5. Prune and enrich FHIR resources for LLM consumption
+6. Compute medication recency signals (_recency, _duration_days)
+7. Compute dose history for active medications (_dose_history)
+8. Infer medication-condition links via encounter traversal (_inferred)
 """
 
 import copy
 import logging
 import uuid
-from datetime import datetime
+from datetime import date, datetime
 from typing import Any
 
 from sqlalchemy import DateTime, func, or_, select
@@ -493,3 +496,245 @@ async def compile_node_context(
         grouped.setdefault(rel_type, []).append(pruned)
 
     return grouped
+
+
+# =============================================================================
+# Medication Recency Signals
+# =============================================================================
+
+# Recency thresholds in days
+_RECENCY_NEW_DAYS = 30
+_RECENCY_RECENT_DAYS = 180
+
+
+def compute_medication_recency(
+    med_data: dict[str, Any],
+    compilation_date: date,
+) -> dict[str, Any]:
+    """Compute recency and duration metadata for a medication.
+
+    Adds _recency ("new", "recent", or "established") and _duration_days
+    based on the authoredOn date relative to the compilation_date.
+
+    Args:
+        med_data: FHIR MedicationRequest dict (must have authoredOn for
+            recency computation).
+        compilation_date: The date to compute recency against.
+
+    Returns:
+        Dict with _recency and _duration_days keys. Empty dict if
+        authoredOn is missing or unparseable.
+    """
+    authored_on = med_data.get("authoredOn")
+    if not authored_on:
+        return {}
+
+    try:
+        authored_dt = _parse_fhir_datetime(authored_on)
+        # Convert to date for day-level comparison
+        authored_date = authored_dt.date() if isinstance(authored_dt, datetime) else authored_dt
+    except (ValueError, TypeError):
+        return {}
+
+    duration_days = (compilation_date - authored_date).days
+
+    if duration_days < _RECENCY_NEW_DAYS:
+        recency = "new"
+    elif duration_days <= _RECENCY_RECENT_DAYS:
+        recency = "recent"
+    else:
+        recency = "established"
+
+    return {
+        "_recency": recency,
+        "_duration_days": duration_days,
+    }
+
+
+# =============================================================================
+# Dose History
+# =============================================================================
+
+
+def _extract_dosage_text(med_data: dict[str, Any]) -> str | None:
+    """Extract the dosage instruction text from a MedicationRequest.
+
+    Looks at dosageInstruction[0].doseAndRate[0].doseQuantity for a
+    structured dose string like "20 MG", falling back to
+    dosageInstruction[0].text.
+    """
+    instructions = med_data.get("dosageInstruction", [])
+    if not instructions:
+        return None
+
+    first = instructions[0]
+
+    # Try structured dose first
+    dose_and_rate = first.get("doseAndRate", [])
+    if dose_and_rate:
+        dose_qty = dose_and_rate[0].get("doseQuantity", {})
+        value = dose_qty.get("value")
+        unit = dose_qty.get("unit", "")
+        if value is not None:
+            return f"{value} {unit}".strip()
+
+    # Fall back to text
+    return first.get("text")
+
+
+def _extract_med_display(med_data: dict[str, Any]) -> str | None:
+    """Extract the medication display name from medicationCodeableConcept."""
+    concept = med_data.get("medicationCodeableConcept", {})
+    codings = concept.get("coding", [])
+    if codings:
+        return codings[0].get("display")
+    return concept.get("text")
+
+
+async def compute_dose_history(
+    db: AsyncSession,
+    patient_id: uuid.UUID | str,
+    active_med: dict[str, Any],
+) -> list[dict[str, Any]]:
+    """Compute dose history for an active medication.
+
+    Queries Postgres for prior MedicationRequests with the same medication
+    display name but different dosage or a terminal status (completed/stopped).
+    Returns a compact chronological list of prior dose entries. Same-dose
+    refills are excluded.
+
+    Args:
+        db: Async SQLAlchemy session.
+        patient_id: The canonical patient UUID.
+        active_med: The current active MedicationRequest FHIR dict.
+
+    Returns:
+        List of dose history entries (chronological). Each entry has
+        "dose", "authoredOn", and "status" keys. Empty list if no
+        prior records with different doses exist.
+    """
+    if isinstance(patient_id, str):
+        patient_id = uuid.UUID(patient_id)
+
+    med_display = _extract_med_display(active_med)
+    if not med_display:
+        return []
+
+    current_dose = _extract_dosage_text(active_med)
+    current_fhir_id = active_med.get("id")
+
+    # Query all MedicationRequests with same medication display
+    med_display_expr = FhirResource.data["medicationCodeableConcept"]["coding"][0]["display"].as_string()
+    authored_on_expr = FhirResource.data["authoredOn"].as_string()
+
+    query = (
+        select(FhirResource.data)
+        .where(
+            FhirResource.patient_id == patient_id,
+            FhirResource.resource_type == "MedicationRequest",
+            med_display_expr == med_display,
+        )
+        .order_by(func.cast(authored_on_expr, DateTime).asc())
+    )
+
+    result = await db.execute(query)
+    rows = result.all()
+
+    history: list[dict[str, Any]] = []
+    for row in rows:
+        data = row.data if hasattr(row, "data") else row[0]
+        # Skip the active medication itself
+        if data.get("id") == current_fhir_id:
+            continue
+
+        prior_dose = _extract_dosage_text(data)
+        prior_status = data.get("status", "")
+
+        # Only include if dosage differs from current
+        if prior_dose == current_dose:
+            continue
+
+        entry: dict[str, Any] = {
+            "dose": prior_dose,
+            "authoredOn": data.get("authoredOn"),
+            "status": prior_status,
+        }
+        history.append(entry)
+
+    return history
+
+
+# =============================================================================
+# Inferred Medication-Condition Links
+# =============================================================================
+
+
+async def infer_medication_condition_links(
+    unlinked_meds: list[dict[str, Any]],
+    graph: "KnowledgeGraph",
+    patient_id: str,
+) -> dict[str, list[dict[str, Any]]]:
+    """Infer medication-condition links via encounter traversal.
+
+    For medications without a direct TREATS edge, traverses:
+    med -> PRESCRIBED -> encounter -> DIAGNOSED -> condition
+
+    Args:
+        unlinked_meds: List of medication dicts without TREATS edges.
+        graph: KnowledgeGraph instance for traversal.
+        patient_id: The canonical patient UUID string.
+
+    Returns:
+        Dict mapping condition_fhir_id to lists of medication dicts
+        flagged with _inferred=True. Meds with no encounter link
+        are collected under the "unlinked" key.
+    """
+    result: dict[str, list[dict[str, Any]]] = {}
+
+    for med in unlinked_meds:
+        med_fhir_id = med.get("id")
+        if not med_fhir_id:
+            result.setdefault("unlinked", []).append(med)
+            continue
+
+        # Get all connections from this medication node
+        connections = await graph.get_all_connections(
+            med_fhir_id, patient_id=patient_id
+        )
+
+        # Find encounters via PRESCRIBED relationship (incoming = encounter prescribed this med)
+        encounter_fhir_ids = [
+            c["fhir_id"]
+            for c in connections
+            if c["relationship"] == "PRESCRIBED"
+            and c["resource_type"] == "Encounter"
+        ]
+
+        if not encounter_fhir_ids:
+            result.setdefault("unlinked", []).append(med)
+            continue
+
+        # For each encounter, find conditions via DIAGNOSED relationship
+        found_condition = False
+        for enc_fhir_id in encounter_fhir_ids:
+            enc_connections = await graph.get_all_connections(
+                enc_fhir_id, patient_id=patient_id
+            )
+
+            condition_fhir_ids = [
+                c["fhir_id"]
+                for c in enc_connections
+                if c["relationship"] == "DIAGNOSED"
+                and c["resource_type"] == "Condition"
+            ]
+
+            for cond_fhir_id in condition_fhir_ids:
+                med_copy = copy.deepcopy(med)
+                med_copy["_inferred"] = True
+                result.setdefault(cond_fhir_id, []).append(med_copy)
+                found_condition = True
+
+        if not found_condition:
+            result.setdefault("unlinked", []).append(med)
+
+    return result
