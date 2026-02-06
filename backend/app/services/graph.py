@@ -702,13 +702,14 @@ class KnowledgeGraph:
             patient_id: The canonical patient UUID.
 
         Returns:
-            List of FHIR AllergyIntolerance resources with clinical_status = 'active'.
+            List of FHIR AllergyIntolerance resources with active clinical status
+            (active, recurrence, or relapse).
         """
         async with self._driver.session() as session:
             result = await session.run(
                 """
                 MATCH (p:Patient {id: $patient_id})-[:HAS_ALLERGY_INTOLERANCE]->(a:AllergyIntolerance)
-                WHERE a.clinical_status = 'active'
+                WHERE a.clinical_status IN ['active', 'recurrence', 'relapse']
                 RETURN a.fhir_resource as resource
                 """,
                 patient_id=patient_id,

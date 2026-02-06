@@ -704,6 +704,40 @@ async def test_get_verified_allergies_excludes_inactive(
 
 
 @pytest.mark.asyncio
+async def test_get_verified_allergies_includes_recurrence_and_relapse(
+    graph: KnowledgeGraph,
+    patient_id: str,
+    sample_patient,
+    sample_allergy,
+    sample_allergy_recurrence,
+    sample_allergy_relapse,
+    sample_allergy_inactive,
+):
+    """Test that get_verified_allergies returns recurrence and relapse allergies."""
+    await graph.build_from_fhir(
+        patient_id,
+        [
+            sample_patient,
+            sample_allergy,
+            sample_allergy_recurrence,
+            sample_allergy_relapse,
+            sample_allergy_inactive,
+        ],
+    )
+
+    allergies = await graph.get_verified_allergies(patient_id)
+
+    # Should return active, recurrence, and relapse — but not inactive
+    assert len(allergies) == 3
+    returned_ids = {a["id"] for a in allergies}
+    assert returned_ids == {
+        sample_allergy["id"],
+        sample_allergy_recurrence["id"],
+        sample_allergy_relapse["id"],
+    }
+
+
+@pytest.mark.asyncio
 async def test_get_verified_allergies_returns_empty_for_nonexistent_patient(
     graph: KnowledgeGraph,
 ):

@@ -461,6 +461,50 @@ def sample_allergy_inactive() -> dict:
     }
 
 
+@pytest.fixture
+def sample_allergy_recurrence() -> dict:
+    """Sample FHIR AllergyIntolerance with recurrence clinical status."""
+    return {
+        "resourceType": "AllergyIntolerance",
+        "id": "allergy-test-recurrence",
+        "subject": {"reference": "Patient/patient-test-123"},
+        "code": {
+            "coding": [
+                {
+                    "system": "http://snomed.info/sct",
+                    "code": "300913006",
+                    "display": "Allergy to shellfish",
+                }
+            ]
+        },
+        "clinicalStatus": {"coding": [{"code": "recurrence"}]},
+        "category": ["food"],
+        "criticality": "high",
+    }
+
+
+@pytest.fixture
+def sample_allergy_relapse() -> dict:
+    """Sample FHIR AllergyIntolerance with relapse clinical status."""
+    return {
+        "resourceType": "AllergyIntolerance",
+        "id": "allergy-test-relapse",
+        "subject": {"reference": "Patient/patient-test-123"},
+        "code": {
+            "coding": [
+                {
+                    "system": "http://snomed.info/sct",
+                    "code": "419511003",
+                    "display": "Allergy to propofol",
+                }
+            ]
+        },
+        "clinicalStatus": {"coding": [{"code": "relapse"}]},
+        "category": ["medication"],
+        "criticality": "low",
+    }
+
+
 # =============================================================================
 # Inter-resource relationship test fixtures
 # =============================================================================
