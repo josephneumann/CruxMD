@@ -11,6 +11,7 @@ response parsing.
 import base64
 import json
 import logging
+import time
 from collections.abc import AsyncGenerator
 from typing import Any, Literal
 
@@ -22,6 +23,7 @@ from app.config import settings
 from app.schemas import AgentResponse
 from app.services.agent_tools import TOOL_SCHEMAS, execute_tool
 from app.services.graph import KnowledgeGraph
+from app.services.query_classifier import QueryProfile
 
 logger = logging.getLogger(__name__)
 
@@ -36,6 +38,17 @@ DEFAULT_MAX_OUTPUT_TOKENS = 16384
 
 # Maximum tool-calling rounds before forcing a final response
 MAX_TOOL_ROUNDS = 10
+
+
+def _extract_usage(response: Any) -> dict[str, int]:
+    """Extract token usage from an OpenAI response, returning empty dict if unavailable."""
+    usage = getattr(response, "usage", None)
+    if usage is None:
+        return {}
+    return {
+        "input_tokens": getattr(usage, "input_tokens", 0),
+        "output_tokens": getattr(usage, "output_tokens", 0),
+    }
 
 def _get_display_name(resource: dict[str, Any], code_field: str = "code") -> str | None:
     """Extract display name from a FHIR resource's code field.
@@ -500,45 +513,19 @@ def _format_safety_constraints_v2(safety: dict[str, Any]) -> str:
     return "\n".join(lines)
 
 
-def build_system_prompt_v2(
+def _build_patient_summary_section(
     compiled_summary: dict[str, Any],
     patient_profile: str | None = None,
 ) -> str:
-    """Build a v2 system prompt from a pre-compiled patient summary.
-
-    This replaces the v1 prompt by consuming the output of compile_patient_summary()
-    directly, embedding the full structured summary in the prompt instead of
-    formatting raw FHIR resources at prompt-build time.
-
-    Structure:
-      1. Role + PCP context persona
-      2. Pre-compiled patient summary (structured text)
-      3. Agent reasoning directives
-      4. Tool descriptions + usage guidance
-      5. Safety constraints
+    """Build the patient summary section shared by both fast and standard prompts.
 
     Args:
         compiled_summary: Dict from compile_patient_summary().
         patient_profile: Optional non-clinical patient profile narrative.
 
     Returns:
-        Formatted system prompt string.
+        Formatted patient summary string.
     """
-    # ── Section 1: Role + PCP Context Persona ────────────────────────────────
-    role_section = (
-        "You are a clinical reasoning assistant acting as an intelligent chart review partner "
-        "for a primary care physician (PCP). You have deep access to this patient's medical "
-        "record and can retrieve additional data on demand using your tools.\n"
-        "\n"
-        "Your persona:\n"
-        "- You think like a PCP: holistic, longitudinal, focused on the whole patient\n"
-        "- You proactively surface cross-condition interactions and medication conflicts\n"
-        "- You cite specific data points (dates, values, FHIR IDs) to support assertions\n"
-        "- You flag when data is absent or when the record may be incomplete\n"
-        "- You never fabricate clinical data — if uncertain, say so and offer to search"
-    )
-
-    # ── Section 2: Pre-compiled Patient Summary ──────────────────────────────
     patient_orientation = compiled_summary.get("patient_orientation", "Unknown patient")
     compilation_date = compiled_summary.get("compilation_date", "unknown")
 
@@ -600,7 +587,119 @@ def build_system_prompt_v2(
     summary_parts.append("\n### Latest Observations")
     summary_parts.append(_format_tier3_observations(tier3))
 
-    summary_section = "\n".join(summary_parts)
+    return "\n".join(summary_parts)
+
+
+def _build_safety_section(compiled_summary: dict[str, Any]) -> str:
+    """Build the safety constraints section shared by both fast and standard prompts.
+
+    Args:
+        compiled_summary: Dict from compile_patient_summary().
+
+    Returns:
+        Formatted safety section string.
+    """
+    safety = compiled_summary.get("safety_constraints", {})
+    safety_text = _format_safety_constraints_v2(safety)
+
+    return (
+        "## Safety Constraints\n"
+        "\n"
+        "The following constraints MUST be respected in every response:\n"
+        "\n"
+        f"{safety_text}\n"
+        "\n"
+        "Additional safety rules:\n"
+        "- Always highlight drug allergies when discussing medication changes\n"
+        "- Flag critical lab values that require immediate attention\n"
+        "- Never recommend starting, stopping, or changing medications — only surface "
+        "relevant data and considerations for the physician's decision\n"
+        "- If unsure about a clinical fact, state the uncertainty rather than guessing"
+    )
+
+
+def build_system_prompt_fast(
+    compiled_summary: dict[str, Any],
+    patient_profile: str | None = None,
+) -> str:
+    """Build a fast system prompt for simple chart lookups.
+
+    Trimmed prompt for FAST-tier queries: no reasoning directives, no tool
+    descriptions, concise role and response format. Saves ~2700-3000 chars
+    (~750 tokens) of input vs the standard prompt.
+
+    Args:
+        compiled_summary: Dict from compile_patient_summary().
+        patient_profile: Optional non-clinical patient profile narrative.
+
+    Returns:
+        Formatted system prompt string.
+    """
+    role_section = (
+        "You are a clinical chart assistant. Answer directly from the patient summary below. "
+        "Cite specific data points (dates, values) when available. Never fabricate clinical data."
+    )
+
+    summary_section = _build_patient_summary_section(compiled_summary, patient_profile)
+
+    safety_section = _build_safety_section(compiled_summary)
+
+    format_section = (
+        "## Response Format\n"
+        "Provide your response as a structured JSON object with:\n"
+        "- narrative: Main response in markdown format (be concise, focus on the data)\n"
+        "- insights: Important clinical insights if relevant\n"
+        "- follow_ups: 2-3 SHORT follow-up questions (under 80 chars each)"
+    )
+
+    return "\n\n".join([
+        role_section,
+        summary_section,
+        safety_section,
+        format_section,
+    ])
+
+
+def build_system_prompt_v2(
+    compiled_summary: dict[str, Any],
+    patient_profile: str | None = None,
+) -> str:
+    """Build a v2 system prompt from a pre-compiled patient summary.
+
+    This replaces the v1 prompt by consuming the output of compile_patient_summary()
+    directly, embedding the full structured summary in the prompt instead of
+    formatting raw FHIR resources at prompt-build time.
+
+    Structure:
+      1. Role + PCP context persona
+      2. Pre-compiled patient summary (structured text)
+      3. Agent reasoning directives
+      4. Tool descriptions + usage guidance
+      5. Safety constraints
+
+    Args:
+        compiled_summary: Dict from compile_patient_summary().
+        patient_profile: Optional non-clinical patient profile narrative.
+
+    Returns:
+        Formatted system prompt string.
+    """
+    # ── Section 1: Role + PCP Context Persona ────────────────────────────────
+    role_section = (
+        "You are a clinical reasoning assistant acting as an intelligent chart review partner "
+        "for a primary care physician (PCP). You have deep access to this patient's medical "
+        "record and can retrieve additional data on demand using your tools.\n"
+        "\n"
+        "Your persona:\n"
+        "- You think like a PCP: holistic, longitudinal, focused on the whole patient\n"
+        "- You proactively surface cross-condition interactions and medication conflicts\n"
+        "- You cite specific data points (dates, values, FHIR IDs) to support assertions\n"
+        "- You flag when data is absent or when the record may be incomplete\n"
+        "- You never fabricate clinical data — if uncertain, say so and offer to search"
+    )
+
+    # ── Section 2: Pre-compiled Patient Summary ──────────────────────────────
+    summary_section = _build_patient_summary_section(compiled_summary, patient_profile)
 
     # ── Section 3: Agent Reasoning Directives ────────────────────────────────
     reasoning_section = (
@@ -682,23 +781,7 @@ def build_system_prompt_v2(
     )
 
     # ── Section 5: Safety Constraints ────────────────────────────────────────
-    safety = compiled_summary.get("safety_constraints", {})
-    safety_text = _format_safety_constraints_v2(safety)
-
-    safety_section = (
-        "## Safety Constraints\n"
-        "\n"
-        "The following constraints MUST be respected in every response:\n"
-        "\n"
-        f"{safety_text}\n"
-        "\n"
-        "Additional safety rules:\n"
-        "- Always highlight drug allergies when discussing medication changes\n"
-        "- Flag critical lab values that require immediate attention\n"
-        "- Never recommend starting, stopping, or changing medications — only surface "
-        "relevant data and considerations for the physician's decision\n"
-        "- If unsure about a clinical fact, state the uncertainty rather than guessing"
-    )
+    safety_section = _build_safety_section(compiled_summary)
 
     # ── Section 6: Response Format ───────────────────────────────────────────
     format_section = (
@@ -828,18 +911,29 @@ class AgentService:
             db: AsyncSession instance.
         """
         for _round in range(MAX_TOOL_ROUNDS):
+            round_start = time.perf_counter()
             response = await self._client.responses.parse(**kwargs)
+            api_ms = (time.perf_counter() - round_start) * 1000
 
             tool_calls = [
                 item for item in response.output
                 if item.type == "function_call"
             ]
             if not tool_calls:
+                usage = _extract_usage(response)
+                logger.info(
+                    "Tool round %d: no tool calls, responding directly (%.1fs, %s)",
+                    _round + 1, api_ms / 1000, usage or "no usage",
+                )
                 kwargs.pop("tools", None)
                 kwargs["_last_response"] = response
                 return
 
-            logger.debug(f"Tool round {_round + 1}: {len(tool_calls)} tool call(s)")
+            tool_names = [tc.name for tc in tool_calls]
+            logger.info(
+                "Tool round %d: %d call(s) %s (api=%.1fs)",
+                _round + 1, len(tool_calls), tool_names, api_ms / 1000,
+            )
 
             self._append_response_output(kwargs, response)
 
@@ -850,6 +944,7 @@ class AgentService:
                     "arguments": tool_call.arguments,
                 }))
 
+                exec_start = time.perf_counter()
                 result = await execute_tool(
                     name=tool_call.name,
                     arguments=tool_call.arguments,
@@ -857,6 +952,13 @@ class AgentService:
                     graph=graph,
                     db=db,
                 )
+                exec_ms = (time.perf_counter() - exec_start) * 1000
+                result_len = len(result)
+                logger.info(
+                    "  tool %s: %.0fms, result=%d chars",
+                    tool_call.name, exec_ms, result_len,
+                )
+
                 kwargs["input"].append({
                     "type": "function_call_output",
                     "call_id": tool_call.call_id,
@@ -870,6 +972,7 @@ class AgentService:
                 }))
 
         # Max rounds reached — remove tools to force text generation
+        logger.info("Max tool rounds (%d) reached, forcing final response", MAX_TOOL_ROUNDS)
         kwargs.pop("tools", None)
         kwargs["_last_response"] = None
 
@@ -913,6 +1016,7 @@ class AgentService:
         reasoning_effort: Literal["low", "medium", "high"] | None = None,
         graph: KnowledgeGraph | None = None,
         db: AsyncSession | None = None,
+        query_profile: QueryProfile | None = None,
     ) -> AgentResponse:
         """Generate a structured response for a clinical question.
 
@@ -924,6 +1028,8 @@ class AgentService:
             reasoning_effort: Override default reasoning effort for this call.
             graph: KnowledgeGraph instance for tool execution.
             db: AsyncSession for tool execution.
+            query_profile: Optional query profile from classifier. Controls
+                reasoning effort, max tokens, and tool availability.
 
         Returns:
             AgentResponse with narrative, insights, visualizations, and follow-ups
@@ -934,33 +1040,42 @@ class AgentService:
         if not message or not message.strip():
             raise ValueError("message cannot be empty")
 
+        t0 = time.perf_counter()
         input_messages = self._build_input_messages(system_prompt, message, history)
 
-        effort = reasoning_effort or self._reasoning_effort
+        # Resolution: explicit param > query_profile > instance default
+        effective_effort = reasoning_effort or (query_profile.reasoning_effort if query_profile else None) or self._reasoning_effort
+        effective_max_tokens = (query_profile.max_output_tokens if query_profile else None) or self._max_output_tokens
         tools_available = graph is not None and db is not None
+        include_tools = tools_available and (query_profile.include_tools if query_profile else True)
+        prompt_chars = sum(len(m.get("content", "")) for m in input_messages)
 
-        logger.debug(
-            f"Generating response with model={self._model}, "
-            f"{len(input_messages)} messages, reasoning_effort={effort}, "
-            f"tools={'enabled' if tools_available else 'disabled'}"
+        logger.info(
+            "generate_response: model=%s, effort=%s, tools=%s, "
+            "tier=%s, messages=%d, prompt_chars=%d (~%d tokens)",
+            self._model, effective_effort,
+            "enabled" if include_tools else "disabled",
+            query_profile.tier.value if query_profile else "default",
+            len(input_messages), prompt_chars, prompt_chars // 4,
         )
 
         kwargs: dict[str, Any] = {
             "model": self._model,
             "input": input_messages,
             "text_format": AgentResponse,
-            "max_output_tokens": self._max_output_tokens,
-            "reasoning": Reasoning(effort=effort, summary="concise"),
+            "max_output_tokens": effective_max_tokens,
+            "reasoning": Reasoning(effort=effective_effort, summary="concise"),
         }
-        if tools_available:
+        if include_tools:
             kwargs["tools"] = TOOL_SCHEMAS
 
             # Run tool rounds (discard SSE events — non-streaming path).
             # _execute_tool_calls stores the final non-tool response in kwargs.
+            tool_rounds = 0
             async for _ in self._execute_tool_calls(
                 kwargs, patient_id, graph, db
             ):
-                pass
+                tool_rounds += 1
 
         # Reuse the response from _execute_tool_calls if available,
         # otherwise make a fresh call (no tools path, or max rounds hit).
@@ -982,9 +1097,14 @@ class AgentService:
                     "Neither structured output nor raw text was available."
                 )
 
-        logger.debug(
-            f"Generated response with {len(agent_response.insights or [])} insights, "
-            f"{len(agent_response.follow_ups or [])} follow-ups"
+        elapsed = time.perf_counter() - t0
+        usage = _extract_usage(response)
+        logger.info(
+            "generate_response complete: %.1fs, usage=%s, "
+            "insights=%d, follow_ups=%d",
+            elapsed, usage or "n/a",
+            len(agent_response.insights or []),
+            len(agent_response.follow_ups or []),
         )
 
         return agent_response
@@ -998,6 +1118,7 @@ class AgentService:
         reasoning_effort: Literal["low", "medium", "high"] | None = None,
         graph: KnowledgeGraph | None = None,
         db: AsyncSession | None = None,
+        query_profile: QueryProfile | None = None,
     ) -> AsyncGenerator[tuple[str, str], None]:
         """Stream a structured response, yielding deltas as they arrive.
 
@@ -1015,6 +1136,8 @@ class AgentService:
             reasoning_effort: Override default reasoning effort for this call.
             graph: KnowledgeGraph instance for tool execution.
             db: AsyncSession for tool execution.
+            query_profile: Optional query profile from classifier. Controls
+                reasoning effort, max tokens, and tool availability.
 
         Raises:
             ValueError: If message is empty.
@@ -1022,44 +1145,157 @@ class AgentService:
         if not message or not message.strip():
             raise ValueError("message cannot be empty")
 
+        t0 = time.perf_counter()
         input_messages = self._build_input_messages(system_prompt, message, history)
 
-        effort = reasoning_effort or self._reasoning_effort
+        # Resolution: explicit param > query_profile > instance default
+        effective_effort = reasoning_effort or (query_profile.reasoning_effort if query_profile else None) or self._reasoning_effort
+        effective_max_tokens = (query_profile.max_output_tokens if query_profile else None) or self._max_output_tokens
         tools_available = graph is not None and db is not None
+        include_tools = tools_available and (query_profile.include_tools if query_profile else True)
+        prompt_chars = sum(len(m.get("content", "")) for m in input_messages)
 
-        logger.debug(
-            f"Streaming response with model={self._model}, "
-            f"{len(input_messages)} messages, reasoning_effort={effort}, "
-            f"tools={'enabled' if tools_available else 'disabled'}"
+        logger.info(
+            "stream_response: model=%s, effort=%s, tools=%s, "
+            "tier=%s, messages=%d, prompt_chars=%d (~%d tokens)",
+            self._model, effective_effort,
+            "enabled" if include_tools else "disabled",
+            query_profile.tier.value if query_profile else "default",
+            len(input_messages), prompt_chars, prompt_chars // 4,
         )
 
         kwargs: dict[str, Any] = {
             "model": self._model,
             "input": input_messages,
             "text_format": AgentResponse,
-            "max_output_tokens": self._max_output_tokens,
-            "reasoning": Reasoning(effort=effort, summary="concise"),
+            "max_output_tokens": effective_max_tokens,
+            "reasoning": Reasoning(effort=effective_effort, summary="concise"),
         }
-        if tools_available:
+        if include_tools:
             kwargs["tools"] = TOOL_SCHEMAS
 
-        # Execute tool rounds, yielding tool_call/tool_result events as they happen.
-        # _execute_tool_calls leaves kwargs ready for the final streaming call.
-        if tools_available:
-            async for event in self._execute_tool_calls(
-                kwargs, patient_id, graph, db
-            ):
-                yield event
+        # Unified streaming loop: every API round uses responses.stream() so
+        # text/reasoning deltas appear immediately (~5s TTFT) instead of waiting
+        # for a blocking parse() call (~73s) before any output.
+        first_token_time: float | None = None
+        tool_events = 0
 
-        # Remove internal-only key before calling the API
-        kwargs.pop("_last_response", None)
+        for _round in range(MAX_TOOL_ROUNDS + 1):
+            round_start = time.perf_counter()
 
-        # Stream the final response (reasoning summaries + narrative deltas)
+            async with self._client.responses.stream(**kwargs) as stream:
+                async for event in stream:
+                    if event.type == "response.reasoning_summary_text.delta":
+                        if first_token_time is None:
+                            first_token_time = time.perf_counter()
+                        yield ("reasoning", json.dumps({"delta": event.delta}))
+                    elif event.type == "response.output_text.delta":
+                        if first_token_time is None:
+                            first_token_time = time.perf_counter()
+                        yield ("narrative", json.dumps({"delta": event.delta}))
+
+                final = await stream.get_final_response()
+
+            api_ms = (time.perf_counter() - round_start) * 1000
+
+            # Check if the model returned tool calls
+            tool_calls = [
+                item for item in final.output
+                if item.type == "function_call"
+            ]
+
+            if not tool_calls:
+                # No tool calls — this is the final response
+                usage = _extract_usage(final)
+                logger.info(
+                    "Stream round %d: no tool calls, finalising (%.1fs, %s)",
+                    _round + 1, api_ms / 1000, usage or "no usage",
+                )
+
+                agent_response = final.output_parsed
+                if agent_response is None:
+                    raw_output = getattr(final, "output_text", None)
+                    if raw_output:
+                        agent_response = AgentResponse.model_validate_json(raw_output)
+                    else:
+                        raise RuntimeError(
+                            "LLM response could not be parsed. "
+                            "Neither structured output nor raw text was available."
+                        )
+
+                total_elapsed = time.perf_counter() - t0
+                ttft = ((first_token_time - t0) * 1000) if first_token_time else None
+                logger.info(
+                    "stream_response complete: total=%.1fs, "
+                    "ttft=%s, tool_events=%d, usage=%s, "
+                    "insights=%d, follow_ups=%d",
+                    total_elapsed,
+                    f"{ttft:.0f}ms" if ttft else "n/a",
+                    tool_events, usage or "n/a",
+                    len(agent_response.insights or []),
+                    len(agent_response.follow_ups or []),
+                )
+
+                yield ("done", agent_response.model_dump_json())
+                return
+
+            # Tool calls found — execute them and loop
+            tool_names = [tc.name for tc in tool_calls]
+            logger.info(
+                "Stream round %d: %d tool call(s) %s (api=%.1fs)",
+                _round + 1, len(tool_calls), tool_names, api_ms / 1000,
+            )
+
+            self._append_response_output(kwargs, final)
+
+            for tool_call in tool_calls:
+                yield ("tool_call", json.dumps({
+                    "name": tool_call.name,
+                    "call_id": tool_call.call_id,
+                    "arguments": tool_call.arguments,
+                }))
+                tool_events += 1
+
+                exec_start = time.perf_counter()
+                result = await execute_tool(
+                    name=tool_call.name,
+                    arguments=tool_call.arguments,
+                    patient_id=patient_id,
+                    graph=graph,
+                    db=db,
+                )
+                exec_ms = (time.perf_counter() - exec_start) * 1000
+                logger.info(
+                    "  tool %s: %.0fms, result=%d chars",
+                    tool_call.name, exec_ms, len(result),
+                )
+
+                kwargs["input"].append({
+                    "type": "function_call_output",
+                    "call_id": tool_call.call_id,
+                    "output": result,
+                })
+
+                yield ("tool_result", json.dumps({
+                    "call_id": tool_call.call_id,
+                    "name": tool_call.name,
+                    "output": result,
+                }))
+                tool_events += 1
+
+        # Max rounds exhausted — strip tools and force a final streaming call
+        logger.info("Max tool rounds (%d) reached, forcing final stream", MAX_TOOL_ROUNDS)
+        kwargs.pop("tools", None)
+
         async with self._client.responses.stream(**kwargs) as stream:
             async for event in stream:
                 if event.type == "response.reasoning_summary_text.delta":
+                    if first_token_time is None:
+                        first_token_time = time.perf_counter()
                     yield ("reasoning", json.dumps({"delta": event.delta}))
                 elif event.type == "response.output_text.delta":
+                    if first_token_time is None:
+                        first_token_time = time.perf_counter()
                     yield ("narrative", json.dumps({"delta": event.delta}))
 
             final = await stream.get_final_response()
@@ -1074,5 +1310,19 @@ class AgentService:
                     "LLM response could not be parsed. "
                     "Neither structured output nor raw text was available."
                 )
+
+        total_elapsed = time.perf_counter() - t0
+        ttft = ((first_token_time - t0) * 1000) if first_token_time else None
+        usage = _extract_usage(final)
+        logger.info(
+            "stream_response complete (max rounds): total=%.1fs, "
+            "ttft=%s, tool_events=%d, usage=%s, "
+            "insights=%d, follow_ups=%d",
+            total_elapsed,
+            f"{ttft:.0f}ms" if ttft else "n/a",
+            tool_events, usage or "n/a",
+            len(agent_response.insights or []),
+            len(agent_response.follow_ups or []),
+        )
 
         yield ("done", agent_response.model_dump_json())

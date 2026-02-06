@@ -20,6 +20,7 @@ from sqlalchemy.ext.asyncio import AsyncSession, async_sessionmaker
 
 from app.models import FhirResource
 from app.schemas import AgentResponse, FollowUp, Insight
+from app.services.query_classifier import FAST_PROFILE, STANDARD_PROFILE
 
 
 # =============================================================================
@@ -218,6 +219,7 @@ class TestChatSuccess:
     ):
         """Test successful chat with minimal request."""
         with patch("app.routes.chat.get_compiled_summary", new_callable=AsyncMock, return_value=sample_compiled_summary), \
+             patch("app.routes.chat.classify_query", return_value=STANDARD_PROFILE), \
              patch("app.routes.chat.build_system_prompt_v2", return_value="system prompt") as mock_prompt, \
              patch("app.routes.chat.AgentService") as mock_agent_cls, \
              patch("app.routes.chat.KnowledgeGraph") as mock_graph_cls:
@@ -261,6 +263,7 @@ class TestChatSuccess:
     ):
         """Test that conversation_id is generated when not provided."""
         with patch("app.routes.chat.get_compiled_summary", new_callable=AsyncMock, return_value=sample_compiled_summary), \
+             patch("app.routes.chat.classify_query", return_value=STANDARD_PROFILE), \
              patch("app.routes.chat.build_system_prompt_v2", return_value="system prompt"), \
              patch("app.routes.chat.AgentService") as mock_agent_cls, \
              patch("app.routes.chat.KnowledgeGraph") as mock_graph_cls:
@@ -300,6 +303,7 @@ class TestChatSuccess:
         provided_conversation_id = uuid.uuid4()
 
         with patch("app.routes.chat.get_compiled_summary", new_callable=AsyncMock, return_value=sample_compiled_summary), \
+             patch("app.routes.chat.classify_query", return_value=STANDARD_PROFILE), \
              patch("app.routes.chat.build_system_prompt_v2", return_value="system prompt"), \
              patch("app.routes.chat.AgentService") as mock_agent_cls, \
              patch("app.routes.chat.KnowledgeGraph") as mock_graph_cls:
@@ -336,6 +340,7 @@ class TestChatSuccess:
     ):
         """Test chat with conversation history."""
         with patch("app.routes.chat.get_compiled_summary", new_callable=AsyncMock, return_value=sample_compiled_summary), \
+             patch("app.routes.chat.classify_query", return_value=STANDARD_PROFILE), \
              patch("app.routes.chat.build_system_prompt_v2", return_value="system prompt"), \
              patch("app.routes.chat.AgentService") as mock_agent_cls, \
              patch("app.routes.chat.KnowledgeGraph") as mock_graph_cls:
@@ -390,6 +395,7 @@ class TestChatOnDemandCompilation:
         """Test that compile_and_store is called when get_compiled_summary returns None."""
         with patch("app.routes.chat.get_compiled_summary", new_callable=AsyncMock, return_value=None) as mock_get, \
              patch("app.routes.chat.compile_and_store", new_callable=AsyncMock, return_value=sample_compiled_summary) as mock_compile, \
+             patch("app.routes.chat.classify_query", return_value=STANDARD_PROFILE), \
              patch("app.routes.chat.build_system_prompt_v2", return_value="system prompt"), \
              patch("app.routes.chat.AgentService") as mock_agent_cls, \
              patch("app.routes.chat.KnowledgeGraph") as mock_graph_cls:
@@ -429,6 +435,7 @@ class TestChatOnDemandCompilation:
         """Test that compile_and_store is NOT called when cached summary exists."""
         with patch("app.routes.chat.get_compiled_summary", new_callable=AsyncMock, return_value=sample_compiled_summary) as mock_get, \
              patch("app.routes.chat.compile_and_store", new_callable=AsyncMock) as mock_compile, \
+             patch("app.routes.chat.classify_query", return_value=STANDARD_PROFILE), \
              patch("app.routes.chat.build_system_prompt_v2", return_value="system prompt"), \
              patch("app.routes.chat.AgentService") as mock_agent_cls, \
              patch("app.routes.chat.KnowledgeGraph") as mock_graph_cls:
@@ -475,6 +482,7 @@ class TestChatErrorHandling:
     ):
         """Test that RuntimeError from agent returns 500."""
         with patch("app.routes.chat.get_compiled_summary", new_callable=AsyncMock, return_value=sample_compiled_summary), \
+             patch("app.routes.chat.classify_query", return_value=STANDARD_PROFILE), \
              patch("app.routes.chat.build_system_prompt_v2", return_value="system prompt"), \
              patch("app.routes.chat.AgentService") as mock_agent_cls, \
              patch("app.routes.chat.KnowledgeGraph") as mock_graph_cls:
@@ -509,6 +517,7 @@ class TestChatErrorHandling:
     ):
         """Test that ValueError from agent returns 400."""
         with patch("app.routes.chat.get_compiled_summary", new_callable=AsyncMock, return_value=sample_compiled_summary), \
+             patch("app.routes.chat.classify_query", return_value=STANDARD_PROFILE), \
              patch("app.routes.chat.build_system_prompt_v2", return_value="system prompt"), \
              patch("app.routes.chat.AgentService") as mock_agent_cls, \
              patch("app.routes.chat.KnowledgeGraph") as mock_graph_cls:
@@ -588,6 +597,7 @@ class TestChatInputValidation:
     ):
         """Test that messages at max length are accepted."""
         with patch("app.routes.chat.get_compiled_summary", new_callable=AsyncMock, return_value=sample_compiled_summary), \
+             patch("app.routes.chat.classify_query", return_value=STANDARD_PROFILE), \
              patch("app.routes.chat.build_system_prompt_v2", return_value="system prompt"), \
              patch("app.routes.chat.AgentService") as mock_agent_cls, \
              patch("app.routes.chat.KnowledgeGraph") as mock_graph_cls:
@@ -652,6 +662,7 @@ class TestChatIntegration:
     ):
         """Test that get_compiled_summary is called with the correct patient_id."""
         with patch("app.routes.chat.get_compiled_summary", new_callable=AsyncMock, return_value=sample_compiled_summary) as mock_get, \
+             patch("app.routes.chat.classify_query", return_value=STANDARD_PROFILE), \
              patch("app.routes.chat.build_system_prompt_v2", return_value="system prompt"), \
              patch("app.routes.chat.AgentService") as mock_agent_cls, \
              patch("app.routes.chat.KnowledgeGraph") as mock_graph_cls:
@@ -689,6 +700,7 @@ class TestChatIntegration:
     ):
         """Test that AgentService receives the system_prompt and patient_id."""
         with patch("app.routes.chat.get_compiled_summary", new_callable=AsyncMock, return_value=sample_compiled_summary), \
+             patch("app.routes.chat.classify_query", return_value=STANDARD_PROFILE), \
              patch("app.routes.chat.build_system_prompt_v2", return_value="test system prompt"), \
              patch("app.routes.chat.AgentService") as mock_agent_cls, \
              patch("app.routes.chat.KnowledgeGraph") as mock_graph_cls:
@@ -731,6 +743,7 @@ class TestChatIntegration:
     ):
         """Test that services are cleaned up after successful request."""
         with patch("app.routes.chat.get_compiled_summary", new_callable=AsyncMock, return_value=sample_compiled_summary), \
+             patch("app.routes.chat.classify_query", return_value=STANDARD_PROFILE), \
              patch("app.routes.chat.build_system_prompt_v2", return_value="system prompt"), \
              patch("app.routes.chat.AgentService") as mock_agent_cls, \
              patch("app.routes.chat.KnowledgeGraph") as mock_graph_cls:
@@ -767,6 +780,7 @@ class TestChatIntegration:
     ):
         """Test that services are cleaned up even on error."""
         with patch("app.routes.chat.get_compiled_summary", new_callable=AsyncMock, return_value=sample_compiled_summary), \
+             patch("app.routes.chat.classify_query", return_value=STANDARD_PROFILE), \
              patch("app.routes.chat.build_system_prompt_v2", return_value="system prompt"), \
              patch("app.routes.chat.AgentService") as mock_agent_cls, \
              patch("app.routes.chat.KnowledgeGraph") as mock_graph_cls:
@@ -806,6 +820,7 @@ class TestChatIntegration:
     ):
         """Test that graph and db are passed to agent for tool execution."""
         with patch("app.routes.chat.get_compiled_summary", new_callable=AsyncMock, return_value=sample_compiled_summary), \
+             patch("app.routes.chat.classify_query", return_value=STANDARD_PROFILE), \
              patch("app.routes.chat.build_system_prompt_v2", return_value="system prompt"), \
              patch("app.routes.chat.AgentService") as mock_agent_cls, \
              patch("app.routes.chat.KnowledgeGraph") as mock_graph_cls:
@@ -894,6 +909,7 @@ class TestChatStream:
     ):
         """Test successful streaming returns reasoning, narrative, and done SSE events."""
         with patch("app.routes.chat.get_compiled_summary", new_callable=AsyncMock, return_value=sample_compiled_summary), \
+             patch("app.routes.chat.classify_query", return_value=STANDARD_PROFILE), \
              patch("app.routes.chat.build_system_prompt_v2", return_value="system prompt"), \
              patch("app.routes.chat.AgentService") as mock_agent_cls, \
              patch("app.routes.chat.KnowledgeGraph") as mock_graph_cls:
@@ -944,6 +960,7 @@ class TestChatStream:
             raise RuntimeError("LLM crashed")
 
         with patch("app.routes.chat.get_compiled_summary", new_callable=AsyncMock, return_value=sample_compiled_summary), \
+             patch("app.routes.chat.classify_query", return_value=STANDARD_PROFILE), \
              patch("app.routes.chat.build_system_prompt_v2", return_value="system prompt"), \
              patch("app.routes.chat.AgentService") as mock_agent_cls, \
              patch("app.routes.chat.KnowledgeGraph") as mock_graph_cls:
@@ -981,6 +998,7 @@ class TestChatStream:
     ):
         """Test that services are cleaned up after streaming completes."""
         with patch("app.routes.chat.get_compiled_summary", new_callable=AsyncMock, return_value=sample_compiled_summary), \
+             patch("app.routes.chat.classify_query", return_value=STANDARD_PROFILE), \
              patch("app.routes.chat.build_system_prompt_v2", return_value="system prompt"), \
              patch("app.routes.chat.AgentService") as mock_agent_cls, \
              patch("app.routes.chat.KnowledgeGraph") as mock_graph_cls:
@@ -1015,6 +1033,7 @@ class TestChatStream:
         """Test that streaming also triggers on-demand compilation when needed."""
         with patch("app.routes.chat.get_compiled_summary", new_callable=AsyncMock, return_value=None) as mock_get, \
              patch("app.routes.chat.compile_and_store", new_callable=AsyncMock, return_value=sample_compiled_summary) as mock_compile, \
+             patch("app.routes.chat.classify_query", return_value=STANDARD_PROFILE), \
              patch("app.routes.chat.build_system_prompt_v2", return_value="system prompt"), \
              patch("app.routes.chat.AgentService") as mock_agent_cls, \
              patch("app.routes.chat.KnowledgeGraph") as mock_graph_cls:
@@ -1039,3 +1058,197 @@ class TestChatStream:
             # Verify on-demand compilation happened
             mock_get.assert_called_once()
             mock_compile.assert_called_once()
+
+
+# =============================================================================
+# Query Routing Tests
+# =============================================================================
+
+
+class TestChatQueryRouting:
+    """Tests for adaptive query routing (fast vs standard prompt selection)."""
+
+    @pytest.mark.asyncio
+    async def test_fast_query_uses_fast_prompt(
+        self,
+        client: AsyncClient,
+        auth_headers: dict,
+        patient_in_db: uuid.UUID,
+        sample_agent_response: AgentResponse,
+        sample_compiled_summary: dict,
+    ):
+        """'What medications?' → build_system_prompt_fast called."""
+        with patch("app.routes.chat.get_compiled_summary", new_callable=AsyncMock, return_value=sample_compiled_summary), \
+             patch("app.routes.chat.classify_query", return_value=FAST_PROFILE), \
+             patch("app.routes.chat.build_system_prompt_fast", return_value="fast prompt") as mock_fast, \
+             patch("app.routes.chat.build_system_prompt_v2", return_value="standard prompt") as mock_standard, \
+             patch("app.routes.chat.AgentService") as mock_agent_cls, \
+             patch("app.routes.chat.KnowledgeGraph") as mock_graph_cls:
+
+            mock_graph_cls.return_value = AsyncMock()
+
+            mock_agent = AsyncMock()
+            mock_agent.generate_response = AsyncMock(return_value=sample_agent_response)
+            mock_agent_cls.return_value = mock_agent
+
+            response = await client.post(
+                "/api/chat",
+                json={
+                    "patient_id": str(patient_in_db),
+                    "message": "What medications?",
+                },
+                headers=auth_headers,
+            )
+
+            assert response.status_code == 200
+            mock_fast.assert_called_once()
+            mock_standard.assert_not_called()
+
+            # Verify the fast prompt was passed to agent
+            call_kwargs = mock_agent.generate_response.call_args.kwargs
+            assert call_kwargs["system_prompt"] == "fast prompt"
+
+    @pytest.mark.asyncio
+    async def test_complex_query_uses_standard_prompt(
+        self,
+        client: AsyncClient,
+        auth_headers: dict,
+        patient_in_db: uuid.UUID,
+        sample_agent_response: AgentResponse,
+        sample_compiled_summary: dict,
+    ):
+        """'Explain the HbA1c trend' → build_system_prompt_v2 called."""
+        with patch("app.routes.chat.get_compiled_summary", new_callable=AsyncMock, return_value=sample_compiled_summary), \
+             patch("app.routes.chat.classify_query", return_value=STANDARD_PROFILE), \
+             patch("app.routes.chat.build_system_prompt_fast", return_value="fast prompt") as mock_fast, \
+             patch("app.routes.chat.build_system_prompt_v2", return_value="standard prompt") as mock_standard, \
+             patch("app.routes.chat.AgentService") as mock_agent_cls, \
+             patch("app.routes.chat.KnowledgeGraph") as mock_graph_cls:
+
+            mock_graph_cls.return_value = AsyncMock()
+
+            mock_agent = AsyncMock()
+            mock_agent.generate_response = AsyncMock(return_value=sample_agent_response)
+            mock_agent_cls.return_value = mock_agent
+
+            response = await client.post(
+                "/api/chat",
+                json={
+                    "patient_id": str(patient_in_db),
+                    "message": "Explain the HbA1c trend",
+                },
+                headers=auth_headers,
+            )
+
+            assert response.status_code == 200
+            mock_standard.assert_called_once()
+            mock_fast.assert_not_called()
+
+            call_kwargs = mock_agent.generate_response.call_args.kwargs
+            assert call_kwargs["system_prompt"] == "standard prompt"
+
+    @pytest.mark.asyncio
+    async def test_query_profile_passed_to_agent(
+        self,
+        client: AsyncClient,
+        auth_headers: dict,
+        patient_in_db: uuid.UUID,
+        sample_agent_response: AgentResponse,
+        sample_compiled_summary: dict,
+    ):
+        """Verify query_profile is propagated to agent.generate_response."""
+        with patch("app.routes.chat.get_compiled_summary", new_callable=AsyncMock, return_value=sample_compiled_summary), \
+             patch("app.routes.chat.classify_query", return_value=FAST_PROFILE), \
+             patch("app.routes.chat.build_system_prompt_fast", return_value="fast prompt"), \
+             patch("app.routes.chat.AgentService") as mock_agent_cls, \
+             patch("app.routes.chat.KnowledgeGraph") as mock_graph_cls:
+
+            mock_graph_cls.return_value = AsyncMock()
+
+            mock_agent = AsyncMock()
+            mock_agent.generate_response = AsyncMock(return_value=sample_agent_response)
+            mock_agent_cls.return_value = mock_agent
+
+            response = await client.post(
+                "/api/chat",
+                json={
+                    "patient_id": str(patient_in_db),
+                    "message": "What medications?",
+                },
+                headers=auth_headers,
+            )
+
+            assert response.status_code == 200
+
+            call_kwargs = mock_agent.generate_response.call_args.kwargs
+            assert call_kwargs["query_profile"] is FAST_PROFILE
+
+    @pytest.mark.asyncio
+    async def test_stream_fast_query_uses_fast_prompt(
+        self,
+        client: AsyncClient,
+        auth_headers: dict,
+        patient_in_db: uuid.UUID,
+        sample_compiled_summary: dict,
+    ):
+        """Streaming endpoint also uses fast prompt for FAST queries."""
+        with patch("app.routes.chat.get_compiled_summary", new_callable=AsyncMock, return_value=sample_compiled_summary), \
+             patch("app.routes.chat.classify_query", return_value=FAST_PROFILE), \
+             patch("app.routes.chat.build_system_prompt_fast", return_value="fast prompt") as mock_fast, \
+             patch("app.routes.chat.build_system_prompt_v2", return_value="standard prompt") as mock_standard, \
+             patch("app.routes.chat.AgentService") as mock_agent_cls, \
+             patch("app.routes.chat.KnowledgeGraph") as mock_graph_cls:
+
+            mock_graph_cls.return_value = AsyncMock()
+
+            mock_agent = AsyncMock()
+            mock_agent.generate_response_stream = MagicMock(return_value=_mock_stream_generator())
+            mock_agent_cls.return_value = mock_agent
+
+            response = await client.post(
+                "/api/chat/stream",
+                json={
+                    "patient_id": str(patient_in_db),
+                    "message": "What medications?",
+                },
+                headers=auth_headers,
+            )
+
+            assert response.status_code == 200
+            mock_fast.assert_called_once()
+            mock_standard.assert_not_called()
+
+    @pytest.mark.asyncio
+    async def test_stream_query_profile_passed_to_agent(
+        self,
+        client: AsyncClient,
+        auth_headers: dict,
+        patient_in_db: uuid.UUID,
+        sample_compiled_summary: dict,
+    ):
+        """Verify query_profile is propagated to agent.generate_response_stream."""
+        with patch("app.routes.chat.get_compiled_summary", new_callable=AsyncMock, return_value=sample_compiled_summary), \
+             patch("app.routes.chat.classify_query", return_value=FAST_PROFILE), \
+             patch("app.routes.chat.build_system_prompt_fast", return_value="fast prompt"), \
+             patch("app.routes.chat.AgentService") as mock_agent_cls, \
+             patch("app.routes.chat.KnowledgeGraph") as mock_graph_cls:
+
+            mock_graph_cls.return_value = AsyncMock()
+
+            mock_agent = AsyncMock()
+            mock_agent.generate_response_stream = MagicMock(return_value=_mock_stream_generator())
+            mock_agent_cls.return_value = mock_agent
+
+            response = await client.post(
+                "/api/chat/stream",
+                json={
+                    "patient_id": str(patient_in_db),
+                    "message": "What medications?",
+                },
+                headers=auth_headers,
+            )
+
+            assert response.status_code == 200
+
+            call_kwargs = mock_agent.generate_response_stream.call_args.kwargs
+            assert call_kwargs["query_profile"] is FAST_PROFILE

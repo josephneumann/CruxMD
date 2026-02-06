@@ -3,6 +3,7 @@
 import asyncio
 import json
 import logging
+import time
 import uuid
 from dataclasses import dataclass
 from datetime import datetime, timezone
@@ -19,10 +20,11 @@ from app.database import async_session_maker, get_db
 from app.models import FhirResource
 from app.models.session import Session
 from app.schemas import AgentResponse
-from app.services.agent import AgentService, build_system_prompt_v2
+from app.services.agent import AgentService, build_system_prompt_fast, build_system_prompt_v2
 from app.services.compiler import compile_and_store, get_compiled_summary
 from app.services.fhir_loader import get_patient_profile
 from app.services.graph import KnowledgeGraph
+from app.services.query_classifier import QueryProfile, classify_query
 
 logger = logging.getLogger(__name__)
 
@@ -115,6 +117,7 @@ class ChatContext:
     history: list[dict[str, str]] | None
     graph: KnowledgeGraph
     agent: AgentService
+    query_profile: QueryProfile
 
     async def cleanup(self) -> None:
         """Close all services."""
@@ -142,6 +145,7 @@ async def _prepare_chat_context(
     Raises:
         HTTPException: 404 if patient not found.
     """
+    t0 = time.perf_counter()
     conversation_id = request.conversation_id or uuid.uuid4()
 
     # Validate patient exists FIRST (before initializing expensive services)
@@ -164,7 +168,9 @@ async def _prepare_chat_context(
 
     # Load pre-compiled summary, compile on-demand if missing
     compiled_summary = await get_compiled_summary(request.patient_id, db)
+    summary_source = "cached"
     if compiled_summary is None:
+        summary_source = "compiled"
         logger.info("No cached summary for patient %s, compiling on-demand", request.patient_id)
         compiled_summary = await compile_and_store(request.patient_id, graph, db)
 
@@ -172,8 +178,24 @@ async def _prepare_chat_context(
     profile = get_patient_profile(patient_resource.data)
     profile_summary = _format_profile_summary(profile) if profile else None
 
-    # Build v2 system prompt from compiled summary
-    system_prompt = build_system_prompt_v2(compiled_summary, patient_profile=profile_summary)
+    # Classify query and choose prompt mode
+    query_profile = classify_query(request.message)
+
+    if query_profile.system_prompt_mode == "fast":
+        system_prompt = build_system_prompt_fast(compiled_summary, patient_profile=profile_summary)
+    else:
+        system_prompt = build_system_prompt_v2(compiled_summary, patient_profile=profile_summary)
+
+    elapsed_ms = (time.perf_counter() - t0) * 1000
+    logger.info(
+        "Chat context ready: patient=%s, summary=%s, tier=%s, prompt=%d chars (~%d tokens), "
+        "history=%d msgs, prep=%.0fms",
+        request.patient_id, summary_source,
+        query_profile.tier.value,
+        len(system_prompt), len(system_prompt) // 4,
+        len(request.conversation_history) if request.conversation_history else 0,
+        elapsed_ms,
+    )
 
     # Convert conversation history to the format expected by AgentService
     history = None
@@ -190,6 +212,7 @@ async def _prepare_chat_context(
         history=history,
         graph=graph,
         agent=agent,
+        query_profile=query_profile,
     )
 
 
@@ -266,6 +289,7 @@ async def chat(
             reasoning_effort=request.reasoning_effort,
             graph=chat_ctx.graph,
             db=db,
+            query_profile=chat_ctx.query_profile,
         )
 
         # Persist assistant message when done
@@ -354,6 +378,7 @@ async def chat_stream(
                 reasoning_effort=request.reasoning_effort,
                 graph=chat_ctx.graph,
                 db=db,
+                query_profile=chat_ctx.query_profile,
             ):
                 await event_queue.put((event_type, data_json))
                 if event_type == "done":

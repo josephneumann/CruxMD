@@ -16,7 +16,10 @@ from app.services.agent import (
     DEFAULT_MODEL,
     DEFAULT_REASONING_EFFORT,
     DEFAULT_MAX_OUTPUT_TOKENS,
+    build_system_prompt_fast,
     build_system_prompt_v2,
+    _build_patient_summary_section,
+    _build_safety_section,
     _format_tier1_conditions,
     _format_tier2_encounters,
     _format_tier3_observations,
@@ -25,6 +28,7 @@ from app.services.agent import (
     _prune_fhir_resource,
 )
 from app.services.agent_tools import TOOL_SCHEMAS, execute_tool
+from app.services.query_classifier import FAST_PROFILE, STANDARD_PROFILE
 
 
 # =============================================================================
@@ -495,6 +499,10 @@ class TestAgentServiceGenerateResponseStream:
         done_data = AgentResponse.model_validate_json(events[2][1])
         assert done_data.narrative == expected.narrative
 
+        # Only .stream() called, never .parse()
+        mock_client.responses.stream.assert_called_once()
+        mock_client.responses.parse.assert_not_called()
+
     @pytest.mark.asyncio
     async def test_stream_empty_message_raises(self, system_prompt: str, patient_id: str):
         """Test that empty message raises ValueError."""
@@ -529,6 +537,8 @@ class TestAgentServiceGenerateResponseStream:
         reasoning = call_args.kwargs["reasoning"]
         effort = getattr(reasoning, "effort", None) or reasoning.get("effort")
         assert effort == "high"
+        # Only .stream() called
+        mock_client.responses.parse.assert_not_called()
 
     @pytest.mark.asyncio
     async def test_stream_fallback_on_none_parsed(self, system_prompt: str, patient_id: str):
@@ -558,6 +568,8 @@ class TestAgentServiceGenerateResponseStream:
         assert len(done_events) == 1
         parsed = AgentResponse.model_validate_json(done_events[0][1])
         assert parsed.narrative == expected.narrative
+        # Only .stream() called
+        mock_client.responses.parse.assert_not_called()
 
 
 class TestAgentServiceClose:
@@ -833,6 +845,34 @@ class TestToolUseLoop:
         assert mock_client.responses.parse.call_count == 2
 
 
+def create_mock_tool_stream(tool_calls: list):
+    """Create a mock stream that returns function_calls in final.output (no text events).
+
+    Used to simulate a streaming round where the model decides to call tools
+    instead of generating text. The stream yields no text/reasoning events,
+    and get_final_response() returns a response with function_call items.
+    """
+    mock_final = MagicMock()
+    mock_final.output = tool_calls
+    mock_final.output_parsed = None
+    mock_final.output_text = None
+
+    # No events yielded during tool-decision rounds
+    async def mock_aiter(self):
+        return
+        yield  # noqa: unreachable — makes this an async generator
+
+    stream = AsyncMock()
+    stream.__aiter__ = mock_aiter
+    stream.get_final_response = AsyncMock(return_value=mock_final)
+
+    ctx = AsyncMock()
+    ctx.__aenter__ = AsyncMock(return_value=stream)
+    ctx.__aexit__ = AsyncMock(return_value=False)
+
+    return ctx
+
+
 class TestToolUseStreamLoop:
     """Tests for tool-use in generate_response_stream."""
 
@@ -853,37 +893,31 @@ class TestToolUseStreamLoop:
 
         # Should have gone through streaming path
         assert any(e[0] == "done" for e in events)
-        # .stream() was called, not .parse()
+        # Only .stream() was called, never .parse()
         mock_client.responses.stream.assert_called_once()
+        mock_client.responses.parse.assert_not_called()
 
     @pytest.mark.asyncio
     @patch("app.services.agent.execute_tool", new_callable=AsyncMock)
     async def test_stream_with_tool_calls(
         self, mock_execute, system_prompt: str, patient_id: str
     ):
-        """Test streaming with tool calls uses parse for tool rounds then streams final."""
+        """Test unified streaming: .stream() for tool round AND final (no .parse())."""
         mock_execute.return_value = "Tool result text"
 
         tool_call = _make_function_call_item(
             "query_patient_data", '{"name": "diabetes", "resource_type": null, "status": null, "category": null, "date_from": null, "date_to": null, "include_full_resource": true, "limit": 20}'
         )
 
-        # First .parse() returns tool call, second returns no tool calls (text ready)
-        tool_round_resp = MagicMock()
-        tool_round_resp.output = [tool_call]
-        tool_round_resp.output_parsed = None
+        # First .stream() returns tool calls (tool round)
+        tool_stream = create_mock_tool_stream([tool_call])
 
-        # Second .parse() returns no tool calls — _execute_tool_calls stops
-        no_tool_resp = MagicMock()
-        no_tool_resp.output = [_make_text_item()]
-        no_tool_resp.output_parsed = None
+        # Second .stream() returns the final text response
+        final_response = create_mock_agent_response()
+        final_stream = create_mock_stream(final_response)
 
         mock_client = AsyncMock()
-        mock_client.responses.parse = AsyncMock(side_effect=[tool_round_resp, no_tool_resp])
-
-        # Final streaming call returns the response
-        final_response = create_mock_agent_response()
-        mock_client.responses.stream = MagicMock(return_value=create_mock_stream(final_response))
+        mock_client.responses.stream = MagicMock(side_effect=[tool_stream, final_stream])
 
         service = AgentService(client=mock_client)
 
@@ -918,9 +952,67 @@ class TestToolUseStreamLoop:
         assert parsed.narrative == final_response.narrative
 
         mock_execute.assert_called_once()
-        # .parse() called for tool rounds, .stream() for final
-        assert mock_client.responses.parse.call_count == 2
-        mock_client.responses.stream.assert_called_once()
+        # .stream() called for BOTH tool round and final — no .parse() at all
+        assert mock_client.responses.stream.call_count == 2
+        mock_client.responses.parse.assert_not_called()
+
+    @pytest.mark.asyncio
+    @patch("app.services.agent.execute_tool", new_callable=AsyncMock)
+    @patch("app.services.agent.MAX_TOOL_ROUNDS", 1)
+    async def test_stream_max_rounds_exhausted(
+        self, mock_execute, system_prompt: str, patient_id: str
+    ):
+        """Test that tools are stripped and extra stream call made when max rounds hit."""
+        mock_execute.return_value = "Tool result"
+
+        tool_call = _make_function_call_item(
+            "query_patient_data", '{"name": "diabetes"}', "call_1"
+        )
+
+        # Round 1: returns tool calls (MAX_TOOL_ROUNDS=1, so loop body runs once)
+        tool_stream_1 = create_mock_tool_stream([tool_call])
+
+        # Round 2 (loop iteration 2, which is MAX_TOOL_ROUNDS+1=2): also tool calls
+        # — the loop allows MAX_TOOL_ROUNDS+1 iterations total, but the last one
+        # still has tools, so we fall through to the max-rounds-exhausted path.
+        tool_call_2 = _make_function_call_item(
+            "query_patient_data", '{"name": "labs"}', "call_2"
+        )
+        tool_stream_2 = create_mock_tool_stream([tool_call_2])
+
+        # Max-rounds-exhausted final stream (no tools)
+        final_response = create_mock_agent_response()
+        final_stream = create_mock_stream(final_response)
+
+        mock_client = AsyncMock()
+        mock_client.responses.stream = MagicMock(
+            side_effect=[tool_stream_1, tool_stream_2, final_stream]
+        )
+
+        service = AgentService(client=mock_client)
+
+        events = []
+        async for et, data in service.generate_response_stream(
+            system_prompt=system_prompt, patient_id=patient_id,
+            message="Test max rounds",
+            graph=AsyncMock(),
+            db=AsyncMock(),
+        ):
+            events.append((et, data))
+
+        # Should have tool events from both rounds + final done
+        tool_call_events = [e for e in events if e[0] == "tool_call"]
+        assert len(tool_call_events) == 2
+        done_events = [e for e in events if e[0] == "done"]
+        assert len(done_events) == 1
+
+        # 3 stream calls: 2 tool rounds + 1 forced final
+        assert mock_client.responses.stream.call_count == 3
+        mock_client.responses.parse.assert_not_called()
+
+        # The final call should NOT have tools in kwargs
+        last_call_kwargs = mock_client.responses.stream.call_args_list[-1].kwargs
+        assert "tools" not in last_call_kwargs
 
 
 # =============================================================================
@@ -1632,3 +1724,199 @@ class TestFormatSafetyConstraintsV2:
         """Test safety constraints when empty."""
         result = _format_safety_constraints_v2({})
         assert result == "No specific safety constraints."
+
+
+# =============================================================================
+# Shared Prompt Helpers Tests
+# =============================================================================
+
+
+class TestBuildPatientSummarySection:
+    """Tests for _build_patient_summary_section shared helper."""
+
+    def test_includes_patient_orientation(self, minimal_compiled_summary: dict):
+        result = _build_patient_summary_section(minimal_compiled_summary)
+        assert "Jane Doe" in result
+        assert "age 71" in result
+
+    def test_includes_profile_when_provided(self, minimal_compiled_summary: dict):
+        result = _build_patient_summary_section(
+            minimal_compiled_summary, patient_profile="Active retired teacher."
+        )
+        assert "Active retired teacher" in result
+
+    def test_excludes_profile_when_none(self, minimal_compiled_summary: dict):
+        result = _build_patient_summary_section(minimal_compiled_summary)
+        assert "Profile:" not in result
+
+
+class TestBuildSafetySection:
+    """Tests for _build_safety_section shared helper."""
+
+    def test_includes_safety_constraints(self, minimal_compiled_summary: dict):
+        result = _build_safety_section(minimal_compiled_summary)
+        assert "Safety Constraints" in result
+        assert "drug allergies" in result
+
+    def test_includes_allergy_data(self, full_compiled_summary: dict):
+        result = _build_safety_section(full_compiled_summary)
+        assert "ALLERGY: Penicillin" in result
+
+
+# =============================================================================
+# build_system_prompt_fast Tests
+# =============================================================================
+
+
+class TestBuildSystemPromptFast:
+    """Tests for the fast (chart lookup) system prompt."""
+
+    def test_includes_patient_data(self, full_compiled_summary: dict):
+        """Fast prompt includes the same patient data as standard."""
+        prompt = build_system_prompt_fast(full_compiled_summary)
+        assert "John Smith" in prompt
+        assert "Type 2 diabetes mellitus" in prompt
+        assert "Metformin 500 MG" in prompt
+        assert "Hemoglobin A1c" in prompt
+
+    def test_includes_safety(self, full_compiled_summary: dict):
+        """Fast prompt includes safety constraints."""
+        prompt = build_system_prompt_fast(full_compiled_summary)
+        assert "Safety Constraints" in prompt
+        assert "ALLERGY: Penicillin" in prompt
+
+    def test_excludes_tool_descriptions(self, full_compiled_summary: dict):
+        """Fast prompt does NOT include tool descriptions."""
+        prompt = build_system_prompt_fast(full_compiled_summary)
+        assert "query_patient_data" not in prompt
+        assert "explore_connections" not in prompt
+        assert "get_patient_timeline" not in prompt
+
+    def test_excludes_heavy_reasoning_directives(self, full_compiled_summary: dict):
+        """Fast prompt does NOT include reasoning directives."""
+        prompt = build_system_prompt_fast(full_compiled_summary)
+        assert "Reasoning Directives" not in prompt
+        assert "Cross-condition reasoning" not in prompt
+        assert "Tool-chain self-checking" not in prompt
+
+    def test_shorter_than_standard(self, full_compiled_summary: dict):
+        """Fast prompt is significantly shorter than standard."""
+        fast = build_system_prompt_fast(full_compiled_summary)
+        standard = build_system_prompt_v2(full_compiled_summary)
+        assert len(fast) < len(standard) - 2000
+
+    def test_includes_profile_when_provided(self, minimal_compiled_summary: dict):
+        """Fast prompt includes patient profile when provided."""
+        prompt = build_system_prompt_fast(
+            minimal_compiled_summary, patient_profile="Active retired teacher."
+        )
+        assert "Active retired teacher" in prompt
+
+    def test_has_concise_role(self, minimal_compiled_summary: dict):
+        """Fast prompt has a concise role statement."""
+        prompt = build_system_prompt_fast(minimal_compiled_summary)
+        assert "chart assistant" in prompt
+        assert "Answer directly" in prompt
+
+
+# =============================================================================
+# query_profile Parameter Tests
+# =============================================================================
+
+
+class TestGenerateResponseWithQueryProfile:
+    """Tests for query_profile parameter on generate methods."""
+
+    @pytest.mark.asyncio
+    async def test_fast_profile_sets_low_effort_and_max_tokens(
+        self, system_prompt: str, patient_id: str
+    ):
+        """FAST profile → low effort, 4096 max tokens, no tools."""
+        mock_client = create_mock_openai_client()
+        service = AgentService(client=mock_client)
+
+        await service.generate_response(
+            system_prompt=system_prompt,
+            patient_id=patient_id,
+            message="What medications?",
+            query_profile=FAST_PROFILE,
+            graph=AsyncMock(),
+            db=AsyncMock(),
+        )
+
+        call_args = mock_client.responses.parse.call_args
+        assert call_args.kwargs["max_output_tokens"] == 4096
+        reasoning = call_args.kwargs["reasoning"]
+        effort = getattr(reasoning, "effort", None) or reasoning.get("effort")
+        assert effort == "low"
+        # FAST profile disables tools even when graph/db provided
+        assert "tools" not in call_args.kwargs
+
+    @pytest.mark.asyncio
+    async def test_reasoning_effort_override_trumps_profile(
+        self, system_prompt: str, patient_id: str
+    ):
+        """Explicit reasoning_effort param overrides query_profile."""
+        mock_client = create_mock_openai_client()
+        service = AgentService(client=mock_client)
+
+        await service.generate_response(
+            system_prompt=system_prompt,
+            patient_id=patient_id,
+            message="What medications?",
+            reasoning_effort="high",
+            query_profile=FAST_PROFILE,
+        )
+
+        call_args = mock_client.responses.parse.call_args
+        reasoning = call_args.kwargs["reasoning"]
+        effort = getattr(reasoning, "effort", None) or reasoning.get("effort")
+        assert effort == "high"
+
+    @pytest.mark.asyncio
+    async def test_standard_profile_preserves_defaults(
+        self, system_prompt: str, patient_id: str
+    ):
+        """STANDARD profile keeps medium effort, 16384 max tokens, tools enabled."""
+        mock_client = create_mock_openai_client()
+        service = AgentService(client=mock_client)
+
+        await service.generate_response(
+            system_prompt=system_prompt,
+            patient_id=patient_id,
+            message="Explain the HbA1c trend",
+            query_profile=STANDARD_PROFILE,
+            graph=AsyncMock(),
+            db=AsyncMock(),
+        )
+
+        # First call is inside _execute_tool_calls
+        first_call = mock_client.responses.parse.call_args_list[0]
+        assert first_call.kwargs["max_output_tokens"] == 16384
+        reasoning = first_call.kwargs["reasoning"]
+        effort = getattr(reasoning, "effort", None) or reasoning.get("effort")
+        assert effort == "medium"
+        assert first_call.kwargs["tools"] is TOOL_SCHEMAS
+
+    @pytest.mark.asyncio
+    async def test_none_profile_uses_instance_defaults(
+        self, system_prompt: str, patient_id: str
+    ):
+        """No query_profile → instance defaults used."""
+        mock_client = create_mock_openai_client()
+        service = AgentService(
+            client=mock_client, reasoning_effort="medium", max_output_tokens=16384,
+        )
+
+        await service.generate_response(
+            system_prompt=system_prompt,
+            patient_id=patient_id,
+            message="What medications?",
+            query_profile=None,
+        )
+
+        call_args = mock_client.responses.parse.call_args
+        assert call_args.kwargs["max_output_tokens"] == 16384
+        reasoning = call_args.kwargs["reasoning"]
+        effort = getattr(reasoning, "effort", None) or reasoning.get("effort")
+        assert effort == "medium"
