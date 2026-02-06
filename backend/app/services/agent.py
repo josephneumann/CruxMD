@@ -324,8 +324,6 @@ def _prune_fhir_resource(resource: dict[str, Any]) -> dict[str, Any]:
             if attachment.get("data") and "text/plain" in attachment.get("contentType", ""):
                 try:
                     decoded = base64.b64decode(attachment["data"]).decode("utf-8")
-                    if len(decoded) > 1500:
-                        decoded = decoded[:1500] + "\n... (truncated)"
                     extra["clinical_note"] = decoded
                 except Exception:
                     pass
