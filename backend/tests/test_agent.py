@@ -813,17 +813,15 @@ class TestToolSchemas:
     """Tests for TOOL_SCHEMAS definitions."""
 
     def test_all_tools_defined(self):
-        """Test that all 5 tool schemas are defined."""
-        assert len(TOOL_SCHEMAS) == 5
+        """Test that all 3 tool schemas are defined."""
+        assert len(TOOL_SCHEMAS) == 3
 
     def test_tool_names(self):
         """Test that tool names match the function names."""
         names = {t["name"] for t in TOOL_SCHEMAS}
         assert names == {
-            "search_patient_data",
-            "get_encounter_details",
-            "get_lab_history",
-            "find_related_resources",
+            "query_patient_data",
+            "explore_connections",
             "get_patient_timeline",
         }
 
@@ -846,22 +844,24 @@ class TestExecuteTool:
     """Tests for execute_tool dispatch function."""
 
     @pytest.mark.asyncio
-    async def test_dispatch_search_patient_data(self):
-        """Test that execute_tool dispatches to search_patient_data."""
+    async def test_dispatch_query_patient_data(self):
+        """Test that execute_tool dispatches to query_patient_data."""
         mock_graph = AsyncMock()
         mock_db = AsyncMock()
-        mock_graph.search_nodes_by_name = AsyncMock(return_value=[])
+        mock_result = MagicMock()
+        mock_result.scalars.return_value.all.return_value = []
+        mock_db.execute.return_value = mock_result
 
         result = await execute_tool(
-            name="search_patient_data",
-            arguments='{"query": "diabetes"}',
+            name="query_patient_data",
+            arguments='{"name": "diabetes", "resource_type": null, "status": null, "category": null, "date_from": null, "date_to": null, "include_full_resource": true, "limit": 20}',
             patient_id="patient-123",
             graph=mock_graph,
             db=mock_db,
         )
 
-        assert "No resources found" in result
-        mock_graph.search_nodes_by_name.assert_called_once()
+        parsed = json.loads(result)
+        assert parsed["total"] == 0
 
     @pytest.mark.asyncio
     async def test_dispatch_unknown_tool(self):
@@ -977,7 +977,7 @@ class TestToolUseLoop:
         mock_execute.return_value = "Search results: diabetes found"
 
         tool_call = _make_function_call_item(
-            "search_patient_data", '{"query": "diabetes"}'
+            "query_patient_data", '{"name": "diabetes", "resource_type": null, "status": null, "category": null, "date_from": null, "date_to": null, "include_full_resource": true, "limit": 20}'
         )
         mock_client = create_mock_openai_client_with_tools(
             tool_responses=[[tool_call]],
@@ -1011,10 +1011,10 @@ class TestToolUseLoop:
         mock_execute.side_effect = ["Round 1 result", "Round 2 result"]
 
         round1_call = _make_function_call_item(
-            "search_patient_data", '{"query": "diabetes"}', "call_r1"
+            "query_patient_data", '{"name": "diabetes", "resource_type": null, "status": null, "category": null, "date_from": null, "date_to": null, "include_full_resource": true, "limit": 20}', "call_r1"
         )
         round2_call = _make_function_call_item(
-            "get_lab_history", '{"lab_name": "A1c"}', "call_r2"
+            "explore_connections", '{"fhir_id": "cond-1", "resource_type": "Condition", "include_full_resource": true, "max_per_relationship": 10}', "call_r2"
         )
         mock_client = create_mock_openai_client_with_tools(
             tool_responses=[[round1_call], [round2_call]],
@@ -1041,10 +1041,10 @@ class TestToolUseLoop:
         mock_execute.side_effect = ["Result A", "Result B"]
 
         call_a = _make_function_call_item(
-            "search_patient_data", '{"query": "diabetes"}', "call_a"
+            "query_patient_data", '{"name": "diabetes", "resource_type": null, "status": null, "category": null, "date_from": null, "date_to": null, "include_full_resource": true, "limit": 20}', "call_a"
         )
         call_b = _make_function_call_item(
-            "get_lab_history", '{"lab_name": "A1c"}', "call_b"
+            "explore_connections", '{"fhir_id": "cond-1", "resource_type": "Condition", "include_full_resource": true, "max_per_relationship": 10}', "call_b"
         )
         mock_client = create_mock_openai_client_with_tools(
             tool_responses=[[call_a, call_b]],
@@ -1095,7 +1095,7 @@ class TestToolUseStreamLoop:
         mock_execute.return_value = "Tool result text"
 
         tool_call = _make_function_call_item(
-            "search_patient_data", '{"query": "diabetes"}'
+            "query_patient_data", '{"name": "diabetes", "resource_type": null, "status": null, "category": null, "date_from": null, "date_to": null, "include_full_resource": true, "limit": 20}'
         )
 
         # First .parse() returns tool call, second returns no tool calls (text ready)
@@ -1133,7 +1133,7 @@ class TestToolUseStreamLoop:
         assert len(tool_result_events) == 1
 
         tc_data = json.loads(tool_call_events[0][1])
-        assert tc_data["name"] == "search_patient_data"
+        assert tc_data["name"] == "query_patient_data"
         assert tc_data["call_id"] == "call_1"
 
         tr_data = json.loads(tool_result_events[0][1])
