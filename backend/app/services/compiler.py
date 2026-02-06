@@ -748,9 +748,23 @@ async def infer_medication_condition_links(
 # Status filters
 _ACTIVE_CONDITION_STATUSES = frozenset(["active", "recurrence", "relapse"])
 _RESOLVED_CONDITION_STATUSES = frozenset(["resolved", "remission", "inactive"])
-_ACTIVE_MED_STATUSES = frozenset(["active", "on-hold"])
 _ACTIVE_CARE_PLAN_STATUSES = frozenset(["active", "on-hold"])
 _RECENTLY_RESOLVED_MONTHS = 6
+
+# Maps encounter event keys (from graph) to relationship type labels in the summary
+_EVENT_TYPE_MAP: dict[str, str] = {
+    "conditions": "DIAGNOSED",
+    "medications": "PRESCRIBED",
+    "observations": "RECORDED",
+    "procedures": "PERFORMED",
+    "diagnostic_reports": "REPORTED",
+    "immunizations": "ADMINISTERED",
+    "care_plans": "CREATED_DURING",
+    "document_references": "DOCUMENTED",
+    "imaging_studies": "IMAGED",
+    "care_teams": "ASSEMBLED",
+    "medication_administrations": "GIVEN",
+}
 
 
 def _build_patient_orientation(patient_data: dict[str, Any], compilation_date: date) -> str:
@@ -794,13 +808,6 @@ def _build_patient_orientation(patient_data: dict[str, Any], compilation_date: d
         parts.append(f"DOB {birth_date_str}{age_str}")
 
     return ", ".join(parts)
-
-
-def _extract_clinical_status_code(resource: dict[str, Any]) -> str:
-    """Extract clinical status code from a FHIR resource."""
-    clinical_status = resource.get("clinicalStatus", {})
-    codings = clinical_status.get("coding", [])
-    return codings[0].get("code", "") if codings else ""
 
 
 def _extract_fhir_id(resource: dict[str, Any]) -> str:
@@ -1048,6 +1055,11 @@ async def compile_patient_summary(
     # =========================================================================
     # Step 4: Medication recency + dose history for all active meds
     # =========================================================================
+    # Build lookup for raw meds by fhir_id (avoids O(n) scan per med)
+    raw_meds_by_id: dict[str, dict[str, Any]] = {
+        _extract_fhir_id(m): m for m in active_meds_raw if _extract_fhir_id(m)
+    }
+
     # Build enriched meds for tier1 conditions
     for cond_entry in tier1_active_conditions:
         enriched_meds = []
@@ -1057,10 +1069,7 @@ async def compile_patient_summary(
                 med_pruned.update(recency)
             # Dose history requires DB query on raw data
             med_fhir_id = med_pruned.get("id", "")
-            raw_med = next(
-                (m for m in active_meds_raw if _extract_fhir_id(m) == med_fhir_id),
-                None,
-            )
+            raw_med = raw_meds_by_id.get(med_fhir_id)
             if raw_med:
                 dose_history = await compute_dose_history(db, patient_id, raw_med)
                 if dose_history:
@@ -1143,31 +1152,17 @@ async def compile_patient_summary(
 
         # Compile events into pruned format grouped by relationship type
         pruned_events: dict[str, list[dict[str, Any]]] = {}
-        event_type_map = {
-            "conditions": "DIAGNOSED",
-            "medications": "PRESCRIBED",
-            "observations": "RECORDED",
-            "procedures": "PERFORMED",
-            "diagnostic_reports": "REPORTED",
-            "immunizations": "ADMINISTERED",
-            "care_plans": "CREATED_DURING",
-            "document_references": "DOCUMENTED",
-            "imaging_studies": "IMAGED",
-            "care_teams": "ASSEMBLED",
-            "medication_administrations": "GIVEN",
-        }
 
-        for event_key, rel_type in event_type_map.items():
+        for event_key, rel_type in _EVENT_TYPE_MAP.items():
             event_resources = events.get(event_key, [])
             if event_resources:
                 pruned_events[rel_type] = [
                     prune_and_enrich(r) for r in event_resources
                 ]
 
-        # Clinical notes: from document_references in events (already decoded by pruner)
+        # Clinical notes: reuse already-pruned document_references from events
         clinical_notes: list[str] = []
-        for doc in events.get("document_references", []):
-            pruned_doc = prune_and_enrich(doc)
+        for pruned_doc in pruned_events.get("DOCUMENTED", []):
             note = pruned_doc.get("clinical_note")
             if note:
                 clinical_notes.append(note)
