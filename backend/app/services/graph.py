@@ -219,6 +219,17 @@ class EncounterEvents(TypedDict):
     medication_administrations: list[dict[str, Any]]
 
 
+class ConnectionRecord(TypedDict):
+    """Single connection returned by get_all_connections."""
+
+    relationship: str
+    direction: str
+    fhir_id: str
+    resource_type: str
+    name: str | None
+    fhir_resource: str | None
+
+
 # =============================================================================
 # Knowledge Graph Service
 # =============================================================================
@@ -1140,6 +1151,77 @@ class KnowledgeGraph:
                 **params,
             )
             return [record.data() async for record in result]
+
+    async def get_all_connections(
+        self,
+        fhir_id: str,
+        patient_id: str | None = None,
+    ) -> list[ConnectionRecord]:
+        """
+        Get all graph connections from a node, excluding Patient nodes.
+
+        Generic traversal that returns every edge from a node regardless of
+        resource type. Useful for discovering relationships without knowing
+        the schema in advance.
+
+        Args:
+            fhir_id: The FHIR ID of the node to traverse from.
+            patient_id: Optional patient UUID to scope the query. When provided,
+                the source node must be owned by this patient (connected via a
+                HAS_* relationship) or have no patient ownership (e.g. Medication).
+
+        Returns:
+            List of ConnectionRecord dicts with relationship, direction,
+            fhir_id, resource_type, name, and fhir_resource for each
+            connected node. Ordered by relationship type, then resource_type.
+        """
+        if patient_id:
+            query = """
+                MATCH (n {fhir_id: $fhir_id})
+                WHERE EXISTS {
+                    MATCH (p:Patient {id: $patient_id})-[]->(n)
+                } OR NOT EXISTS {
+                    MATCH (:Patient)-[]->(n)
+                }
+                WITH n
+                MATCH (n)-[r]-(m)
+                WHERE NOT m:Patient
+                RETURN type(r) as relationship,
+                       CASE WHEN startNode(r) = n THEN 'outgoing' ELSE 'incoming' END as direction,
+                       m.fhir_id as fhir_id,
+                       labels(m)[0] as resource_type,
+                       m.name as name,
+                       m.fhir_resource as fhir_resource
+                ORDER BY relationship, resource_type
+            """
+            params = {"fhir_id": fhir_id, "patient_id": patient_id}
+        else:
+            query = """
+                MATCH (n {fhir_id: $fhir_id})-[r]-(m)
+                WHERE NOT m:Patient
+                RETURN type(r) as relationship,
+                       CASE WHEN startNode(r) = n THEN 'outgoing' ELSE 'incoming' END as direction,
+                       m.fhir_id as fhir_id,
+                       labels(m)[0] as resource_type,
+                       m.name as name,
+                       m.fhir_resource as fhir_resource
+                ORDER BY relationship, resource_type
+            """
+            params = {"fhir_id": fhir_id}
+
+        async with self._driver.session() as session:
+            result = await session.run(query, **params)
+            connections: list[ConnectionRecord] = []
+            async for record in result:
+                connections.append({
+                    "relationship": record["relationship"],
+                    "direction": record["direction"],
+                    "fhir_id": record["fhir_id"],
+                    "resource_type": record["resource_type"],
+                    "name": record["name"],
+                    "fhir_resource": record["fhir_resource"],
+                })
+            return connections
 
     # =========================================================================
     # Batch Property Extractors — prep FHIR resources for UNWIND queries.
