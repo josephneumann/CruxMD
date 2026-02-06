@@ -9,13 +9,12 @@ Provides functions to:
 """
 
 import copy
-import json
 import logging
 import uuid
 from datetime import datetime
 from typing import Any
 
-from sqlalchemy import DateTime, func, select
+from sqlalchemy import DateTime, func, or_, select
 from sqlalchemy.ext.asyncio import AsyncSession
 
 from app.models import FhirResource
@@ -426,7 +425,7 @@ def prune_and_enrich(
 
 async def compile_node_context(
     fhir_id: str,
-    patient_id: str,
+    patient_id: uuid.UUID | str,
     graph: KnowledgeGraph,
     db: AsyncSession,
 ) -> dict[str, list[dict[str, Any]]]:
@@ -460,16 +459,21 @@ async def compile_node_context(
     connected_fhir_ids = [c["fhir_id"] for c in connections if c["fhir_id"]]
 
     # Step 3: Batch-fetch full resources from Postgres (canonical source)
-    resources_by_id = await fetch_resources_by_fhir_ids(
-        db, connected_fhir_ids, patient_id=patient_id
+    # Single query fetches both patient-scoped and shared resources (e.g.
+    # Medication nodes which have patient_id=NULL)
+    if isinstance(patient_id, str):
+        pid = uuid.UUID(patient_id)
+    else:
+        pid = patient_id
+    query = select(FhirResource.fhir_id, FhirResource.data).where(
+        FhirResource.fhir_id.in_(connected_fhir_ids),
+        or_(
+            FhirResource.patient_id == pid,
+            FhirResource.patient_id.is_(None),
+        ),
     )
-
-    # For resources not found with patient_id scoping (e.g. Medication nodes
-    # which have no patient_id), retry without patient scoping
-    missing_ids = [fid for fid in connected_fhir_ids if fid not in resources_by_id]
-    if missing_ids:
-        unscoped = await fetch_resources_by_fhir_ids(db, missing_ids)
-        resources_by_id.update(unscoped)
+    result = await db.execute(query)
+    resources_by_id = {row.fhir_id: row.data for row in result.all()}
 
     # Step 4: Prune each resource and group by relationship type
     grouped: dict[str, list[dict[str, Any]]] = {}

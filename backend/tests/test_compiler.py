@@ -9,7 +9,6 @@ Tests the pre-computed patient summary functions:
 """
 
 import base64
-import json
 import uuid
 from unittest.mock import AsyncMock, MagicMock
 
@@ -1048,12 +1047,12 @@ class TestCompileNodeContext:
         result = await compile_node_context("cond-1", patient_id, mock_graph, mock_db)
 
         assert len(result["TREATS"]) == 5
-        # Should be at most 2 db.execute calls (one scoped, one unscoped for missing)
-        assert mock_db.execute.call_count <= 2
+        # Single batch query for all resources
+        assert mock_db.execute.call_count == 1
 
     @pytest.mark.asyncio
-    async def test_medication_without_patient_id_fetched_unscoped(self):
-        """Medication nodes (no patient_id) are fetched with unscoped query."""
+    async def test_medication_without_patient_id_fetched(self):
+        """Medication nodes (no patient_id) are fetched via OR condition."""
         patient_id = str(uuid.uuid4())
 
         mock_graph = AsyncMock(spec=KnowledgeGraph)
@@ -1074,21 +1073,19 @@ class TestCompileNodeContext:
             "code": {"coding": [{"display": "Aspirin"}]},
         }
 
-        # First call (scoped) returns nothing, second call (unscoped) returns the med
+        # Single query returns shared medication (patient_id=NULL matches OR condition)
         mock_db = AsyncMock(spec=AsyncSession)
-        empty_result = MagicMock()
-        empty_result.all.return_value = []
-        full_result = MagicMock()
-        full_result.all.return_value = [MagicMock(fhir_id="med-shared", data=med_data)]
-        mock_db.execute.side_effect = [empty_result, full_result]
+        mock_result = MagicMock()
+        mock_result.all.return_value = [MagicMock(fhir_id="med-shared", data=med_data)]
+        mock_db.execute.return_value = mock_result
 
         result = await compile_node_context("cond-1", patient_id, mock_graph, mock_db)
 
         assert "TREATS" in result
         assert len(result["TREATS"]) == 1
         assert result["TREATS"][0]["id"] == "med-shared"
-        # Two DB calls: one scoped (miss), one unscoped (hit)
-        assert mock_db.execute.call_count == 2
+        # Single DB call with OR condition
+        assert mock_db.execute.call_count == 1
 
     @pytest.mark.asyncio
     async def test_skips_resource_missing_from_postgres(self):
