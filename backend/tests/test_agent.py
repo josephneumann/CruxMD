@@ -17,15 +17,22 @@ from app.services.agent import (
     DEFAULT_MODEL,
     DEFAULT_REASONING_EFFORT,
     DEFAULT_MAX_OUTPUT_TOKENS,
+    TIER_DEEP,
+    TIER_FAST,
+    TIER_LIGHTNING,
     build_system_prompt_fast,
     build_system_prompt_lightning,
     build_system_prompt_v2,
     _build_patient_summary_section,
     _build_safety_section,
+    _format_as_table,
     _format_tier1_conditions,
     _format_tier2_encounters,
     _format_tier3_observations,
     _format_safety_constraints_v2,
+    _allergy_row,
+    _immunization_row,
+    _unlinked_med_row,
     _get_display_name,
     _prune_fhir_resource,
 )
@@ -1440,23 +1447,22 @@ class TestBuildSystemPromptV2:
         assert "cond-hypertension" in prompt
 
     def test_full_summary_includes_treating_medications(self, full_compiled_summary: dict):
-        """Test that v2 prompt includes treating medications with enrichments."""
+        """Test that v2 prompt includes treating medications as table with enrichments."""
         prompt = build_system_prompt_v2(full_compiled_summary)
         assert "Metformin 500 MG" in prompt
         assert "Lisinopril 10 MG" in prompt
         assert "established" in prompt
-        assert "3200d on therapy" in prompt
+        # _duration_days and _inferred dropped from output
+        assert "3200d on therapy" not in prompt
+        assert "inferred via encounter" not in prompt
+        # Table format
+        assert "| Medication |" in prompt
 
     def test_full_summary_includes_dose_history_data(self, full_compiled_summary: dict):
         """Test that v2 prompt includes dose history data when present."""
         prompt = build_system_prompt_v2(full_compiled_summary)
         assert "250 MG" in prompt
         assert "2015-03-10" in prompt
-
-    def test_full_summary_includes_inferred_links(self, full_compiled_summary: dict):
-        """Test that v2 prompt shows inferred medication-condition links."""
-        prompt = build_system_prompt_v2(full_compiled_summary)
-        assert "inferred via encounter" in prompt
 
     def test_full_summary_includes_recently_resolved(self, full_compiled_summary: dict):
         """Test that v2 prompt includes recently resolved conditions."""
@@ -1471,16 +1477,18 @@ class TestBuildSystemPromptV2:
         assert "not linked to a condition" in prompt
 
     def test_full_summary_includes_allergies(self, full_compiled_summary: dict):
-        """Test that v2 prompt includes allergies in summary and safety."""
+        """Test that v2 prompt includes allergies as table and in safety."""
         prompt = build_system_prompt_v2(full_compiled_summary)
         assert "Penicillin" in prompt
         assert "high" in prompt
+        assert "| Allergen |" in prompt
 
     def test_full_summary_includes_immunizations(self, full_compiled_summary: dict):
-        """Test that v2 prompt includes immunizations."""
+        """Test that v2 prompt includes immunizations as table."""
         prompt = build_system_prompt_v2(full_compiled_summary)
         assert "Influenza vaccine" in prompt
         assert "2025-10-15" in prompt
+        assert "| Vaccine |" in prompt
 
     def test_full_summary_includes_care_plans(self, full_compiled_summary: dict):
         """Test that v2 prompt includes care plans (inline and standalone)."""
@@ -1496,13 +1504,15 @@ class TestBuildSystemPromptV2:
         assert "good adherence" in prompt
 
     def test_full_summary_includes_observations_with_trend(self, full_compiled_summary: dict):
-        """Test that v2 prompt includes observations with trend data."""
+        """Test that v2 prompt includes observations as table with trend data."""
         prompt = build_system_prompt_v2(full_compiled_summary)
         assert "Hemoglobin A1c" in prompt
         assert "7.2" in prompt
         assert "rising" in prompt
         assert "6.9" in prompt
-        assert "ref: 4.0-5.6" in prompt
+        assert "4.0-5.6" in prompt
+        # Table format
+        assert "| Observation |" in prompt
 
     def test_full_summary_includes_vital_signs(self, full_compiled_summary: dict):
         """Test that v2 prompt includes vital signs."""
@@ -1541,6 +1551,29 @@ class TestBuildSystemPromptV2:
         assert char_count < 10000, f"Prompt too long for test fixture: {char_count} chars"
 
 
+class TestFormatAsTable:
+    """Tests for _format_as_table helper."""
+
+    def test_basic_table(self):
+        """Test basic table formatting."""
+        result = _format_as_table(["A", "B"], [["1", "2"], ["3", "4"]])
+        assert "| A | B |" in result
+        assert "| --- | --- |" in result
+        assert "| 1 | 2 |" in result
+        assert "| 3 | 4 |" in result
+
+    def test_empty_rows(self):
+        """Test that empty rows return empty string."""
+        result = _format_as_table(["A", "B"], [])
+        assert result == ""
+
+    def test_single_row(self):
+        """Test single-row table."""
+        result = _format_as_table(["Name"], [["Alice"]])
+        lines = result.strip().split("\n")
+        assert len(lines) == 3  # header, separator, row
+
+
 class TestFormatTier1Conditions:
     """Tests for _format_tier1_conditions helper."""
 
@@ -1550,7 +1583,7 @@ class TestFormatTier1Conditions:
         assert result == "No active conditions recorded."
 
     def test_condition_with_all_enrichments(self):
-        """Test formatting a condition with all medication enrichments."""
+        """Test formatting a condition with medication table enrichments."""
         conditions = [
             {
                 "condition": {
@@ -1578,14 +1611,69 @@ class TestFormatTier1Conditions:
                 "related_procedures": [],
             },
         ]
-        result = _format_tier1_conditions(conditions)
+        result = _format_tier1_conditions(conditions, tier=TIER_DEEP)
         assert "Diabetes" in result
-        assert "cond-1" in result
+        assert "cond-1" in result  # Deep tier includes FHIR IDs
         assert "Metformin 500 MG" in result
         assert "established" in result
-        assert "1800d on therapy" in result
-        assert "inferred via encounter" in result
+        # Table columns: Medication | Status | Recency | Dose History
+        assert "| Medication |" in result
         assert "250 MG" in result
+        # _duration_days and _inferred dropped from output
+        assert "1800d on therapy" not in result
+        assert "inferred" not in result
+
+    def test_condition_omits_active_status(self):
+        """Test that 'status: active' is omitted from Active conditions."""
+        conditions = [
+            {
+                "condition": {
+                    "id": "cond-1",
+                    "code": {"coding": [{"display": "Diabetes"}]},
+                    "clinicalStatus": "Active",
+                },
+                "treating_medications": [],
+                "care_plans": [],
+                "related_procedures": [],
+            },
+        ]
+        result = _format_tier1_conditions(conditions)
+        assert "status: Active" not in result
+        assert "status: active" not in result
+
+    def test_condition_shows_nonactive_status(self):
+        """Test that non-active statuses are shown."""
+        conditions = [
+            {
+                "condition": {
+                    "id": "cond-1",
+                    "code": {"coding": [{"display": "Bronchitis"}]},
+                    "clinicalStatus": "resolved",
+                },
+                "treating_medications": [],
+                "care_plans": [],
+                "related_procedures": [],
+            },
+        ]
+        result = _format_tier1_conditions(conditions)
+        assert "status: resolved" in result
+
+    def test_condition_no_fhir_id_for_fast_tier(self):
+        """Test that FHIR IDs are omitted for non-deep tiers."""
+        conditions = [
+            {
+                "condition": {
+                    "id": "cond-1",
+                    "code": {"coding": [{"display": "Diabetes"}]},
+                    "clinicalStatus": "Active",
+                },
+                "treating_medications": [],
+                "care_plans": [],
+                "related_procedures": [],
+            },
+        ]
+        result = _format_tier1_conditions(conditions, tier=TIER_FAST)
+        assert "cond-1" not in result
 
     def test_condition_with_care_plan_and_procedure(self):
         """Test formatting a condition with care plans and procedures."""
@@ -1654,7 +1742,7 @@ class TestFormatTier3Observations:
         assert result == "No recent observations."
 
     def test_observations_with_trend_and_ref_range(self):
-        """Test formatting observations with trend data and reference range."""
+        """Test formatting observations with trend data and reference range as table."""
         obs = {
             "laboratory": [
                 {
@@ -1674,10 +1762,16 @@ class TestFormatTier3Observations:
         }
         result = _format_tier3_observations(obs)
         assert "Lab Results:" in result
+        # Table headers
+        assert "| Observation |" in result
+        assert "| Value |" in result
+        assert "| Date |" in result
+        assert "| Ref Range |" in result
+        assert "| Trend |" in result
+        # Data values in table cells
         assert "Glucose" in result
-        assert "120" in result
-        assert "mg/dL" in result
-        assert "ref: 70-100" in result
+        assert "120 mg/dL" in result
+        assert "70-100" in result
         assert "rising" in result
         assert "prev=95" in result
 
@@ -1998,6 +2092,23 @@ class TestBuildSystemPromptLightning:
             minimal_compiled_summary, patient_profile="Active retired teacher."
         )
         assert "Active retired teacher" in prompt
+
+    def test_excludes_fhir_ids(self, full_compiled_summary: dict):
+        """Lightning prompt does NOT include FHIR IDs."""
+        prompt = build_system_prompt_lightning(full_compiled_summary)
+        assert "cond-diabetes" not in prompt
+        assert "cond-hypertension" not in prompt
+        assert "id:" not in prompt
+
+
+class TestBuildSystemPromptFastFhirIds:
+    """Test that Fast prompt excludes FHIR IDs."""
+
+    def test_excludes_fhir_ids(self, full_compiled_summary: dict):
+        """Fast prompt does NOT include FHIR IDs."""
+        prompt = build_system_prompt_fast(full_compiled_summary)
+        assert "cond-diabetes" not in prompt
+        assert "cond-hypertension" not in prompt
 
 
 # =============================================================================
