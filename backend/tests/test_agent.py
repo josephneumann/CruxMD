@@ -1729,8 +1729,65 @@ class TestFormatTier2Encounters:
         assert "2026-01-10" in result
         assert "Office visit" in result
         assert "AMB" in result
-        assert "Common cold" in result
-        assert "runny nose" in result
+        assert "Diagnoses: Common cold" in result
+        assert "Note: Patient presents with runny nose and cough." in result
+
+    def test_events_grouped_by_relationship_type(self):
+        """Test that events are collapsed into comma-separated lists by type."""
+        encounters = [
+            {
+                "encounter": {
+                    "id": "enc-2",
+                    "type": "Office Visit",
+                    "class": {"code": "AMB"},
+                    "period": {"start": "2024-01-15"},
+                },
+                "events": {
+                    "DIAGNOSED": [
+                        {"code": {"coding": [{"display": "Type 2 Diabetes"}]}},
+                        {"code": {"coding": [{"display": "Hypertension"}]}},
+                    ],
+                    "PRESCRIBED": [
+                        {"code": {"coding": [{"display": "Metformin 1000mg"}]}},
+                        {"code": {"coding": [{"display": "Lisinopril 10mg"}]}},
+                    ],
+                    "RECORDED": [
+                        {"code": {"coding": [{"display": "Blood Glucose 145 mg/dL"}]}},
+                        {"code": {"coding": [{"display": "Weight 85 kg"}]}},
+                    ],
+                },
+                "clinical_notes": [
+                    "Patient reports good medication adherence"
+                ],
+            },
+        ]
+        result = _format_tier2_encounters(encounters)
+        assert "Diagnoses: Type 2 Diabetes, Hypertension" in result
+        assert "Medications: Metformin 1000mg, Lisinopril 10mg" in result
+        assert "Observations: Blood Glucose 145 mg/dL, Weight 85 kg" in result
+        assert "Note: Patient reports good medication adherence" in result
+
+    def test_documented_events_not_listed_separately(self):
+        """Test that DOCUMENTED events are not listed as a separate category."""
+        encounters = [
+            {
+                "encounter": {
+                    "id": "enc-3",
+                    "type": "Office Visit",
+                    "class": {"code": "AMB"},
+                    "period": {"start": "2024-02-01"},
+                },
+                "events": {
+                    "DOCUMENTED": [
+                        {"code": {"coding": [{"display": "Clinical Note"}]}},
+                    ],
+                },
+                "clinical_notes": ["Some clinical note text"],
+            },
+        ]
+        result = _format_tier2_encounters(encounters)
+        assert "DOCUMENTED" not in result
+        assert "Note: Some clinical note text" in result
 
 
 class TestFormatTier3Observations:

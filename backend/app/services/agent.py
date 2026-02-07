@@ -454,25 +454,32 @@ def _format_tier2_encounters(encounters: list[dict[str, Any]], tier: str = TIER_
             header += f" id:{enc.get('id', '?')}"
         lines.append(header)
 
-        # Events by relationship type
+        # Events grouped by relationship type
+        rel_labels = {
+            "DIAGNOSED": "Diagnoses",
+            "PRESCRIBED": "Medications",
+            "RECORDED": "Observations",
+        }
         events = enc_entry.get("events", {})
-        for rel_type, resources in events.items():
+        for rel_type, label in rel_labels.items():
+            resources = events.get(rel_type, [])
             if not resources:
                 continue
+            displays = []
             for r in resources:
                 code_val = r.get("code")
                 if isinstance(code_val, str):
                     r_display = code_val
                 else:
                     r_display = _get_display_name(r) or r.get("resourceType", "?")
-                lines.append(f"    {rel_type}: {r_display}")
+                displays.append(r_display)
+            lines.append(f"    {label}: {', '.join(displays)}")
 
-        # Clinical notes
+        # Clinical notes (from DOCUMENTED events)
         notes = enc_entry.get("clinical_notes", [])
         for note in notes:
-            # Truncate long notes in the summary
             note_preview = note[:500] + "..." if len(note) > 500 else note
-            lines.append(f"    NOTE: {note_preview}")
+            lines.append(f"    Note: {note_preview}")
 
     return "\n".join(lines)
 
