@@ -467,19 +467,17 @@ def _format_tier2_encounters(encounters: list[dict[str, Any]], tier: str = TIER_
                 continue
             displays = []
             for r in resources:
-                code_val = r.get("code")
-                if isinstance(code_val, str):
-                    r_display = code_val
-                else:
-                    r_display = _get_display_name(r) or r.get("resourceType", "?")
+                r_display = _get_display_name(r) or r.get("resourceType", "?")
                 displays.append(r_display)
             lines.append(f"    {label}: {', '.join(displays)}")
 
-        # Clinical notes (from DOCUMENTED events)
-        notes = enc_entry.get("clinical_notes", [])
-        for note in notes:
-            note_preview = note[:500] + "..." if len(note) > 500 else note
-            lines.append(f"    Note: {note_preview}")
+        # Clinical notes from DOCUMENTED events
+        documented = events.get("DOCUMENTED", [])
+        for r in documented:
+            clinical_note = r.get("clinical_note")
+            if clinical_note:
+                note_preview = clinical_note[:500] + "..." if len(clinical_note) > 500 else clinical_note
+                lines.append(f"    Note: {note_preview}")
 
     return "\n".join(lines)
 
