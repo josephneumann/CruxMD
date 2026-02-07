@@ -1294,17 +1294,9 @@ async def compile_patient_summary(
                     prune_and_enrich(r) for r in event_resources
                 ]
 
-        # Clinical notes: reuse already-pruned document_references from events
-        clinical_notes: list[str] = []
-        for pruned_doc in pruned_events.get("DOCUMENTED", []):
-            note = pruned_doc.get("clinical_note")
-            if note:
-                clinical_notes.append(note)
-
         tier2_encounters.append({
             "encounter": prune_and_enrich(enc_data),
             "events": pruned_events,
-            "clinical_notes": clinical_notes,
         })
 
     # =========================================================================

@@ -1313,8 +1313,14 @@ def full_compiled_summary() -> dict:
                             "code": {"coding": [{"display": "Blood pressure panel"}]},
                         },
                     ],
+                    "DOCUMENTED": [
+                        {
+                            "resourceType": "DocumentReference",
+                            "id": "doc-adherence",
+                            "clinical_note": "Patient reports good adherence to medication regimen.",
+                        },
+                    ],
                 },
-                "clinical_notes": ["Patient reports good adherence to medication regimen."],
             },
         ],
         "tier3_latest_observations": {
@@ -1633,8 +1639,13 @@ class TestFormatTier2Encounters:
                     "DIAGNOSED": [
                         {"code": {"coding": [{"display": "Common cold"}]}},
                     ],
+                    "DOCUMENTED": [
+                        {
+                            "resourceType": "DocumentReference",
+                            "clinical_note": "Patient presents with runny nose and cough.",
+                        },
+                    ],
                 },
-                "clinical_notes": ["Patient presents with runny nose and cough."],
             },
         ]
         result = _format_tier2_encounters(encounters)

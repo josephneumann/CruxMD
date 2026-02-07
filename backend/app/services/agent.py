@@ -399,19 +399,18 @@ def _format_tier2_encounters(encounters: list[dict[str, Any]]) -> str:
             if not resources:
                 continue
             for r in resources:
-                code_val = r.get("code")
-                if isinstance(code_val, str):
-                    r_display = code_val
+                # DOCUMENTED resources with clinical_note render as NOTE:
+                clinical_note = r.get("clinical_note") if rel_type == "DOCUMENTED" else None
+                if clinical_note:
+                    note_preview = clinical_note[:500] + "..." if len(clinical_note) > 500 else clinical_note
+                    lines.append(f"    NOTE: {note_preview}")
                 else:
-                    r_display = _get_display_name(r) or r.get("resourceType", "?")
-                lines.append(f"    {rel_type}: {r_display}")
-
-        # Clinical notes
-        notes = enc_entry.get("clinical_notes", [])
-        for note in notes:
-            # Truncate long notes in the summary
-            note_preview = note[:500] + "..." if len(note) > 500 else note
-            lines.append(f"    NOTE: {note_preview}")
+                    code_val = r.get("code")
+                    if isinstance(code_val, str):
+                        r_display = code_val
+                    else:
+                        r_display = _get_display_name(r) or r.get("resourceType", "?")
+                    lines.append(f"    {rel_type}: {r_display}")
 
     return "\n".join(lines)
 
