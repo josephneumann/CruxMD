@@ -38,6 +38,84 @@ OBSERVATION_CATEGORIES = frozenset([
 # Threshold for "stable" trend determination (5%)
 TREND_THRESHOLD = 0.05
 
+# Allergy criticality priority for sorting (higher priority first)
+_CRITICALITY_PRIORITY: dict[str, int] = {
+    "high": 0,
+    "low": 1,
+    "unable-to-assess": 2,
+}
+_CRITICALITY_DEFAULT = 3
+
+
+def _extract_coding_key(resource: dict[str, Any], code_field: str) -> str | None:
+    """Extract a dedup key from a FHIR resource's CodeableConcept field.
+
+    Tries coding[0].code first (e.g. RxNorm, CVX, SNOMED code). Falls back
+    to coding[0].display if no code is present.
+
+    Args:
+        resource: FHIR resource dict.
+        code_field: Top-level field name containing the CodeableConcept
+            (e.g. "medicationCodeableConcept", "vaccineCode", "code").
+
+    Returns:
+        The code string, or display string, or None if neither exists.
+    """
+    concept = resource.get(code_field)
+    if not concept or not isinstance(concept, dict):
+        return None
+    codings = concept.get("coding", [])
+    if not codings:
+        return concept.get("text")
+    first = codings[0]
+    return first.get("code") or first.get("display")
+
+
+def _dedup_by_code(
+    resources: list[dict[str, Any]],
+    code_field: str,
+    sort_key: str | None = None,
+    sort_reverse: bool = True,
+) -> list[dict[str, Any]]:
+    """Deduplicate a list of FHIR resources by their coding key, keeping the first.
+
+    Resources are optionally sorted by sort_key before dedup so that the
+    "first" retained is the most recent (or highest priority).
+
+    Args:
+        resources: List of FHIR resource dicts.
+        code_field: CodeableConcept field to extract the dedup key from.
+        sort_key: Optional FHIR field name to sort by before dedup
+            (e.g. "authoredOn", "occurrenceDateTime"). If None, no sort.
+        sort_reverse: Sort direction. True = descending (newest first).
+
+    Returns:
+        Deduplicated list preserving sort order.
+    """
+    if not resources:
+        return []
+
+    # Sort first so that the retained entry is the most relevant
+    if sort_key:
+        resources = sorted(
+            resources,
+            key=lambda r: r.get(sort_key, "") or "",
+            reverse=sort_reverse,
+        )
+
+    seen: set[str] = set()
+    result: list[dict[str, Any]] = []
+    for r in resources:
+        key = _extract_coding_key(r, code_field)
+        if key is None:
+            # No code — keep the resource (cannot dedup without a key)
+            result.append(r)
+            continue
+        if key not in seen:
+            seen.add(key)
+            result.append(r)
+    return result
+
 
 async def get_latest_observations_by_category(
     db: AsyncSession,
@@ -965,11 +1043,36 @@ async def compile_patient_summary(
     )
     care_plans_raw = await _fetch_active_care_plans(db, patient_id)
 
+    # ---- Dedup raw resources BEFORE pruning (pruner strips codes) ----
+    active_conditions = _dedup_by_code(
+        active_conditions, "code", sort_key="onsetDateTime", sort_reverse=True,
+    )
+    active_meds_raw = _dedup_by_code(
+        active_meds_raw, "medicationCodeableConcept",
+        sort_key="authoredOn", sort_reverse=True,
+    )
+    allergies_raw = sorted(
+        _dedup_by_code(allergies_raw, "code"),
+        key=lambda a: _CRITICALITY_PRIORITY.get(
+            a.get("criticality", ""), _CRITICALITY_DEFAULT
+        ),
+    )
+    immunizations_raw = _dedup_by_code(
+        immunizations_raw, "vaccineCode",
+        sort_key="occurrenceDateTime", sort_reverse=True,
+    )
+    recently_resolved_raw = _dedup_by_code(
+        recently_resolved_raw, "code",
+        sort_key="onsetDateTime", sort_reverse=True,
+    )
+
     # For each active condition, compile_node_context to get treating meds,
     # care plans, procedures
     tier1_active_conditions: list[dict[str, Any]] = []
     condition_linked_med_ids: set[str] = set()
     condition_linked_cp_ids: set[str] = set()
+    # Track care plan IDs across conditions — include only under first condition
+    cross_condition_cp_ids: set[str] = set()
 
     for condition in active_conditions:
         cond_fhir_id = _extract_fhir_id(condition)
@@ -981,24 +1084,38 @@ async def compile_patient_summary(
         care_plans = await graph.get_care_plans_for_condition(cond_fhir_id)
         procedures = await graph.get_procedures_for_condition(cond_fhir_id)
 
+        # Dedup treating meds by RxNorm code, newest first
+        treating_meds = _dedup_by_code(
+            treating_meds, "medicationCodeableConcept",
+            sort_key="authoredOn", sort_reverse=True,
+        )
+
         # Track linked med/care-plan IDs for dedup
         for med in treating_meds:
             mid = _extract_fhir_id(med)
             if mid:
                 condition_linked_med_ids.add(mid)
+
+        # Cross-condition care plan dedup — only include under first condition
+        unique_care_plans = []
         for cp in care_plans:
             cpid = _extract_fhir_id(cp)
             if cpid:
                 condition_linked_cp_ids.add(cpid)
+                if cpid not in cross_condition_cp_ids:
+                    cross_condition_cp_ids.add(cpid)
+                    unique_care_plans.append(cp)
+            else:
+                unique_care_plans.append(cp)
 
         tier1_active_conditions.append({
             "condition": prune_and_enrich(condition),
             "treating_medications": [prune_and_enrich(m) for m in treating_meds],
-            "care_plans": [prune_and_enrich(cp) for cp in care_plans],
+            "care_plans": [prune_and_enrich(cp) for cp in unique_care_plans],
             "related_procedures": [prune_and_enrich(p) for p in procedures],
         })
 
-    # Recently resolved conditions (same structure)
+    # Recently resolved conditions (same structure, with dedup)
     tier1_recently_resolved: list[dict[str, Any]] = []
     for condition in recently_resolved_raw:
         cond_fhir_id = _extract_fhir_id(condition)
@@ -1009,19 +1126,32 @@ async def compile_patient_summary(
         care_plans = await graph.get_care_plans_for_condition(cond_fhir_id)
         procedures = await graph.get_procedures_for_condition(cond_fhir_id)
 
+        treating_meds = _dedup_by_code(
+            treating_meds, "medicationCodeableConcept",
+            sort_key="authoredOn", sort_reverse=True,
+        )
+
         for med in treating_meds:
             mid = _extract_fhir_id(med)
             if mid:
                 condition_linked_med_ids.add(mid)
+
+        # Cross-condition care plan dedup
+        unique_care_plans = []
         for cp in care_plans:
             cpid = _extract_fhir_id(cp)
             if cpid:
                 condition_linked_cp_ids.add(cpid)
+                if cpid not in cross_condition_cp_ids:
+                    cross_condition_cp_ids.add(cpid)
+                    unique_care_plans.append(cp)
+            else:
+                unique_care_plans.append(cp)
 
         tier1_recently_resolved.append({
             "condition": prune_and_enrich(condition),
             "treating_medications": [prune_and_enrich(m) for m in treating_meds],
-            "care_plans": [prune_and_enrich(cp) for cp in care_plans],
+            "care_plans": [prune_and_enrich(cp) for cp in unique_care_plans],
             "related_procedures": [prune_and_enrich(p) for p in procedures],
         })
 
@@ -1049,8 +1179,12 @@ async def compile_patient_summary(
                 if mid:
                     condition_linked_med_ids.add(mid)
 
-    # Truly unlinked meds (no condition link at all)
-    truly_unlinked = inferred_links.get("unlinked", [])
+    # Truly unlinked meds (no condition link at all) — dedup by code
+    truly_unlinked = _dedup_by_code(
+        inferred_links.get("unlinked", []),
+        "medicationCodeableConcept",
+        sort_key="authoredOn", sort_reverse=True,
+    )
 
     # =========================================================================
     # Step 4: Medication recency + dose history for all active meds
@@ -1201,7 +1335,13 @@ async def compile_patient_summary(
         cat: [] for cat in OBSERVATION_CATEGORIES
     }
     for cat, obs_list in tier3_raw.items():
-        for obs in obs_list:
+        # Sort by effectiveDateTime desc within each category
+        obs_list_sorted = sorted(
+            obs_list,
+            key=lambda o: o.get("effectiveDateTime", "") or "",
+            reverse=True,
+        )
+        for obs in obs_list_sorted:
             obs_id = _extract_fhir_id(obs)
             if obs_id and obs_id in tier2_resource_fhir_ids:
                 continue  # Already in Tier 2

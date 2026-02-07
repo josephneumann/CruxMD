@@ -27,6 +27,8 @@ from app.services.compiler import (
     TREND_THRESHOLD,  # noqa: F401 — used by TestComputeTrend for threshold assertions
     _build_patient_orientation,
     _compute_trend,
+    _dedup_by_code,
+    _extract_coding_key,
     _extract_dosage_text,
     _extract_loinc_code,
     _extract_med_display,
@@ -1199,14 +1201,19 @@ def _make_med_request(
     dosage_text: str | None = None,
     dose_value: float | None = None,
     dose_unit: str | None = None,
+    rxnorm_code: str | None = None,
 ) -> dict:
     """Build a minimal FHIR MedicationRequest dict for testing."""
+    coding: dict = {"display": display}
+    if rxnorm_code:
+        coding["system"] = "http://www.nlm.nih.gov/research/umls/rxnorm"
+        coding["code"] = rxnorm_code
     med: dict = {
         "resourceType": "MedicationRequest",
         "id": fhir_id,
         "status": status,
         "medicationCodeableConcept": {
-            "coding": [{"display": display}],
+            "coding": [coding],
         },
     }
     if authored_on:
@@ -1959,13 +1966,15 @@ def _make_condition(
     display: str = "Hypertension",
     clinical_status: str = "active",
     abatement_dt: str | None = None,
+    snomed_code: str = "38341003",
+    onset_dt: str | None = None,
 ) -> dict:
     """Build a minimal FHIR Condition dict."""
     cond: dict = {
         "resourceType": "Condition",
         "id": fhir_id,
         "code": {
-            "coding": [{"system": "http://snomed.info/sct", "code": "38341003", "display": display}],
+            "coding": [{"system": "http://snomed.info/sct", "code": snomed_code, "display": display}],
         },
         "clinicalStatus": {
             "coding": [{"code": clinical_status}],
@@ -1973,6 +1982,8 @@ def _make_condition(
     }
     if abatement_dt:
         cond["abatementDateTime"] = abatement_dt
+    if onset_dt:
+        cond["onsetDateTime"] = onset_dt
     return cond
 
 
@@ -1980,34 +1991,48 @@ def _make_allergy(
     fhir_id: str = "allergy-1",
     display: str = "Penicillin",
     clinical_status: str = "active",
+    allergy_code: str | None = None,
+    criticality: str | None = None,
 ) -> dict:
     """Build a minimal FHIR AllergyIntolerance dict."""
-    return {
+    coding: dict = {"display": display}
+    if allergy_code:
+        coding["code"] = allergy_code
+    allergy: dict = {
         "resourceType": "AllergyIntolerance",
         "id": fhir_id,
         "code": {
-            "coding": [{"display": display}],
+            "coding": [coding],
         },
         "clinicalStatus": {
             "coding": [{"code": clinical_status}],
         },
     }
+    if criticality:
+        allergy["criticality"] = criticality
+    return allergy
 
 
 def _make_immunization(
     fhir_id: str = "imm-1",
     display: str = "Influenza",
     status: str = "completed",
+    cvx_code: str | None = None,
+    occurrence_dt: str = "2025-10-01",
 ) -> dict:
     """Build a minimal FHIR Immunization dict."""
+    coding: dict = {"display": display}
+    if cvx_code:
+        coding["system"] = "http://hl7.org/fhir/sid/cvx"
+        coding["code"] = cvx_code
     return {
         "resourceType": "Immunization",
         "id": fhir_id,
         "vaccineCode": {
-            "coding": [{"display": display}],
+            "coding": [coding],
         },
         "status": status,
-        "occurrenceDateTime": "2025-10-01",
+        "occurrenceDateTime": occurrence_dt,
     }
 
 
@@ -3223,3 +3248,321 @@ class TestOnDemandFallback:
         summary = await get_compiled_summary(patient_id, db_session)
         assert summary is not None
         assert summary["patient_orientation"] == "Pre-compiled"
+
+
+# =============================================================================
+# Tests for _extract_coding_key
+# =============================================================================
+
+
+class TestExtractCodingKey:
+    """Tests for the _extract_coding_key helper."""
+
+    def test_extracts_code_from_medication(self):
+        """Should return the RxNorm code from medicationCodeableConcept."""
+        med = _make_med_request(rxnorm_code="860975", display="Metformin 500 MG")
+        assert _extract_coding_key(med, "medicationCodeableConcept") == "860975"
+
+    def test_falls_back_to_display(self):
+        """Should return display when no code is present."""
+        med = _make_med_request(display="Aspirin")
+        assert _extract_coding_key(med, "medicationCodeableConcept") == "Aspirin"
+
+    def test_extracts_code_from_condition(self):
+        """Should return SNOMED code from Condition.code."""
+        cond = _make_condition(snomed_code="44054006", display="Diabetes")
+        assert _extract_coding_key(cond, "code") == "44054006"
+
+    def test_extracts_code_from_immunization(self):
+        """Should return CVX code from Immunization.vaccineCode."""
+        imm = _make_immunization(cvx_code="140", display="Influenza")
+        assert _extract_coding_key(imm, "vaccineCode") == "140"
+
+    def test_extracts_code_from_allergy(self):
+        """Should return code from AllergyIntolerance.code."""
+        allergy = _make_allergy(allergy_code="7980", display="Penicillin")
+        assert _extract_coding_key(allergy, "code") == "7980"
+
+    def test_returns_none_for_missing_field(self):
+        """Should return None when the code field doesn't exist."""
+        assert _extract_coding_key({}, "code") is None
+
+    def test_returns_none_for_non_dict_field(self):
+        """Should return None when the code field is not a dict."""
+        assert _extract_coding_key({"code": "a string"}, "code") is None
+
+    def test_text_fallback_when_no_coding(self):
+        """Should fall back to text when coding array is empty."""
+        resource = {"code": {"text": "Some text description"}}
+        assert _extract_coding_key(resource, "code") == "Some text description"
+
+    def test_empty_coding_array_with_text(self):
+        """Should return text when coding is an empty list."""
+        resource = {"code": {"coding": [], "text": "Fallback text"}}
+        assert _extract_coding_key(resource, "code") == "Fallback text"
+
+
+# =============================================================================
+# Tests for _dedup_by_code
+# =============================================================================
+
+
+class TestDedupByCode:
+    """Tests for the _dedup_by_code helper."""
+
+    def test_dedup_medications_by_rxnorm(self):
+        """Should keep only the newest medication per RxNorm code."""
+        meds = [
+            _make_med_request(fhir_id="med-old", rxnorm_code="860975", display="Metformin", authored_on="2025-01-01"),
+            _make_med_request(fhir_id="med-new", rxnorm_code="860975", display="Metformin", authored_on="2025-06-01"),
+        ]
+        result = _dedup_by_code(meds, "medicationCodeableConcept", sort_key="authoredOn", sort_reverse=True)
+        assert len(result) == 1
+        assert result[0]["id"] == "med-new"
+
+    def test_dedup_immunizations_by_cvx(self):
+        """Should keep only the newest immunization per CVX code."""
+        imms = [
+            _make_immunization(fhir_id="imm-old", cvx_code="140", display="Flu", occurrence_dt="2024-10-01"),
+            _make_immunization(fhir_id="imm-new", cvx_code="140", display="Flu", occurrence_dt="2025-10-01"),
+        ]
+        result = _dedup_by_code(imms, "vaccineCode", sort_key="occurrenceDateTime", sort_reverse=True)
+        assert len(result) == 1
+        assert result[0]["id"] == "imm-new"
+
+    def test_dedup_conditions_by_snomed(self):
+        """Should keep only the newest condition per SNOMED code."""
+        conds = [
+            _make_condition(fhir_id="cond-old", snomed_code="44054006", onset_dt="2020-01-01"),
+            _make_condition(fhir_id="cond-new", snomed_code="44054006", onset_dt="2024-01-01"),
+        ]
+        result = _dedup_by_code(conds, "code", sort_key="onsetDateTime", sort_reverse=True)
+        assert len(result) == 1
+        assert result[0]["id"] == "cond-new"
+
+    def test_keeps_different_codes(self):
+        """Should keep resources with different codes."""
+        meds = [
+            _make_med_request(fhir_id="med-a", rxnorm_code="860975", display="Metformin"),
+            _make_med_request(fhir_id="med-b", rxnorm_code="316049", display="Lisinopril"),
+        ]
+        result = _dedup_by_code(meds, "medicationCodeableConcept", sort_key="authoredOn")
+        assert len(result) == 2
+
+    def test_empty_list(self):
+        """Should return empty list for empty input."""
+        assert _dedup_by_code([], "code") == []
+
+    def test_no_sort_key(self):
+        """Should dedup without sorting when sort_key is None."""
+        meds = [
+            _make_med_request(fhir_id="med-a", rxnorm_code="860975"),
+            _make_med_request(fhir_id="med-b", rxnorm_code="860975"),
+        ]
+        result = _dedup_by_code(meds, "medicationCodeableConcept")
+        assert len(result) == 1
+        assert result[0]["id"] == "med-a"  # first in list is kept
+
+    def test_keeps_resources_without_code(self):
+        """Resources without a coding key should be kept (cannot dedup)."""
+        resources = [
+            {"id": "no-code-1"},
+            _make_med_request(fhir_id="med-a", rxnorm_code="860975"),
+            {"id": "no-code-2"},
+        ]
+        result = _dedup_by_code(resources, "medicationCodeableConcept")
+        assert len(result) == 3
+
+    def test_display_fallback_dedup(self):
+        """Should dedup by display when no code is present."""
+        meds = [
+            _make_med_request(fhir_id="med-a", display="Aspirin", authored_on="2025-01-01"),
+            _make_med_request(fhir_id="med-b", display="Aspirin", authored_on="2025-06-01"),
+        ]
+        result = _dedup_by_code(meds, "medicationCodeableConcept", sort_key="authoredOn", sort_reverse=True)
+        assert len(result) == 1
+        assert result[0]["id"] == "med-b"
+
+
+# =============================================================================
+# Tests for dedup + ordering in compile_patient_summary
+# =============================================================================
+
+
+class TestCompilePatientSummaryDedup:
+    """Tests for dedup and ordering within compile_patient_summary."""
+
+    @pytest.mark.asyncio
+    async def test_duplicate_meds_deduped_in_conditions(self, db_session: AsyncSession):
+        """Treating medications with same RxNorm code should be deduped, keeping newest."""
+        patient_id = uuid.uuid4()
+        db_session.add(FhirResource(
+            fhir_id="patient-1",
+            resource_type="Patient",
+            patient_id=patient_id,
+            data=_make_patient_resource(),
+        ))
+        await db_session.flush()
+
+        condition = _make_condition(fhir_id="cond-1")
+        med_old = _make_med_request(fhir_id="med-old", rxnorm_code="860975", display="Metformin", authored_on="2024-01-01")
+        med_new = _make_med_request(fhir_id="med-new", rxnorm_code="860975", display="Metformin", authored_on="2025-06-01")
+
+        mock_graph = _setup_mock_graph(
+            conditions=[condition],
+            medications=[med_old, med_new],
+            treating_meds={"cond-1": [med_old, med_new]},
+        )
+
+        result = await compile_patient_summary(patient_id, mock_graph, db_session, date(2026, 2, 5))
+
+        cond_entry = result["tier1_active_conditions"][0]
+        assert len(cond_entry["treating_medications"]) == 1
+        assert cond_entry["treating_medications"][0]["id"] == "med-new"
+
+    @pytest.mark.asyncio
+    async def test_duplicate_immunizations_deduped(self, db_session: AsyncSession):
+        """Immunizations with same CVX code should be deduped, keeping newest."""
+        patient_id = uuid.uuid4()
+        db_session.add(FhirResource(
+            fhir_id="patient-1",
+            resource_type="Patient",
+            patient_id=patient_id,
+            data=_make_patient_resource(),
+        ))
+        await db_session.flush()
+
+        imm_old = _make_immunization(fhir_id="imm-old", cvx_code="140", display="Flu", occurrence_dt="2024-10-01")
+        imm_new = _make_immunization(fhir_id="imm-new", cvx_code="140", display="Flu", occurrence_dt="2025-10-01")
+
+        mock_graph = _setup_mock_graph(immunizations=[imm_old, imm_new])
+
+        result = await compile_patient_summary(patient_id, mock_graph, db_session, date(2026, 2, 5))
+
+        assert len(result["tier1_immunizations"]) == 1
+        assert result["tier1_immunizations"][0]["id"] == "imm-new"
+
+    @pytest.mark.asyncio
+    async def test_duplicate_conditions_deduped(self, db_session: AsyncSession):
+        """Conditions with same SNOMED code should be deduped, keeping newest onset."""
+        patient_id = uuid.uuid4()
+        db_session.add(FhirResource(
+            fhir_id="patient-1",
+            resource_type="Patient",
+            patient_id=patient_id,
+            data=_make_patient_resource(),
+        ))
+        await db_session.flush()
+
+        cond_old = _make_condition(fhir_id="cond-old", snomed_code="44054006", display="Diabetes", onset_dt="2020-01-01")
+        cond_new = _make_condition(fhir_id="cond-new", snomed_code="44054006", display="Diabetes", onset_dt="2024-01-01")
+
+        mock_graph = _setup_mock_graph(conditions=[cond_old, cond_new])
+
+        result = await compile_patient_summary(patient_id, mock_graph, db_session, date(2026, 2, 5))
+
+        assert len(result["tier1_active_conditions"]) == 1
+        assert result["tier1_active_conditions"][0]["condition"]["id"] == "cond-new"
+
+    @pytest.mark.asyncio
+    async def test_allergies_sorted_by_criticality(self, db_session: AsyncSession):
+        """Allergies should be sorted by criticality: high, low, unable-to-assess."""
+        patient_id = uuid.uuid4()
+        db_session.add(FhirResource(
+            fhir_id="patient-1",
+            resource_type="Patient",
+            patient_id=patient_id,
+            data=_make_patient_resource(),
+        ))
+        await db_session.flush()
+
+        allergy_low = _make_allergy(fhir_id="al-low", display="Dust", allergy_code="A1", criticality="low")
+        allergy_high = _make_allergy(fhir_id="al-high", display="Penicillin", allergy_code="A2", criticality="high")
+        allergy_unknown = _make_allergy(fhir_id="al-unk", display="Latex", allergy_code="A3", criticality="unable-to-assess")
+
+        mock_graph = _setup_mock_graph(allergies=[allergy_low, allergy_high, allergy_unknown])
+
+        result = await compile_patient_summary(patient_id, mock_graph, db_session, date(2026, 2, 5))
+
+        allergy_ids = [a["id"] for a in result["tier1_allergies"]]
+        assert allergy_ids == ["al-high", "al-low", "al-unk"]
+
+    @pytest.mark.asyncio
+    async def test_duplicate_allergies_deduped(self, db_session: AsyncSession):
+        """Allergies with same code should be deduped."""
+        patient_id = uuid.uuid4()
+        db_session.add(FhirResource(
+            fhir_id="patient-1",
+            resource_type="Patient",
+            patient_id=patient_id,
+            data=_make_patient_resource(),
+        ))
+        await db_session.flush()
+
+        allergy1 = _make_allergy(fhir_id="al-1", display="Penicillin", allergy_code="7980")
+        allergy2 = _make_allergy(fhir_id="al-2", display="Penicillin", allergy_code="7980")
+
+        mock_graph = _setup_mock_graph(allergies=[allergy1, allergy2])
+
+        result = await compile_patient_summary(patient_id, mock_graph, db_session, date(2026, 2, 5))
+
+        assert len(result["tier1_allergies"]) == 1
+
+    @pytest.mark.asyncio
+    async def test_care_plan_cross_condition_dedup(self, db_session: AsyncSession):
+        """A care plan shared by two conditions should only appear under the first."""
+        patient_id = uuid.uuid4()
+        db_session.add(FhirResource(
+            fhir_id="patient-1",
+            resource_type="Patient",
+            patient_id=patient_id,
+            data=_make_patient_resource(),
+        ))
+        await db_session.flush()
+
+        cond1 = _make_condition(fhir_id="cond-1", snomed_code="38341003", display="Hypertension")
+        cond2 = _make_condition(fhir_id="cond-2", snomed_code="44054006", display="Diabetes")
+        shared_cp = _make_care_plan(fhir_id="cp-shared", title="Lifestyle Plan")
+
+        mock_graph = _setup_mock_graph(
+            conditions=[cond1, cond2],
+            care_plans_for_cond={
+                "cond-1": [shared_cp],
+                "cond-2": [shared_cp],
+            },
+        )
+
+        result = await compile_patient_summary(patient_id, mock_graph, db_session, date(2026, 2, 5))
+
+        # Care plan should appear under first condition only
+        cond1_cps = result["tier1_active_conditions"][0]["care_plans"]
+        cond2_cps = result["tier1_active_conditions"][1]["care_plans"]
+        assert len(cond1_cps) == 1
+        assert cond1_cps[0]["id"] == "cp-shared"
+        assert len(cond2_cps) == 0
+
+    @pytest.mark.asyncio
+    async def test_unlinked_meds_deduped(self, db_session: AsyncSession):
+        """Truly unlinked meds should be deduped by RxNorm code."""
+        patient_id = uuid.uuid4()
+        db_session.add(FhirResource(
+            fhir_id="patient-1",
+            resource_type="Patient",
+            patient_id=patient_id,
+            data=_make_patient_resource(),
+        ))
+        await db_session.flush()
+
+        # Two meds with same RxNorm, no condition link
+        med_old = _make_med_request(fhir_id="med-old", rxnorm_code="860975", display="Metformin", authored_on="2024-01-01")
+        med_new = _make_med_request(fhir_id="med-new", rxnorm_code="860975", display="Metformin", authored_on="2025-06-01")
+
+        mock_graph = _setup_mock_graph(
+            medications=[med_old, med_new],
+            # No treating_meds — both are unlinked
+        )
+
+        result = await compile_patient_summary(patient_id, mock_graph, db_session, date(2026, 2, 5))
+
+        # active_meds_raw is deduped, so only one ends up unlinked
+        assert len(result["tier1_unlinked_medications"]) == 1
