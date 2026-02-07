@@ -179,7 +179,8 @@ async def _prepare_chat_context(
     profile_summary = _format_profile_summary(profile) if profile else None
 
     # Classify query and choose prompt mode
-    query_profile = classify_query(request.message)
+    has_history = bool(request.conversation_history)
+    query_profile = classify_query(request.message, has_history=has_history)
 
     if query_profile.system_prompt_mode == "lightning":
         system_prompt = build_system_prompt_lightning(compiled_summary, patient_profile=profile_summary)
@@ -190,10 +191,12 @@ async def _prepare_chat_context(
 
     elapsed_ms = (time.perf_counter() - t0) * 1000
     logger.info(
-        "Chat context ready: patient=%s, summary=%s, tier=%s, prompt=%d chars (~%d tokens), "
-        "history=%d msgs, prep=%.0fms",
+        "Chat context ready: patient=%s, summary=%s, tier=%s, model=%s, prompt_mode=%s, "
+        "prompt=%d chars (~%d tokens), history=%d msgs, prep=%.0fms",
         request.patient_id, summary_source,
         query_profile.tier.value,
+        query_profile.model,
+        query_profile.system_prompt_mode,
         len(system_prompt), len(system_prompt) // 4,
         len(request.conversation_history) if request.conversation_history else 0,
         elapsed_ms,

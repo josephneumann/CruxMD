@@ -1256,3 +1256,109 @@ class TestChatQueryRouting:
 
             call_kwargs = mock_agent.generate_response_stream.call_args.kwargs
             assert call_kwargs["query_profile"] is LIGHTNING_PROFILE
+
+    @pytest.mark.asyncio
+    async def test_classify_query_receives_has_history_false(
+        self,
+        client: AsyncClient,
+        auth_headers: dict,
+        patient_in_db: uuid.UUID,
+        sample_agent_response: AgentResponse,
+        sample_compiled_summary: dict,
+    ):
+        """classify_query called with has_history=False when no conversation history."""
+        with patch("app.routes.chat.get_compiled_summary", new_callable=AsyncMock, return_value=sample_compiled_summary), \
+             patch("app.routes.chat.classify_query", return_value=STANDARD_PROFILE) as mock_classify, \
+             patch("app.routes.chat.AgentService") as mock_agent_cls, \
+             patch("app.routes.chat.KnowledgeGraph") as mock_graph_cls:
+
+            mock_graph_cls.return_value = AsyncMock()
+
+            mock_agent = AsyncMock()
+            mock_agent.generate_response = AsyncMock(return_value=sample_agent_response)
+            mock_agent_cls.return_value = mock_agent
+
+            response = await client.post(
+                "/api/chat",
+                json={
+                    "patient_id": str(patient_in_db),
+                    "message": "What medications?",
+                },
+                headers=auth_headers,
+            )
+
+            assert response.status_code == 200
+            mock_classify.assert_called_once_with("What medications?", has_history=False)
+
+    @pytest.mark.asyncio
+    async def test_classify_query_receives_has_history_true(
+        self,
+        client: AsyncClient,
+        auth_headers: dict,
+        patient_in_db: uuid.UUID,
+        sample_agent_response: AgentResponse,
+        sample_compiled_summary: dict,
+    ):
+        """classify_query called with has_history=True when conversation history present."""
+        with patch("app.routes.chat.get_compiled_summary", new_callable=AsyncMock, return_value=sample_compiled_summary), \
+             patch("app.routes.chat.classify_query", return_value=STANDARD_PROFILE) as mock_classify, \
+             patch("app.routes.chat.AgentService") as mock_agent_cls, \
+             patch("app.routes.chat.KnowledgeGraph") as mock_graph_cls:
+
+            mock_graph_cls.return_value = AsyncMock()
+
+            mock_agent = AsyncMock()
+            mock_agent.generate_response = AsyncMock(return_value=sample_agent_response)
+            mock_agent_cls.return_value = mock_agent
+
+            response = await client.post(
+                "/api/chat",
+                json={
+                    "patient_id": str(patient_in_db),
+                    "message": "What medications?",
+                    "conversation_history": [
+                        {"role": "user", "content": "Hello"},
+                        {"role": "assistant", "content": "Hi there"},
+                    ],
+                },
+                headers=auth_headers,
+            )
+
+            assert response.status_code == 200
+            mock_classify.assert_called_once_with("What medications?", has_history=True)
+
+    @pytest.mark.asyncio
+    async def test_stream_classify_query_receives_has_history(
+        self,
+        client: AsyncClient,
+        auth_headers: dict,
+        patient_in_db: uuid.UUID,
+        sample_compiled_summary: dict,
+    ):
+        """Streaming endpoint passes has_history to classify_query."""
+        with patch("app.routes.chat.get_compiled_summary", new_callable=AsyncMock, return_value=sample_compiled_summary), \
+             patch("app.routes.chat.classify_query", return_value=STANDARD_PROFILE) as mock_classify, \
+             patch("app.routes.chat.AgentService") as mock_agent_cls, \
+             patch("app.routes.chat.KnowledgeGraph") as mock_graph_cls:
+
+            mock_graph_cls.return_value = AsyncMock()
+
+            mock_agent = AsyncMock()
+            mock_agent.generate_response_stream = MagicMock(return_value=_mock_stream_generator())
+            mock_agent_cls.return_value = mock_agent
+
+            response = await client.post(
+                "/api/chat/stream",
+                json={
+                    "patient_id": str(patient_in_db),
+                    "message": "What medications?",
+                    "conversation_history": [
+                        {"role": "user", "content": "Hello"},
+                        {"role": "assistant", "content": "Hi there"},
+                    ],
+                },
+                headers=auth_headers,
+            )
+
+            assert response.status_code == 200
+            mock_classify.assert_called_once_with("What medications?", has_history=True)
