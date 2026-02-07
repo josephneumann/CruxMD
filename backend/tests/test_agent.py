@@ -23,10 +23,12 @@ from app.services.agent import (
     build_system_prompt_fast,
     build_system_prompt_lightning,
     build_system_prompt_v2,
+    _build_patient_summary_lightning,
     _build_patient_summary_section,
     _build_safety_section,
     _format_as_table,
     _format_tier1_conditions,
+    _format_tier1_conditions_lightning,
     _format_tier2_encounters,
     _format_tier3_observations,
     _format_safety_constraints_v2,
@@ -1705,6 +1707,139 @@ class TestFormatTier1Conditions:
         assert "Procedure: Blood pressure monitoring" in result
 
 
+class TestFormatTier1ConditionsLightning:
+    """Tests for _format_tier1_conditions_lightning helper."""
+
+    def test_empty_conditions(self):
+        """Test formatting empty conditions list."""
+        result = _format_tier1_conditions_lightning([])
+        assert result == "No active conditions recorded."
+
+    def test_condition_with_onset_and_meds(self):
+        """Test formatting a condition with onset and medications."""
+        conditions = [
+            {
+                "condition": {
+                    "id": "cond-1",
+                    "code": {"coding": [{"display": "Diabetes"}]},
+                    "clinicalStatus": "Active",
+                    "onsetDateTime": "2020-01-01",
+                },
+                "treating_medications": [
+                    {
+                        "medicationCodeableConcept": "Metformin 500 MG",
+                        "status": "active",
+                        "_recency": "established",
+                    },
+                ],
+                "care_plans": [
+                    {"category": "Diabetes management", "status": "active"},
+                ],
+                "related_procedures": [
+                    {"code": "Blood glucose monitoring"},
+                ],
+            },
+        ]
+        result = _format_tier1_conditions_lightning(conditions)
+        assert "Diabetes" in result
+        assert "onset: 2020-01-01" in result
+        assert "Metformin 500 MG" in result
+        assert "established" in result
+        # Should NOT include care plans or procedures
+        assert "CarePlan" not in result
+        assert "Diabetes management" not in result
+        assert "Procedure" not in result
+        assert "Blood glucose monitoring" not in result
+        # Should NOT include FHIR IDs
+        assert "cond-1" not in result
+        assert "id:" not in result
+
+    def test_medication_table_excludes_dose_history(self):
+        """Lightning medication table has 3 columns, no dose history."""
+        conditions = [
+            {
+                "condition": {
+                    "code": {"coding": [{"display": "HTN"}]},
+                    "clinicalStatus": "Active",
+                },
+                "treating_medications": [
+                    {
+                        "medicationCodeableConcept": "Lisinopril 10 MG",
+                        "status": "active",
+                        "_recency": "established",
+                        "_dose_history": [
+                            {"dose": "5 MG", "authoredOn": "2023-01-01"},
+                        ],
+                    },
+                ],
+                "care_plans": [],
+                "related_procedures": [],
+            },
+        ]
+        result = _format_tier1_conditions_lightning(conditions)
+        assert "Lisinopril 10 MG" in result
+        # Dose History should not appear in lightning table
+        assert "Dose History" not in result
+        assert "5 MG" not in result
+
+
+class TestBuildPatientSummaryLightning:
+    """Tests for _build_patient_summary_lightning helper."""
+
+    def test_includes_patient_orientation(self, full_compiled_summary: dict):
+        """Lightning summary includes patient demographics."""
+        result = _build_patient_summary_lightning(full_compiled_summary)
+        assert "John Smith" in result
+        assert "compiled 2026-02-05" in result
+
+    def test_includes_active_conditions(self, full_compiled_summary: dict):
+        """Lightning summary includes active conditions."""
+        result = _build_patient_summary_lightning(full_compiled_summary)
+        assert "Type 2 diabetes mellitus" in result
+        assert "Essential hypertension" in result
+
+    def test_includes_observations(self, full_compiled_summary: dict):
+        """Lightning summary includes observations."""
+        result = _build_patient_summary_lightning(full_compiled_summary)
+        assert "Hemoglobin A1c" in result
+        assert "Systolic blood pressure" in result
+
+    def test_excludes_encounters(self, full_compiled_summary: dict):
+        """Lightning summary excludes Tier 2 encounters."""
+        result = _build_patient_summary_lightning(full_compiled_summary)
+        assert "Recent Encounters" not in result
+        assert "General examination" not in result
+
+    def test_excludes_care_plans(self, full_compiled_summary: dict):
+        """Lightning summary excludes care plans."""
+        result = _build_patient_summary_lightning(full_compiled_summary)
+        assert "Standalone Care Plans" not in result
+        assert "CarePlan:" not in result
+
+    def test_excludes_recently_resolved(self, full_compiled_summary: dict):
+        """Lightning summary excludes recently resolved conditions."""
+        result = _build_patient_summary_lightning(full_compiled_summary)
+        assert "Recently Resolved" not in result
+
+    def test_excludes_unlinked_meds(self, full_compiled_summary: dict):
+        """Lightning summary excludes unlinked medications."""
+        result = _build_patient_summary_lightning(full_compiled_summary)
+        assert "not linked to a condition" not in result
+
+    def test_includes_profile_when_provided(self, full_compiled_summary: dict):
+        """Lightning summary includes patient profile when provided."""
+        result = _build_patient_summary_lightning(
+            full_compiled_summary, patient_profile="Active retired teacher."
+        )
+        assert "Active retired teacher" in result
+
+    def test_shorter_than_full_summary(self, full_compiled_summary: dict):
+        """Lightning summary is shorter than the full summary."""
+        lightning = _build_patient_summary_lightning(full_compiled_summary)
+        full = _build_patient_summary_section(full_compiled_summary)
+        assert len(lightning) < len(full)
+
+
 class TestFormatTier2Encounters:
     """Tests for _format_tier2_encounters helper."""
 
@@ -1766,10 +1901,10 @@ class TestFormatTier2Encounters:
                         {"code": {"coding": [{"display": "Blood Glucose 145 mg/dL"}]}},
                         {"code": {"coding": [{"display": "Weight 85 kg"}]}},
                     ],
+                    "DOCUMENTED": [
+                        {"clinical_note": "Patient reports good medication adherence"},
+                    ],
                 },
-                "clinical_notes": [
-                    "Patient reports good medication adherence"
-                ],
             },
         ]
         result = _format_tier2_encounters(encounters)
@@ -1779,7 +1914,7 @@ class TestFormatTier2Encounters:
         assert "Note: Patient reports good medication adherence" in result
 
     def test_documented_events_not_listed_separately(self):
-        """Test that DOCUMENTED events are not listed as a separate category."""
+        """Test that DOCUMENTED events render as notes, not a separate category."""
         encounters = [
             {
                 "encounter": {
@@ -1790,10 +1925,9 @@ class TestFormatTier2Encounters:
                 },
                 "events": {
                     "DOCUMENTED": [
-                        {"code": {"coding": [{"display": "Clinical Note"}]}},
+                        {"clinical_note": "Some clinical note text"},
                     ],
                 },
-                "clinical_notes": ["Some clinical note text"],
             },
         ]
         result = _format_tier2_encounters(encounters)
@@ -2167,6 +2301,78 @@ class TestBuildSystemPromptLightning:
         assert "cond-diabetes" not in prompt
         assert "cond-hypertension" not in prompt
         assert "id:" not in prompt
+
+    def test_excludes_encounters(self, full_compiled_summary: dict):
+        """Lightning prompt does NOT include Tier 2 encounters."""
+        prompt = build_system_prompt_lightning(full_compiled_summary)
+        assert "Recent Encounters" not in prompt
+        assert "General examination" not in prompt
+        assert "good adherence" not in prompt
+
+    def test_excludes_care_plans(self, full_compiled_summary: dict):
+        """Lightning prompt does NOT include care plans (inline or standalone)."""
+        prompt = build_system_prompt_lightning(full_compiled_summary)
+        assert "CarePlan:" not in prompt
+        assert "Diabetes self management plan" not in prompt
+        assert "Routine wellness plan" not in prompt
+        assert "Standalone Care Plans" not in prompt
+
+    def test_excludes_recently_resolved(self, full_compiled_summary: dict):
+        """Lightning prompt does NOT include recently resolved conditions."""
+        prompt = build_system_prompt_lightning(full_compiled_summary)
+        assert "Recently Resolved" not in prompt
+        assert "Acute bronchitis" not in prompt
+
+    def test_excludes_unlinked_medications(self, full_compiled_summary: dict):
+        """Lightning prompt does NOT include unlinked medications."""
+        prompt = build_system_prompt_lightning(full_compiled_summary)
+        assert "not linked to a condition" not in prompt
+        assert "Aspirin 81 MG" not in prompt
+
+    def test_excludes_procedures(self, full_compiled_summary: dict):
+        """Lightning prompt does NOT include procedures."""
+        prompt = build_system_prompt_lightning(full_compiled_summary)
+        assert "Procedure:" not in prompt
+
+    def test_includes_observations(self, full_compiled_summary: dict):
+        """Lightning prompt includes Tier 3 observations."""
+        prompt = build_system_prompt_lightning(full_compiled_summary)
+        assert "Latest Observations" in prompt
+        assert "Hemoglobin A1c" in prompt
+        assert "7.2" in prompt
+        assert "Systolic blood pressure" in prompt
+        assert "138" in prompt
+
+    def test_includes_allergies(self, full_compiled_summary: dict):
+        """Lightning prompt includes allergies table."""
+        prompt = build_system_prompt_lightning(full_compiled_summary)
+        assert "Allergies" in prompt
+        assert "Penicillin" in prompt
+
+    def test_includes_immunizations(self, full_compiled_summary: dict):
+        """Lightning prompt includes immunizations table."""
+        prompt = build_system_prompt_lightning(full_compiled_summary)
+        assert "Immunizations" in prompt
+        assert "Influenza vaccine" in prompt
+
+    def test_conditions_show_onset_without_id(self, full_compiled_summary: dict):
+        """Lightning conditions show onset date but not FHIR ID."""
+        prompt = build_system_prompt_lightning(full_compiled_summary)
+        assert "onset: 2015-03-10" in prompt
+        assert "cond-diabetes" not in prompt
+
+    def test_conditions_show_medications_table(self, full_compiled_summary: dict):
+        """Lightning conditions include treating medications as a table."""
+        prompt = build_system_prompt_lightning(full_compiled_summary)
+        assert "Metformin 500 MG" in prompt
+        assert "Lisinopril 10 MG" in prompt
+
+    def test_medication_table_excludes_dose_history(self, full_compiled_summary: dict):
+        """Lightning medication tables don't include dose history column."""
+        prompt = build_system_prompt_lightning(full_compiled_summary)
+        # The lightning table has 3 cols: Medication, Status, Recency
+        # Not 4 cols with Dose History
+        assert "Dose History" not in prompt
 
 
 class TestBuildSystemPromptFastFhirIds:
