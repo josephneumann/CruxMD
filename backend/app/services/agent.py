@@ -820,6 +820,31 @@ def _build_safety_section(compiled_summary: dict[str, Any]) -> str:
     )
 
 
+def _build_safety_section_lightning(compiled_summary: dict[str, Any]) -> str:
+    """Build a minimal safety section for Lightning-tier fact extraction.
+
+    Lightning only extracts facts from the chart — it never discusses medication
+    changes, recommendations, or clinical reasoning. The safety section is
+    trimmed to just active allergy alerts and a single fabrication guard.
+
+    Args:
+        compiled_summary: Dict from compile_patient_summary().
+
+    Returns:
+        Formatted safety section string.
+    """
+    safety = compiled_summary.get("safety_constraints", {})
+    safety_text = _format_safety_constraints_v2(safety)
+
+    return (
+        "## Safety Constraints\n"
+        "\n"
+        f"{safety_text}\n"
+        "\n"
+        "- Never fabricate clinical data."
+    )
+
+
 def build_system_prompt_lightning(
     compiled_summary: dict[str, Any],
     patient_profile: str | None = None,
@@ -827,9 +852,10 @@ def build_system_prompt_lightning(
     """Build a minimal system prompt for Lightning-tier fact extraction.
 
     Even more trimmed than the fast prompt: concise role, slim patient
-    summary (no encounters, care plans, or procedures), shared safety,
-    brief format section. No reasoning directives, no tool descriptions,
-    no insight/viz/table instructions.
+    summary (no encounters, care plans, or procedures), minimal safety
+    (allergy alerts + fabrication guard only), brief format section.
+    No reasoning directives, no tool descriptions, no insight/viz/table
+    instructions.
 
     Args:
         compiled_summary: Dict from compile_patient_summary().
@@ -846,7 +872,7 @@ def build_system_prompt_lightning(
 
     summary_section = _build_patient_summary_lightning(compiled_summary, patient_profile)
 
-    safety_section = _build_safety_section(compiled_summary)
+    safety_section = _build_safety_section_lightning(compiled_summary)
 
     format_section = (
         "## Response Format\n"
