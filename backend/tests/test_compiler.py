@@ -2779,8 +2779,13 @@ class TestCompilePatientSummary:
         )
 
         enc_entry = result["tier2_recent_encounters"][0]
-        assert len(enc_entry["clinical_notes"]) == 1
-        assert "Patient stable" in enc_entry["clinical_notes"][0]
+        # Clinical notes are now only in events["DOCUMENTED"] resources
+        documented = enc_entry["events"].get("DOCUMENTED", [])
+        notes = [d["clinical_note"] for d in documented if "clinical_note" in d]
+        assert len(notes) == 1
+        assert "Patient stable" in notes[0]
+        # No separate clinical_notes key
+        assert "clinical_notes" not in enc_entry
 
     @pytest.mark.asyncio
     async def test_tier3_observations(self, db_session: AsyncSession):
@@ -2983,10 +2988,12 @@ class TestCompilePatientSummary:
             patient_id, mock_graph, db_session, date(2026, 2, 5)
         )
 
-        # Both encounters should have notes
+        # Both encounters should have notes in events["DOCUMENTED"]
         all_notes = []
         for enc_entry in result["tier2_recent_encounters"]:
-            all_notes.extend(enc_entry["clinical_notes"])
+            assert "clinical_notes" not in enc_entry
+            documented = enc_entry["events"].get("DOCUMENTED", [])
+            all_notes.extend(d["clinical_note"] for d in documented if "clinical_note" in d)
         assert len(all_notes) == 2
 
     @pytest.mark.asyncio

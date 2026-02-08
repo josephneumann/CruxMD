@@ -28,6 +28,11 @@ from app.services.query_classifier import QueryProfile
 
 logger = logging.getLogger(__name__)
 
+# Tier constants for controlling output verbosity
+TIER_DEEP = "deep"
+TIER_FAST = "fast"
+TIER_LIGHTNING = "lightning"
+
 # Default model for agent responses
 DEFAULT_MODEL = "gpt-5-mini"
 
@@ -170,6 +175,24 @@ def _truncate_date(val: str) -> str:
     return val
 
 
+def _format_as_table(headers: list[str], rows: list[list[str]]) -> str:
+    """Format data as a markdown table.
+
+    Args:
+        headers: Column header strings.
+        rows: List of rows, each a list of cell strings.
+
+    Returns:
+        Markdown table string. Returns empty string if no rows.
+    """
+    if not rows:
+        return ""
+    header_line = "| " + " | ".join(headers) + " |"
+    separator = "| " + " | ".join("---" for _ in headers) + " |"
+    body_lines = ["| " + " | ".join(row) + " |" for row in rows]
+    return "\n".join([header_line, separator, *body_lines])
+
+
 def _prune_fhir_resource(resource: dict[str, Any]) -> dict[str, Any]:
     """Recursively prune a FHIR resource for LLM consumption.
 
@@ -212,8 +235,17 @@ def _prune_fhir_resource(resource: dict[str, Any]) -> dict[str, Any]:
     return pruned
 
 
-def _format_tier1_conditions(conditions: list[dict[str, Any]]) -> str:
-    """Format Tier 1 active conditions with treating meds, care plans, and procedures."""
+def _format_tier1_conditions(conditions: list[dict[str, Any]], tier: str = TIER_DEEP) -> str:
+    """Format Tier 1 active conditions with treating meds, care plans, and procedures.
+
+    Conditions are displayed as headers (hierarchical). Treating medications are
+    rendered as a markdown table under each condition. Care plans and procedures
+    remain as structured text.
+
+    Args:
+        conditions: List of condition dicts with treating_medications, care_plans, etc.
+        tier: Output tier (deep/fast/lightning). Deep includes FHIR IDs.
+    """
     if not conditions:
         return "No active conditions recorded."
 
@@ -235,36 +267,42 @@ def _format_tier1_conditions(conditions: list[dict[str, Any]]) -> str:
         if onset:
             onset = onset[:10]
 
-        cond_line = f"  - {cond_display} (status: {clinical_status}"
+        # Build condition header — omit "status: active" under Active Conditions
+        cond_parts: list[str] = []
+        if clinical_status.lower() != "active":
+            cond_parts.append(f"status: {clinical_status}")
         if onset:
-            cond_line += f", onset: {onset}"
-        cond_line += f", id: {cond.get('id', 'unknown')})"
+            cond_parts.append(f"onset: {onset}")
+        if tier == TIER_DEEP:
+            cond_parts.append(f"id: {cond.get('id', 'unknown')}")
+
+        cond_line = f"  - {cond_display}"
+        if cond_parts:
+            cond_line += f" ({', '.join(cond_parts)})"
         lines.append(cond_line)
 
-        # Treating medications
+        # Treating medications — markdown table
         treating_meds = entry.get("treating_medications", [])
         if treating_meds:
+            med_rows: list[list[str]] = []
             for med in treating_meds:
-                # In pruned resources, medicationCodeableConcept may be simplified to a string
                 mcc = med.get("medicationCodeableConcept")
                 if isinstance(mcc, str):
                     med_display = mcc
                 else:
                     med_display = _get_display_name(med, "medicationCodeableConcept") or "Unknown medication"
                 med_status = med.get("status", "unknown")
-                parts = [f"      Rx: {med_display} (status: {med_status}"]
-                if med.get("_recency"):
-                    parts.append(f", recency: {med['_recency']}")
-                if med.get("_duration_days") is not None:
-                    parts.append(f", {med['_duration_days']}d on therapy")
-                if med.get("_inferred"):
-                    parts.append(", link: inferred via encounter")
+                recency = med.get("_recency", "")
+                dose_hist_str = ""
                 if med.get("_dose_history"):
                     dose_hist = med["_dose_history"]
                     changes = [f"{d.get('dose', '?')} on {(d.get('authoredOn', ''))[:10]}" for d in dose_hist]
-                    parts.append(f", _dose_history: [{', '.join(changes)}]")
-                parts.append(")")
-                lines.append("".join(parts))
+                    dose_hist_str = ", ".join(changes)
+                med_rows.append([med_display, med_status, recency, dose_hist_str])
+            table = _format_as_table(["Medication", "Status", "Recency", "Dose History"], med_rows)
+            # Indent the table under the condition
+            for table_line in table.split("\n"):
+                lines.append(f"    {table_line}")
 
         # Care plans
         care_plans = entry.get("care_plans", [])
@@ -294,18 +332,42 @@ def _format_tier1_conditions(conditions: list[dict[str, Any]]) -> str:
     return "\n".join(lines)
 
 
-def _format_tier1_section(label: str, items: list[dict[str, Any]], display_fn) -> str:
-    """Format a simple Tier 1 section (allergies, immunizations, care plans, unlinked meds)."""
+def _format_tier1_section(
+    label: str,
+    items: list[dict[str, Any]],
+    display_fn=None,
+    *,
+    headers: list[str] | None = None,
+    row_fn=None,
+) -> str:
+    """Format a simple Tier 1 section as a markdown table or flat list.
+
+    When headers and row_fn are provided, renders as a markdown table.
+    Otherwise falls back to display_fn for flat-list rendering.
+
+    Args:
+        label: Section header label.
+        items: List of FHIR resource dicts.
+        display_fn: Legacy single-line display function (used for care plans).
+        headers: Table column headers (enables table mode).
+        row_fn: Function that takes a dict and returns a list of cell strings.
+    """
     if not items:
         return ""
     lines = [f"\n  {label}:"]
-    for item in items:
-        lines.append(f"    - {display_fn(item)}")
+    if headers and row_fn:
+        rows = [row_fn(item) for item in items]
+        table = _format_as_table(headers, rows)
+        for table_line in table.split("\n"):
+            lines.append(f"    {table_line}")
+    else:
+        for item in items:
+            lines.append(f"    - {display_fn(item)}")
     return "\n".join(lines)
 
 
-def _allergy_display(a: dict[str, Any]) -> str:
-    """Format a single allergy for display."""
+def _allergy_row(a: dict[str, Any]) -> list[str]:
+    """Return a table row [Allergen, Criticality, Category] for an allergy."""
     code = a.get("code")
     if isinstance(code, str):
         display = code
@@ -314,11 +376,11 @@ def _allergy_display(a: dict[str, Any]) -> str:
     criticality = a.get("criticality", "unknown")
     categories = a.get("category", [])
     cat = categories[0] if isinstance(categories, list) and categories else (categories if isinstance(categories, str) else "unknown")
-    return f"{display} (criticality: {criticality}, category: {cat})"
+    return [display, criticality, cat]
 
 
-def _immunization_display(im: dict[str, Any]) -> str:
-    """Format a single immunization for display."""
+def _immunization_row(im: dict[str, Any]) -> list[str]:
+    """Return a table row [Vaccine, Date] for an immunization."""
     vc = im.get("vaccineCode")
     if isinstance(vc, str):
         display = vc
@@ -327,26 +389,19 @@ def _immunization_display(im: dict[str, Any]) -> str:
     occ = im.get("occurrenceDateTime", "")
     if occ:
         occ = occ[:10]
-    return f"{display} ({occ})" if occ else display
+    return [display, occ]
 
 
-def _unlinked_med_display(med: dict[str, Any]) -> str:
-    """Format a single unlinked medication for display."""
+def _unlinked_med_row(med: dict[str, Any]) -> list[str]:
+    """Return a table row [Medication, Status, Recency] for an unlinked medication."""
     mcc = med.get("medicationCodeableConcept")
     if isinstance(mcc, str):
         display = mcc
     else:
         display = _get_display_name(med, "medicationCodeableConcept") or "Unknown medication"
     status = med.get("status", "unknown")
-    parts = [f"{display} (status: {status}"]
-    if med.get("_recency"):
-        parts.append(f", recency: {med['_recency']}")
-    if med.get("_dose_history"):
-        dose_hist = med["_dose_history"]
-        changes = [f"{d.get('dose', '?')} on {(d.get('authoredOn', ''))[:10]}" for d in dose_hist]
-        parts.append(f", _dose_history: [{', '.join(changes)}]")
-    parts.append(")")
-    return "".join(parts)
+    recency = med.get("_recency", "")
+    return [display, status, recency]
 
 
 def _care_plan_display(cp: dict[str, Any]) -> str:
@@ -364,8 +419,13 @@ def _care_plan_display(cp: dict[str, Any]) -> str:
     return f"{display} (status: {status})"
 
 
-def _format_tier2_encounters(encounters: list[dict[str, Any]]) -> str:
-    """Format Tier 2 recent encounters."""
+def _format_tier2_encounters(encounters: list[dict[str, Any]], tier: str = TIER_DEEP) -> str:
+    """Format Tier 2 recent encounters.
+
+    Args:
+        encounters: List of encounter entry dicts.
+        tier: Output tier (deep includes FHIR IDs).
+    """
     if not encounters:
         return "No recent encounters."
 
@@ -390,34 +450,44 @@ def _format_tier2_encounters(encounters: list[dict[str, Any]]) -> str:
         header = f"  [{start}] {enc_type}"
         if class_code:
             header += f" ({class_code})"
-        header += f" id:{enc.get('id', '?')}"
+        if tier == TIER_DEEP:
+            header += f" id:{enc.get('id', '?')}"
         lines.append(header)
 
-        # Events by relationship type
+        # Events grouped by relationship type
+        rel_labels = {
+            "DIAGNOSED": "Diagnoses",
+            "PRESCRIBED": "Medications",
+            "RECORDED": "Observations",
+        }
         events = enc_entry.get("events", {})
-        for rel_type, resources in events.items():
+        for rel_type, label in rel_labels.items():
+            resources = events.get(rel_type, [])
             if not resources:
                 continue
+            displays = []
             for r in resources:
-                code_val = r.get("code")
-                if isinstance(code_val, str):
-                    r_display = code_val
-                else:
-                    r_display = _get_display_name(r) or r.get("resourceType", "?")
-                lines.append(f"    {rel_type}: {r_display}")
+                r_display = _get_display_name(r) or r.get("resourceType", "?")
+                displays.append(r_display)
+            lines.append(f"    {label}: {', '.join(displays)}")
 
-        # Clinical notes
-        notes = enc_entry.get("clinical_notes", [])
-        for note in notes:
-            # Truncate long notes in the summary
-            note_preview = note[:500] + "..." if len(note) > 500 else note
-            lines.append(f"    NOTE: {note_preview}")
+        # Clinical notes from DOCUMENTED events
+        documented = events.get("DOCUMENTED", [])
+        for r in documented:
+            clinical_note = r.get("clinical_note")
+            if clinical_note:
+                note_preview = clinical_note[:500] + "..." if len(clinical_note) > 500 else clinical_note
+                lines.append(f"    Note: {note_preview}")
 
     return "\n".join(lines)
 
 
 def _format_tier3_observations(obs_by_category: dict[str, list[dict[str, Any]]]) -> str:
-    """Format Tier 3 latest observations by category."""
+    """Format Tier 3 latest observations by category as markdown tables.
+
+    Each non-empty category renders as a labelled table with columns:
+    Observation | Value | Date | Ref Range | Trend
+    """
     category_labels = {
         "laboratory": "Lab Results",
         "vital-signs": "Vital Signs",
@@ -430,6 +500,8 @@ def _format_tier3_observations(obs_by_category: dict[str, list[dict[str, Any]]])
             continue
         label = category_labels.get(category, category.title())
         lines.append(f"\n  {label}:")
+
+        rows: list[list[str]] = []
         for obs in obs_list:
             code_val = obs.get("code")
             if isinstance(code_val, str):
@@ -443,11 +515,15 @@ def _format_tier3_observations(obs_by_category: dict[str, list[dict[str, Any]]])
                 val = vq.get("value")
                 unit = vq.get("unit", "")
                 if val is not None:
-                    value_str = f" = {val} {unit}".rstrip()
+                    value_str = f"{val} {unit}".rstrip()
             elif obs.get("valueString"):
-                value_str = f" = {obs['valueString']}"
+                value_str = obs["valueString"]
 
-            # Reference range
+            date_str = ""
+            eff_dt = obs.get("effectiveDateTime", "")
+            if eff_dt:
+                date_str = eff_dt[:10]
+
             ref_str = ""
             ref_range = obs.get("referenceRange", [])
             if ref_range and isinstance(ref_range, list) and ref_range[0]:
@@ -458,12 +534,7 @@ def _format_tier3_observations(obs_by_category: dict[str, list[dict[str, Any]]])
                     low_val = low.get("value")
                     high_val = high.get("value")
                     if low_val is not None and high_val is not None:
-                        ref_str = f" [ref: {low_val}-{high_val}]"
-
-            date_str = ""
-            eff_dt = obs.get("effectiveDateTime", "")
-            if eff_dt:
-                date_str = f" ({eff_dt[:10]})"
+                        ref_str = f"{low_val}-{high_val}"
 
             trend_str = ""
             trend = obs.get("_trend")
@@ -471,16 +542,19 @@ def _format_tier3_observations(obs_by_category: dict[str, list[dict[str, Any]]])
                 direction = trend.get("direction", "")
                 prev_val = trend.get("previous_value")
                 prev_date = (trend.get("previous_date", "") or "")[:10]
-                trend_str = f" _trend: {direction}"
+                trend_str = direction
                 if prev_val is not None:
                     trend_str += f", prev={prev_val}"
                 if prev_date:
                     trend_str += f" on {prev_date}"
 
-            line = f"    - {obs_display}{value_str}{ref_str}{date_str}"
-            if trend_str:
-                line += f" [{trend_str}]"
-            lines.append(line)
+            rows.append([obs_display, value_str, date_str, ref_str, trend_str])
+
+        table = _format_as_table(
+            ["Observation", "Value", "Date", "Ref Range", "Trend"], rows
+        )
+        for table_line in table.split("\n"):
+            lines.append(f"    {table_line}")
 
     if not lines:
         return "No recent observations."
@@ -517,8 +591,154 @@ def _format_safety_constraints_v2(safety: dict[str, Any]) -> str:
 def _build_patient_summary_section(
     compiled_summary: dict[str, Any],
     patient_profile: str | None = None,
+    tier: str = TIER_DEEP,
 ) -> str:
     """Build the patient summary section shared by both fast and standard prompts.
+
+    Args:
+        compiled_summary: Dict from compile_patient_summary().
+        patient_profile: Optional non-clinical patient profile narrative.
+        tier: Output tier controlling verbosity (deep/fast/lightning).
+
+    Returns:
+        Formatted patient summary string.
+    """
+    patient_orientation = compiled_summary.get("patient_orientation", "Unknown patient")
+    compilation_date = compiled_summary.get("compilation_date", "unknown")
+
+    summary_parts: list[str] = [
+        f"## Patient Summary (compiled {compilation_date})\n",
+        f"**Patient:** {patient_orientation}\n",
+    ]
+
+    if patient_profile:
+        summary_parts.append(f"**Profile:** {patient_profile}\n")
+
+    # Tier 1: Active conditions
+    tier1_conditions = compiled_summary.get("tier1_active_conditions", [])
+    summary_parts.append("### Active Conditions & Treatments")
+    summary_parts.append(_format_tier1_conditions(tier1_conditions, tier=tier))
+
+    # Tier 1: Recently resolved conditions
+    tier1_resolved = compiled_summary.get("tier1_recently_resolved", [])
+    if tier1_resolved:
+        summary_parts.append("\n### Recently Resolved Conditions (last 6 months)")
+        summary_parts.append(_format_tier1_conditions(tier1_resolved, tier=tier))
+
+    # Tier 1: Allergies — table
+    tier1_allergies = compiled_summary.get("tier1_allergies", [])
+    allergy_lines = _format_tier1_section(
+        "Allergies", tier1_allergies,
+        headers=["Allergen", "Criticality", "Category"],
+        row_fn=_allergy_row,
+    )
+    if allergy_lines:
+        summary_parts.append(allergy_lines)
+
+    # Tier 1: Unlinked medications — table
+    tier1_unlinked = compiled_summary.get("tier1_unlinked_medications", [])
+    if tier1_unlinked:
+        unlinked_lines = _format_tier1_section(
+            "Medications (not linked to a condition)", tier1_unlinked,
+            headers=["Medication", "Status", "Recency"],
+            row_fn=_unlinked_med_row,
+        )
+        if unlinked_lines:
+            summary_parts.append(unlinked_lines)
+
+    # Tier 1: Immunizations — table
+    tier1_immunizations = compiled_summary.get("tier1_immunizations", [])
+    if tier1_immunizations:
+        imm_lines = _format_tier1_section(
+            "Immunizations", tier1_immunizations,
+            headers=["Vaccine", "Date"],
+            row_fn=_immunization_row,
+        )
+        if imm_lines:
+            summary_parts.append(imm_lines)
+
+    # Tier 1: Standalone care plans (keep as structured text)
+    tier1_care_plans = compiled_summary.get("tier1_care_plans", [])
+    if tier1_care_plans:
+        cp_lines = _format_tier1_section("Standalone Care Plans", tier1_care_plans, _care_plan_display)
+        if cp_lines:
+            summary_parts.append(cp_lines)
+
+    # Tier 2: Recent encounters
+    tier2 = compiled_summary.get("tier2_recent_encounters", [])
+    summary_parts.append("\n### Recent Encounters")
+    summary_parts.append(_format_tier2_encounters(tier2, tier=tier))
+
+    # Tier 3: Latest observations
+    tier3 = compiled_summary.get("tier3_latest_observations", {})
+    summary_parts.append("\n### Latest Observations")
+    summary_parts.append(_format_tier3_observations(tier3))
+
+    return "\n".join(summary_parts)
+
+
+def _format_tier1_conditions_lightning(conditions: list[dict[str, Any]]) -> str:
+    """Format Tier 1 conditions for Lightning: name + onset + treating meds table only.
+
+    Skips care plans, procedures, and FHIR IDs to save tokens.
+
+    Args:
+        conditions: List of condition dicts with treating_medications.
+    """
+    if not conditions:
+        return "No active conditions recorded."
+
+    lines: list[str] = []
+    for entry in conditions:
+        cond = entry.get("condition", {})
+        code_val = cond.get("code")
+        if isinstance(code_val, str):
+            cond_display = code_val
+        else:
+            cond_display = _get_display_name(cond) or cond.get("resourceType", "Unknown condition")
+
+        onset = cond.get("onsetDateTime", "")
+        if onset:
+            onset = onset[:10]
+
+        cond_line = f"  - {cond_display}"
+        if onset:
+            cond_line += f" (onset: {onset})"
+        lines.append(cond_line)
+
+        # Treating medications — markdown table (same as standard)
+        treating_meds = entry.get("treating_medications", [])
+        if treating_meds:
+            med_rows: list[list[str]] = []
+            for med in treating_meds:
+                mcc = med.get("medicationCodeableConcept")
+                if isinstance(mcc, str):
+                    med_display = mcc
+                else:
+                    med_display = _get_display_name(med, "medicationCodeableConcept") or "Unknown medication"
+                med_status = med.get("status", "unknown")
+                recency = med.get("_recency", "")
+                med_rows.append([med_display, med_status, recency])
+            table = _format_as_table(["Medication", "Status", "Recency"], med_rows)
+            for table_line in table.split("\n"):
+                lines.append(f"    {table_line}")
+
+    return "\n".join(lines)
+
+
+def _build_patient_summary_lightning(
+    compiled_summary: dict[str, Any],
+    patient_profile: str | None = None,
+) -> str:
+    """Build a slim patient summary for Lightning-tier prompts.
+
+    Includes only: patient orientation, conditions (name + onset), treating
+    medications (table), allergies (table), immunizations (table), and
+    observations (vital signs + labs tables).
+
+    Skips: Tier 2 encounters, care plans, procedures, recently resolved
+    conditions, unlinked medications, and FHIR IDs. Saves ~800-1200 tokens
+    compared to the full summary.
 
     Args:
         compiled_summary: Dict from compile_patient_summary().
@@ -538,52 +758,33 @@ def _build_patient_summary_section(
     if patient_profile:
         summary_parts.append(f"**Profile:** {patient_profile}\n")
 
-    # Tier 1: Active conditions
+    # Tier 1: Active conditions (names + onset + meds only)
     tier1_conditions = compiled_summary.get("tier1_active_conditions", [])
     summary_parts.append("### Active Conditions & Treatments")
-    summary_parts.append(_format_tier1_conditions(tier1_conditions))
+    summary_parts.append(_format_tier1_conditions_lightning(tier1_conditions))
 
-    # Tier 1: Recently resolved conditions
-    tier1_resolved = compiled_summary.get("tier1_recently_resolved", [])
-    if tier1_resolved:
-        summary_parts.append("\n### Recently Resolved Conditions (last 6 months)")
-        summary_parts.append(_format_tier1_conditions(tier1_resolved))
-
-    # Tier 1: Allergies
+    # Tier 1: Allergies — table
     tier1_allergies = compiled_summary.get("tier1_allergies", [])
-    allergy_lines = _format_tier1_section("Allergies", tier1_allergies, _allergy_display)
+    allergy_lines = _format_tier1_section(
+        "Allergies", tier1_allergies,
+        headers=["Allergen", "Criticality", "Category"],
+        row_fn=_allergy_row,
+    )
     if allergy_lines:
         summary_parts.append(allergy_lines)
 
-    # Tier 1: Unlinked medications
-    tier1_unlinked = compiled_summary.get("tier1_unlinked_medications", [])
-    if tier1_unlinked:
-        unlinked_lines = _format_tier1_section(
-            "Medications (not linked to a condition)", tier1_unlinked, _unlinked_med_display
-        )
-        if unlinked_lines:
-            summary_parts.append(unlinked_lines)
-
-    # Tier 1: Immunizations
+    # Tier 1: Immunizations — table
     tier1_immunizations = compiled_summary.get("tier1_immunizations", [])
     if tier1_immunizations:
-        imm_lines = _format_tier1_section("Immunizations", tier1_immunizations, _immunization_display)
+        imm_lines = _format_tier1_section(
+            "Immunizations", tier1_immunizations,
+            headers=["Vaccine", "Date"],
+            row_fn=_immunization_row,
+        )
         if imm_lines:
             summary_parts.append(imm_lines)
 
-    # Tier 1: Standalone care plans
-    tier1_care_plans = compiled_summary.get("tier1_care_plans", [])
-    if tier1_care_plans:
-        cp_lines = _format_tier1_section("Standalone Care Plans", tier1_care_plans, _care_plan_display)
-        if cp_lines:
-            summary_parts.append(cp_lines)
-
-    # Tier 2: Recent encounters
-    tier2 = compiled_summary.get("tier2_recent_encounters", [])
-    summary_parts.append("\n### Recent Encounters")
-    summary_parts.append(_format_tier2_encounters(tier2))
-
-    # Tier 3: Latest observations
+    # Tier 3: Latest observations (vital signs + labs)
     tier3 = compiled_summary.get("tier3_latest_observations", {})
     summary_parts.append("\n### Latest Observations")
     summary_parts.append(_format_tier3_observations(tier3))
@@ -625,9 +826,10 @@ def build_system_prompt_lightning(
 ) -> str:
     """Build a minimal system prompt for Lightning-tier fact extraction.
 
-    Even more trimmed than the fast prompt: concise role, shared patient
-    summary, shared safety, brief format section. No reasoning directives,
-    no tool descriptions, no insight/viz/table instructions.
+    Even more trimmed than the fast prompt: concise role, slim patient
+    summary (no encounters, care plans, or procedures), shared safety,
+    brief format section. No reasoning directives, no tool descriptions,
+    no insight/viz/table instructions.
 
     Args:
         compiled_summary: Dict from compile_patient_summary().
@@ -642,7 +844,7 @@ def build_system_prompt_lightning(
         "Never fabricate clinical data. If the data isn't in the summary, say so."
     )
 
-    summary_section = _build_patient_summary_section(compiled_summary, patient_profile)
+    summary_section = _build_patient_summary_lightning(compiled_summary, patient_profile)
 
     safety_section = _build_safety_section(compiled_summary)
 
@@ -683,7 +885,7 @@ def build_system_prompt_fast(
         "Cite specific data points (dates, values) when available. Never fabricate clinical data."
     )
 
-    summary_section = _build_patient_summary_section(compiled_summary, patient_profile)
+    summary_section = _build_patient_summary_section(compiled_summary, patient_profile, tier=TIER_FAST)
 
     safety_section = _build_safety_section(compiled_summary)
 
@@ -742,7 +944,7 @@ def build_system_prompt_v2(
     )
 
     # ── Section 2: Pre-compiled Patient Summary ──────────────────────────────
-    summary_section = _build_patient_summary_section(compiled_summary, patient_profile)
+    summary_section = _build_patient_summary_section(compiled_summary, patient_profile, tier=TIER_DEEP)
 
     # ── Section 3: Agent Reasoning Directives ────────────────────────────────
     reasoning_section = (
