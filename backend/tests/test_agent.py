@@ -23,13 +23,11 @@ from app.services.agent import (
     build_system_prompt_quick,
     build_system_prompt_lightning,
     build_system_prompt_deep,
-    _build_patient_summary_lightning,
     _build_patient_summary_section,
     _build_safety_section,
     _build_safety_section_lightning,
     _format_as_table,
     _format_tier1_conditions,
-    _format_tier1_conditions_lightning,
     _format_tier2_encounters,
     _format_tier3_observations,
     _format_safety_constraints_v2,
@@ -1709,11 +1707,11 @@ class TestFormatTier1Conditions:
 
 
 class TestFormatTier1ConditionsLightning:
-    """Tests for _format_tier1_conditions_lightning helper."""
+    """Tests for _format_tier1_conditions with tier=TIER_LIGHTNING."""
 
     def test_empty_conditions(self):
         """Test formatting empty conditions list."""
-        result = _format_tier1_conditions_lightning([])
+        result = _format_tier1_conditions([], tier=TIER_LIGHTNING)
         assert result == "No active conditions recorded."
 
     def test_condition_with_onset_and_meds(self):
@@ -1741,7 +1739,7 @@ class TestFormatTier1ConditionsLightning:
                 ],
             },
         ]
-        result = _format_tier1_conditions_lightning(conditions)
+        result = _format_tier1_conditions(conditions, tier=TIER_LIGHTNING)
         assert "Diabetes" in result
         assert "onset: 2020-01-01" in result
         assert "Metformin 500 MG" in result
@@ -1777,7 +1775,7 @@ class TestFormatTier1ConditionsLightning:
                 "related_procedures": [],
             },
         ]
-        result = _format_tier1_conditions_lightning(conditions)
+        result = _format_tier1_conditions(conditions, tier=TIER_LIGHTNING)
         assert "Lisinopril 10 MG" in result
         # Dose History should not appear in lightning table
         assert "Dose History" not in result
@@ -1785,59 +1783,59 @@ class TestFormatTier1ConditionsLightning:
 
 
 class TestBuildPatientSummaryLightning:
-    """Tests for _build_patient_summary_lightning helper."""
+    """Tests for _build_patient_summary_section with tier=TIER_LIGHTNING."""
 
     def test_includes_patient_orientation(self, full_compiled_summary: dict):
         """Lightning summary includes patient demographics."""
-        result = _build_patient_summary_lightning(full_compiled_summary)
+        result = _build_patient_summary_section(full_compiled_summary, tier=TIER_LIGHTNING)
         assert "John Smith" in result
         assert "compiled 2026-02-05" in result
 
     def test_includes_active_conditions(self, full_compiled_summary: dict):
         """Lightning summary includes active conditions."""
-        result = _build_patient_summary_lightning(full_compiled_summary)
+        result = _build_patient_summary_section(full_compiled_summary, tier=TIER_LIGHTNING)
         assert "Type 2 diabetes mellitus" in result
         assert "Essential hypertension" in result
 
     def test_includes_observations(self, full_compiled_summary: dict):
         """Lightning summary includes observations."""
-        result = _build_patient_summary_lightning(full_compiled_summary)
+        result = _build_patient_summary_section(full_compiled_summary, tier=TIER_LIGHTNING)
         assert "Hemoglobin A1c" in result
         assert "Systolic blood pressure" in result
 
     def test_excludes_encounters(self, full_compiled_summary: dict):
         """Lightning summary excludes Tier 2 encounters."""
-        result = _build_patient_summary_lightning(full_compiled_summary)
+        result = _build_patient_summary_section(full_compiled_summary, tier=TIER_LIGHTNING)
         assert "Recent Encounters" not in result
         assert "General examination" not in result
 
     def test_excludes_care_plans(self, full_compiled_summary: dict):
         """Lightning summary excludes care plans."""
-        result = _build_patient_summary_lightning(full_compiled_summary)
+        result = _build_patient_summary_section(full_compiled_summary, tier=TIER_LIGHTNING)
         assert "Standalone Care Plans" not in result
         assert "CarePlan:" not in result
 
     def test_excludes_recently_resolved(self, full_compiled_summary: dict):
         """Lightning summary excludes recently resolved conditions."""
-        result = _build_patient_summary_lightning(full_compiled_summary)
+        result = _build_patient_summary_section(full_compiled_summary, tier=TIER_LIGHTNING)
         assert "Recently Resolved" not in result
 
     def test_excludes_unlinked_meds(self, full_compiled_summary: dict):
         """Lightning summary excludes unlinked medications."""
-        result = _build_patient_summary_lightning(full_compiled_summary)
+        result = _build_patient_summary_section(full_compiled_summary, tier=TIER_LIGHTNING)
         assert "not linked to a condition" not in result
 
     def test_includes_profile_when_provided(self, full_compiled_summary: dict):
         """Lightning summary includes patient profile when provided."""
-        result = _build_patient_summary_lightning(
-            full_compiled_summary, patient_profile="Active retired teacher."
+        result = _build_patient_summary_section(
+            full_compiled_summary, patient_profile="Active retired teacher.", tier=TIER_LIGHTNING
         )
         assert "Active retired teacher" in result
 
     def test_shorter_than_full_summary(self, full_compiled_summary: dict):
         """Lightning summary is shorter than the full summary."""
-        lightning = _build_patient_summary_lightning(full_compiled_summary)
-        full = _build_patient_summary_section(full_compiled_summary)
+        lightning = _build_patient_summary_section(full_compiled_summary, tier=TIER_LIGHTNING)
+        full = _build_patient_summary_section(full_compiled_summary, tier=TIER_DEEP)
         assert len(lightning) < len(full)
 
 

@@ -602,12 +602,18 @@ def _build_patient_summary_section(
     patient_profile: str | None = None,
     tier: str = TIER_DEEP,
 ) -> str:
-    """Build the patient summary section shared by both fast and standard prompts.
+    """Build the patient summary section for all three tiers.
+
+    Tier controls verbosity:
+      - TIER_LIGHTNING: conditions + meds (slim), allergies, immunizations, observations.
+        Skips resolved conditions, unlinked meds, care plans, tier 2 encounters, FHIR IDs.
+      - TIER_QUICK: Full tier 1/2/3 data but omits FHIR IDs.
+      - TIER_DEEP: Full tier 1/2/3 data with FHIR IDs.
 
     Args:
         compiled_summary: Dict from compile_patient_summary().
         patient_profile: Optional non-clinical patient profile narrative.
-        tier: Output tier controlling verbosity (deep/fast/lightning).
+        tier: Output tier controlling verbosity (deep/quick/lightning).
 
     Returns:
         Formatted patient summary string.
@@ -628,11 +634,12 @@ def _build_patient_summary_section(
     summary_parts.append("### Active Conditions & Treatments")
     summary_parts.append(_format_tier1_conditions(tier1_conditions, tier=tier))
 
-    # Tier 1: Recently resolved conditions
-    tier1_resolved = compiled_summary.get("tier1_recently_resolved", [])
-    if tier1_resolved:
-        summary_parts.append("\n### Recently Resolved Conditions (last 6 months)")
-        summary_parts.append(_format_tier1_conditions(tier1_resolved, tier=tier))
+    # Tier 1: Recently resolved conditions — skip for Lightning
+    if tier != TIER_LIGHTNING:
+        tier1_resolved = compiled_summary.get("tier1_recently_resolved", [])
+        if tier1_resolved:
+            summary_parts.append("\n### Recently Resolved Conditions (last 6 months)")
+            summary_parts.append(_format_tier1_conditions(tier1_resolved, tier=tier))
 
     # Tier 1: Allergies — table
     tier1_allergies = compiled_summary.get("tier1_allergies", [])
@@ -644,16 +651,17 @@ def _build_patient_summary_section(
     if allergy_lines:
         summary_parts.append(allergy_lines)
 
-    # Tier 1: Unlinked medications — table
-    tier1_unlinked = compiled_summary.get("tier1_unlinked_medications", [])
-    if tier1_unlinked:
-        unlinked_lines = _format_tier1_section(
-            "Medications (not linked to a condition)", tier1_unlinked,
-            headers=["Medication", "Status", "Recency"],
-            row_fn=_unlinked_med_row,
-        )
-        if unlinked_lines:
-            summary_parts.append(unlinked_lines)
+    # Tier 1: Unlinked medications — skip for Lightning
+    if tier != TIER_LIGHTNING:
+        tier1_unlinked = compiled_summary.get("tier1_unlinked_medications", [])
+        if tier1_unlinked:
+            unlinked_lines = _format_tier1_section(
+                "Medications (not linked to a condition)", tier1_unlinked,
+                headers=["Medication", "Status", "Recency"],
+                row_fn=_unlinked_med_row,
+            )
+            if unlinked_lines:
+                summary_parts.append(unlinked_lines)
 
     # Tier 1: Immunizations — table
     tier1_immunizations = compiled_summary.get("tier1_immunizations", [])
@@ -666,134 +674,21 @@ def _build_patient_summary_section(
         if imm_lines:
             summary_parts.append(imm_lines)
 
-    # Tier 1: Standalone care plans (keep as structured text)
-    tier1_care_plans = compiled_summary.get("tier1_care_plans", [])
-    if tier1_care_plans:
-        cp_lines = _format_tier1_section("Standalone Care Plans", tier1_care_plans, _care_plan_display)
-        if cp_lines:
-            summary_parts.append(cp_lines)
+    # Tier 1: Standalone care plans — skip for Lightning
+    if tier != TIER_LIGHTNING:
+        tier1_care_plans = compiled_summary.get("tier1_care_plans", [])
+        if tier1_care_plans:
+            cp_lines = _format_tier1_section("Standalone Care Plans", tier1_care_plans, _care_plan_display)
+            if cp_lines:
+                summary_parts.append(cp_lines)
 
-    # Tier 2: Recent encounters
-    tier2 = compiled_summary.get("tier2_recent_encounters", [])
-    summary_parts.append("\n### Recent Encounters")
-    summary_parts.append(_format_tier2_encounters(tier2, tier=tier))
+    # Tier 2: Recent encounters — skip for Lightning
+    if tier != TIER_LIGHTNING:
+        tier2 = compiled_summary.get("tier2_recent_encounters", [])
+        summary_parts.append("\n### Recent Encounters")
+        summary_parts.append(_format_tier2_encounters(tier2, tier=tier))
 
     # Tier 3: Latest observations
-    tier3 = compiled_summary.get("tier3_latest_observations", {})
-    summary_parts.append("\n### Latest Observations")
-    summary_parts.append(_format_tier3_observations(tier3))
-
-    return "\n".join(summary_parts)
-
-
-def _format_tier1_conditions_lightning(conditions: list[dict[str, Any]]) -> str:
-    """Format Tier 1 conditions for Lightning: name + onset + treating meds table only.
-
-    Skips care plans, procedures, and FHIR IDs to save tokens.
-
-    Args:
-        conditions: List of condition dicts with treating_medications.
-    """
-    if not conditions:
-        return "No active conditions recorded."
-
-    lines: list[str] = []
-    for entry in conditions:
-        cond = entry.get("condition", {})
-        code_val = cond.get("code")
-        if isinstance(code_val, str):
-            cond_display = code_val
-        else:
-            cond_display = _get_display_name(cond) or cond.get("resourceType", "Unknown condition")
-
-        onset = cond.get("onsetDateTime", "")
-        if onset:
-            onset = onset[:10]
-
-        cond_line = f"  - {cond_display}"
-        if onset:
-            cond_line += f" (onset: {onset})"
-        lines.append(cond_line)
-
-        # Treating medications — markdown table (same as standard)
-        treating_meds = entry.get("treating_medications", [])
-        if treating_meds:
-            med_rows: list[list[str]] = []
-            for med in treating_meds:
-                mcc = med.get("medicationCodeableConcept")
-                if isinstance(mcc, str):
-                    med_display = mcc
-                else:
-                    med_display = _get_display_name(med, "medicationCodeableConcept") or "Unknown medication"
-                med_status = med.get("status", "unknown")
-                recency = med.get("_recency", "")
-                med_rows.append([med_display, med_status, recency])
-            table = _format_as_table(["Medication", "Status", "Recency"], med_rows)
-            for table_line in table.split("\n"):
-                lines.append(f"    {table_line}")
-
-    return "\n".join(lines)
-
-
-def _build_patient_summary_lightning(
-    compiled_summary: dict[str, Any],
-    patient_profile: str | None = None,
-) -> str:
-    """Build a slim patient summary for Lightning-tier prompts.
-
-    Includes only: patient orientation, conditions (name + onset), treating
-    medications (table), allergies (table), immunizations (table), and
-    observations (vital signs + labs tables).
-
-    Skips: Tier 2 encounters, care plans, procedures, recently resolved
-    conditions, unlinked medications, and FHIR IDs. Saves ~800-1200 tokens
-    compared to the full summary.
-
-    Args:
-        compiled_summary: Dict from compile_patient_summary().
-        patient_profile: Optional non-clinical patient profile narrative.
-
-    Returns:
-        Formatted patient summary string.
-    """
-    patient_orientation = compiled_summary.get("patient_orientation", "Unknown patient")
-    compilation_date = compiled_summary.get("compilation_date", "unknown")
-
-    summary_parts: list[str] = [
-        f"## Patient Record (compiled {compilation_date})\n",
-        f"**Patient:** {patient_orientation}\n",
-    ]
-
-    if patient_profile:
-        summary_parts.append(f"**Profile:** {patient_profile}\n")
-
-    # Tier 1: Active conditions (names + onset + meds only)
-    tier1_conditions = compiled_summary.get("tier1_active_conditions", [])
-    summary_parts.append("### Active Conditions & Treatments")
-    summary_parts.append(_format_tier1_conditions_lightning(tier1_conditions))
-
-    # Tier 1: Allergies — table
-    tier1_allergies = compiled_summary.get("tier1_allergies", [])
-    allergy_lines = _format_tier1_section(
-        "Allergies", tier1_allergies,
-        headers=["Allergen", "Criticality", "Category"],
-        row_fn=_allergy_row,
-    )
-    if allergy_lines:
-        summary_parts.append(allergy_lines)
-
-    # Tier 1: Immunizations — table
-    tier1_immunizations = compiled_summary.get("tier1_immunizations", [])
-    if tier1_immunizations:
-        imm_lines = _format_tier1_section(
-            "Immunizations", tier1_immunizations,
-            headers=["Vaccine", "Date"],
-            row_fn=_immunization_row,
-        )
-        if imm_lines:
-            summary_parts.append(imm_lines)
-
-    # Tier 3: Latest observations (vital signs + labs)
     tier3 = compiled_summary.get("tier3_latest_observations", {})
     summary_parts.append("\n### Latest Observations")
     summary_parts.append(_format_tier3_observations(tier3))
@@ -883,7 +778,7 @@ def build_system_prompt_lightning(
         "narrative like 'Searching the full patient record for [value]...'"
     )
 
-    summary_section = _build_patient_summary_lightning(compiled_summary, patient_profile)
+    summary_section = _build_patient_summary_section(compiled_summary, patient_profile, tier=TIER_LIGHTNING)
 
     safety_section = _build_safety_section_lightning(compiled_summary)
 
