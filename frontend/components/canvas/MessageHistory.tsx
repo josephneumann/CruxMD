@@ -28,10 +28,9 @@ export function MessageHistory({
   const markSrc = resolvedTheme === "dark" ? "/brand/logos/mark-reversed.svg" : "/brand/logos/mark-primary.svg";
 
   const containerRef = useRef<HTMLDivElement>(null);
-  const userScrolledUpRef = useRef(false);
   const prevMessageCountRef = useRef(messages.length);
 
-  const scrollToBottom = useCallback((behavior: ScrollBehavior = "smooth") => {
+  const scrollToBottom = useCallback((behavior: ScrollBehavior = "instant") => {
     requestAnimationFrame(() => {
       const el = containerRef.current;
       if (el) {
@@ -40,36 +39,20 @@ export function MessageHistory({
     });
   }, []);
 
-  // Track user scroll intent — stop auto-scrolling if user scrolls up
-  useEffect(() => {
-    const el = containerRef.current;
-    if (!el) return;
-    const onScroll = () => {
-      const distanceFromBottom = el.scrollHeight - el.scrollTop - el.clientHeight;
-      userScrolledUpRef.current = distanceFromBottom > 100;
-    };
-    el.addEventListener("scroll", onScroll, { passive: true });
-    return () => el.removeEventListener("scroll", onScroll);
-  }, []);
+  // Stable reference for AgentMessage onContentGrow — prevents insight cards
+  // from re-staggering on every parent re-render (e.g. keystroke in ChatInput).
+  const handleContentGrow = useCallback(() => scrollToBottom("instant"), [scrollToBottom]);
 
   // Auto-scroll on new messages or streaming updates
   useEffect(() => {
     const messageCountChanged = messages.length !== prevMessageCountRef.current;
     prevMessageCountRef.current = messages.length;
-
-    if (messageCountChanged) {
-      // New message added — always scroll, reset scroll intent
-      userScrolledUpRef.current = false;
-      scrollToBottom("smooth");
-    } else if (!userScrolledUpRef.current) {
-      // Streaming content update — scroll instantly to keep up
-      scrollToBottom("instant");
-    }
+    scrollToBottom(messageCountChanged ? "smooth" : "instant");
   }, [messages, isLoading, scrollToBottom]);
 
   return (
     <div ref={containerRef} className="flex-1 overflow-y-auto">
-      <div className="max-w-3xl mx-auto px-4 pt-8 pb-36">
+      <div className="max-w-3xl mx-auto px-4 pt-8 pb-4">
         {messages.map((message, index) =>
           message.role === "user" ? (
             <UserMessage key={message.id} message={message} />
@@ -78,7 +61,7 @@ export function MessageHistory({
               key={message.id}
               message={message}
               onFollowUpSelect={onFollowUpSelect}
-              onContentGrow={() => scrollToBottom("instant")}
+              onContentGrow={handleContentGrow}
               onRetry={() => {
                 // Find the preceding user message and resend it
                 for (let i = index - 1; i >= 0; i--) {
