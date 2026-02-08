@@ -41,8 +41,6 @@ export type ModelId = (typeof MODEL_OPTIONS)[number]["id"];
 export const DEFAULT_MODEL: ModelId = "gpt-5-mini";
 
 /** Request body for POST /api/chat */
-export type ReasoningEffort = "low" | "medium" | "high";
-
 export interface ChatRequest {
   patient_id: string;
   message: string;
@@ -50,7 +48,7 @@ export interface ChatRequest {
   session_id?: string;
   conversation_history?: ChatMessage[];
   model?: string;
-  reasoning_effort?: ReasoningEffort;
+  reasoning_boost?: boolean;
 }
 
 /** Response wrapper from POST /api/chat */

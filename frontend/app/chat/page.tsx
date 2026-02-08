@@ -14,13 +14,13 @@ import { Sidebar } from "@/components/Sidebar";
 import { AutoResizeTextarea } from "@/components/chat/AutoResizeTextarea";
 import { useSession } from "@/lib/auth-client";
 import { MODEL_OPTIONS, DEFAULT_MODEL } from "@/lib/types";
-import type { ModelId, ReasoningEffort } from "@/lib/types";
+import type { ModelId } from "@/lib/types";
 
 export default function ChatPage() {
   const router = useRouter();
   const [inputValue, setInputValue] = useState("");
   const [model, setModel] = useState<ModelId>(DEFAULT_MODEL);
-  const [reasoningEffort, setReasoningEffort] = useState<ReasoningEffort>("medium");
+  const [reasoningBoost, setReasoningBoost] = useState(false);
   const [showModelMenu, setShowModelMenu] = useState(false);
   const menuRef = useRef<HTMLDivElement>(null);
   const { data: session } = useSession();
@@ -111,9 +111,9 @@ export default function ChatPage() {
                   <TooltipTrigger asChild>
                     <button
                       className="p-2 rounded-lg text-muted-foreground hover:text-foreground hover:bg-muted transition-colors cursor-pointer"
-                      onClick={() => setReasoningEffort(reasoningEffort === "high" ? "medium" : "high")}
+                      onClick={() => setReasoningBoost(!reasoningBoost)}
                     >
-                      <Clock className={`h-5 w-5 ${reasoningEffort === "high" ? "text-primary" : ""}`} />
+                      <Clock className={`h-5 w-5 ${reasoningBoost ? "text-primary" : ""}`} />
                     </button>
                   </TooltipTrigger>
                   <TooltipContent side="top">Extended thinking</TooltipContent>

@@ -1212,13 +1212,18 @@ class AgentService:
 
         return messages
 
+    @staticmethod
+    def _boost_effort(effort: str) -> str:
+        """Bump reasoning effort up one level: low -> medium -> high."""
+        return {"low": "medium", "medium": "high"}.get(effort, effort)
+
     async def generate_response(
         self,
         message: str,
         system_prompt: str,
         patient_id: str,
         history: list[dict[str, str]] | None = None,
-        reasoning_effort: Literal["low", "medium", "high"] | None = None,
+        reasoning_boost: bool = False,
         graph: KnowledgeGraph | None = None,
         db: AsyncSession | None = None,
         query_profile: QueryProfile | None = None,
@@ -1230,7 +1235,7 @@ class AgentService:
             system_prompt: Pre-built system prompt string from compiled summary.
             patient_id: Patient UUID string for tool execution.
             history: Optional list of previous messages in the conversation.
-            reasoning_effort: Override default reasoning effort for this call.
+            reasoning_boost: If True, bump effort one level above the tier default.
             graph: KnowledgeGraph instance for tool execution.
             db: AsyncSession for tool execution.
             query_profile: Optional query profile from classifier. Controls
@@ -1248,8 +1253,9 @@ class AgentService:
         t0 = time.perf_counter()
         input_messages = self._build_input_messages(system_prompt, message, history)
 
-        # Resolution: explicit param > query_profile > instance default
-        effective_effort = reasoning_effort or (query_profile.reasoning_effort if query_profile else None) or self._reasoning_effort
+        # Resolution: tier default, optionally boosted one level
+        base_effort = (query_profile.reasoning_effort if query_profile else None) or self._reasoning_effort
+        effective_effort = self._boost_effort(base_effort) if reasoning_boost else base_effort
         effective_model = (query_profile.model if query_profile else None) or self._model
         effective_max_tokens = (query_profile.max_output_tokens if query_profile else None) or self._max_output_tokens
         use_reasoning = query_profile.reasoning if query_profile else True
@@ -1338,7 +1344,7 @@ class AgentService:
         system_prompt: str,
         patient_id: str,
         history: list[dict[str, str]] | None = None,
-        reasoning_effort: Literal["low", "medium", "high"] | None = None,
+        reasoning_boost: bool = False,
         graph: KnowledgeGraph | None = None,
         db: AsyncSession | None = None,
         query_profile: QueryProfile | None = None,
@@ -1356,7 +1362,7 @@ class AgentService:
             system_prompt: Pre-built system prompt string from compiled summary.
             patient_id: Patient UUID string for tool execution.
             history: Optional conversation history.
-            reasoning_effort: Override default reasoning effort for this call.
+            reasoning_boost: If True, bump effort one level above the tier default.
             graph: KnowledgeGraph instance for tool execution.
             db: AsyncSession for tool execution.
             query_profile: Optional query profile from classifier. Controls
@@ -1371,8 +1377,9 @@ class AgentService:
         t0 = time.perf_counter()
         input_messages = self._build_input_messages(system_prompt, message, history)
 
-        # Resolution: explicit param > query_profile > instance default
-        effective_effort = reasoning_effort or (query_profile.reasoning_effort if query_profile else None) or self._reasoning_effort
+        # Resolution: tier default, optionally boosted one level
+        base_effort = (query_profile.reasoning_effort if query_profile else None) or self._reasoning_effort
+        effective_effort = self._boost_effort(base_effort) if reasoning_boost else base_effort
         effective_model = (query_profile.model if query_profile else None) or self._model
         effective_max_tokens = (query_profile.max_output_tokens if query_profile else None) or self._max_output_tokens
         use_reasoning = query_profile.reasoning if query_profile else True

@@ -214,9 +214,11 @@ Called only when Layer 1 returns `None`. Uses gpt-4o-mini with structured output
 
 | Profile | Model | Reasoning | Tools | Max Tokens | Prompt Mode | Response Schema |
 |---------|-------|-----------|-------|------------|-------------|----------------|
-| `LIGHTNING` | gpt-4o-mini | Off | Off | 2048 | lightning | LightningResponse |
-| `QUICK` | gpt-5-mini | On (low) | On | 4096 | quick | AgentResponse |
-| `DEEP` | gpt-5-mini | On (medium) | On | 16384 | deep | AgentResponse |
+| `LIGHTNING` | gpt-4o-mini (hardcoded) | Off | Off | 2048 | lightning | LightningResponse |
+| `QUICK` | User-selected (default gpt-5-mini) | On (low; medium with boost) | On | 4096 | quick | AgentResponse |
+| `DEEP` | User-selected (default gpt-5-mini) | On (medium; high with boost) | On | 16384 | deep | AgentResponse |
+
+**Reasoning Boost:** The frontend "Extended thinking" toggle sends `reasoning_boost: true`. The backend bumps the tier's baseline effort up one level (low->medium, medium->high). Lightning is unaffected (reasoning is always off).
 
 ### Tier Definitions
 
@@ -232,7 +234,7 @@ Called only when Layer 1 returns `None`. Uses gpt-4o-mini with structured output
 @dataclass(frozen=True, slots=True)
 class QueryProfile:
     tier: QueryTier           # LIGHTNING | QUICK | DEEP
-    model: str                # e.g. "gpt-4o-mini" or "gpt-5-mini"
+    model: str | None         # "gpt-4o-mini" for Lightning, None for Quick/Deep (defers to user selection)
     reasoning: bool           # whether to enable reasoning
     reasoning_effort: str     # "low" | "medium" | "high"
     include_tools: bool       # whether tools are available

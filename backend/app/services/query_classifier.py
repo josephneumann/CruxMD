@@ -39,7 +39,7 @@ class QueryTier(str, Enum):
 @dataclass(frozen=True, slots=True)
 class QueryProfile:
     tier: QueryTier
-    model: str
+    model: str | None
     reasoning: bool
     reasoning_effort: Literal["low", "medium", "high"]
     include_tools: bool
@@ -61,7 +61,7 @@ LIGHTNING_PROFILE = QueryProfile(
 
 QUICK_PROFILE = QueryProfile(
     tier=QueryTier.QUICK,
-    model="gpt-5-mini",
+    model=None,
     reasoning=True,
     reasoning_effort="low",
     include_tools=True,
@@ -72,7 +72,7 @@ QUICK_PROFILE = QueryProfile(
 
 DEEP_PROFILE = QueryProfile(
     tier=QueryTier.DEEP,
-    model="gpt-5-mini",
+    model=None,
     reasoning=True,
     reasoning_effort="medium",
     include_tools=True,
