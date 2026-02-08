@@ -26,6 +26,7 @@ from app.services.agent import (
     _build_patient_summary_lightning,
     _build_patient_summary_section,
     _build_safety_section,
+    _build_safety_section_lightning,
     _format_as_table,
     _format_tier1_conditions,
     _format_tier1_conditions_lightning,
@@ -2065,6 +2066,31 @@ class TestBuildSafetySection:
         assert "ALLERGY: Penicillin" in result
 
 
+class TestBuildSafetySectionLightning:
+    """Tests for _build_safety_section_lightning minimal helper."""
+
+    def test_includes_allergy_data(self, full_compiled_summary: dict):
+        result = _build_safety_section_lightning(full_compiled_summary)
+        assert "Safety Constraints" in result
+        assert "ALLERGY: Penicillin" in result
+
+    def test_includes_fabrication_guard(self, minimal_compiled_summary: dict):
+        result = _build_safety_section_lightning(minimal_compiled_summary)
+        assert "Never fabricate clinical data" in result
+
+    def test_excludes_boilerplate_rules(self, full_compiled_summary: dict):
+        result = _build_safety_section_lightning(full_compiled_summary)
+        assert "drug allergies" not in result
+        assert "critical lab values" not in result
+        assert "recommend starting, stopping, or changing medications" not in result
+        assert "state the uncertainty rather than guessing" not in result
+
+    def test_no_allergies_still_has_fabrication_guard(self, minimal_compiled_summary: dict):
+        result = _build_safety_section_lightning(minimal_compiled_summary)
+        assert "Never fabricate clinical data" in result
+        assert "Safety Constraints" in result
+
+
 # =============================================================================
 # build_system_prompt_fast Tests
 # =============================================================================
@@ -2243,11 +2269,20 @@ class TestBuildSystemPromptLightning:
         assert "Type 2 diabetes mellitus" in prompt
         assert "Metformin 500 MG" in prompt
 
-    def test_includes_safety(self, full_compiled_summary: dict):
-        """Lightning prompt includes safety constraints."""
+    def test_includes_minimal_safety(self, full_compiled_summary: dict):
+        """Lightning prompt includes allergy alerts and fabrication guard only."""
         prompt = build_system_prompt_lightning(full_compiled_summary)
         assert "Safety Constraints" in prompt
         assert "ALLERGY: Penicillin" in prompt
+        assert "Never fabricate clinical data" in prompt
+
+    def test_excludes_full_safety_rules(self, full_compiled_summary: dict):
+        """Lightning prompt does NOT include the 4 boilerplate safety rules."""
+        prompt = build_system_prompt_lightning(full_compiled_summary)
+        assert "drug allergies" not in prompt
+        assert "critical lab values" not in prompt
+        assert "recommend starting, stopping, or changing medications" not in prompt
+        assert "state the uncertainty rather than guessing" not in prompt
 
     def test_excludes_tool_descriptions(self, full_compiled_summary: dict):
         """Lightning prompt does NOT include tool descriptions."""
