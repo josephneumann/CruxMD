@@ -4,6 +4,7 @@ import { useTheme } from "next-themes";
 import { Card, CardHeader, CardTitle, CardContent } from "@/components/ui/card";
 import { Badge } from "@/components/ui/badge";
 import { CodeBlock } from "@/components/design-system/CodeBlock";
+import { HeartPulse, FlaskConical, Droplet } from "lucide-react";
 import {
   LineChart,
   Line,
@@ -52,6 +53,17 @@ function useChartColors() {
 }
 
 // -- Data -----------------------------------------------------------------
+
+// Basic trend: simple line chart, no reference ranges
+const basicTrendData = [
+  { date: "Jul", value: 198 },
+  { date: "Aug", value: 205 },
+  { date: "Sep", value: 195 },
+  { date: "Oct", value: 188 },
+  { date: "Nov", value: 192 },
+  { date: "Dec", value: 184 },
+  { date: "Jan", value: 178 },
+];
 
 // General pattern: reference range bands
 const rangeBandData = [
@@ -117,15 +129,18 @@ const egfrData = [
   { date: "Jan 25", value: 38 },
 ];
 
-// Hypertension: BP with medication events
+// Hypertension: BP with multi-drug therapy intensification
 const bpData = [
-  { date: "Oct 15", systolic: 142, diastolic: 92 },
-  { date: "Nov 1", systolic: 138, diastolic: 88, event: "Started Lisinopril 10mg" },
-  { date: "Nov 15", systolic: 134, diastolic: 86 },
-  { date: "Dec 1", systolic: 136, diastolic: 88 },
-  { date: "Dec 15", systolic: 130, diastolic: 84, event: "Increased to 20mg" },
-  { date: "Jan 1", systolic: 128, diastolic: 82 },
-  { date: "Jan 15", systolic: 124, diastolic: 80 },
+  { date: "Sep 1", systolic: 152, diastolic: 96 },
+  { date: "Sep 15", systolic: 148, diastolic: 94, event: "Started Lisinopril 10mg" },
+  { date: "Oct 1", systolic: 144, diastolic: 90 },
+  { date: "Oct 15", systolic: 142, diastolic: 88, event: "↑ Lisinopril 20mg" },
+  { date: "Nov 1", systolic: 138, diastolic: 86 },
+  { date: "Nov 15", systolic: 136, diastolic: 84, event: "+ Amlodipine 5mg" },
+  { date: "Dec 1", systolic: 132, diastolic: 82 },
+  { date: "Dec 15", systolic: 130, diastolic: 80, event: "↑ Amlodipine 10mg" },
+  { date: "Jan 1", systolic: 126, diastolic: 78, event: "+ HCTZ 12.5mg" },
+  { date: "Jan 15", systolic: 122, diastolic: 76 },
 ];
 
 // -- Shared components ----------------------------------------------------
@@ -183,6 +198,47 @@ function MedicationTimeline({ segments }: { segments: MedSegment[] }) {
   );
 }
 
+interface MedRow { drug: string; segments: MedSegment[] }
+
+function MultiMedTimeline({ rows }: { rows: MedRow[] }) {
+  const c = useChartColors();
+  return (
+    <div className="mt-3 ml-4 mr-8">
+      <p className="text-[10px] text-muted-foreground uppercase tracking-wider mb-1.5 font-medium">
+        Medications
+      </p>
+      <div className="space-y-px">
+        {rows.map((row, ri) => (
+          <div key={ri} className="flex items-center gap-1">
+            <span className="text-[10px] text-muted-foreground w-16 shrink-0 truncate text-right">
+              {row.drug}
+            </span>
+            <div className="flex gap-px flex-1">
+              {row.segments.map((seg, si) => (
+                <div
+                  key={si}
+                  className="relative h-5 rounded-sm text-[10px] flex items-center px-1.5 truncate overflow-hidden"
+                  style={{ flex: seg.flex }}
+                >
+                  {seg.active && (
+                    <div
+                      className="absolute inset-0 rounded-sm"
+                      style={{ backgroundColor: c.chart1, opacity: 0.2 }}
+                    />
+                  )}
+                  {seg.label && (
+                    <span className="relative text-[10px] font-medium">{seg.label}</span>
+                  )}
+                </div>
+              ))}
+            </div>
+          </div>
+        ))}
+      </div>
+    </div>
+  );
+}
+
 // -- Shared chart props ---------------------------------------------------
 
 const CHART_MARGIN = { top: 10, right: 30, left: -10, bottom: 0 };
@@ -207,6 +263,63 @@ export default function ChartPage() {
       {/* ================================================================ */}
       {/*  GENERAL PATTERNS                                                */}
       {/* ================================================================ */}
+
+      {/* Basic Lab Trend */}
+      <div className="space-y-6">
+        <h2 className="text-2xl font-medium">Basic Lab Trend</h2>
+        <p className="text-muted-foreground max-w-2xl">
+          The default chart style for any lab value or vital sign. Clean line, horizontal
+          gridlines, and an area fill. No reference ranges — use this when ranges aren&apos;t
+          clinically meaningful or when showing a general trend.
+        </p>
+        <Card>
+          <CardHeader className="flex flex-row items-center justify-between">
+            <div>
+              <CardTitle>Total Cholesterol</CardTitle>
+              <p className="text-sm text-muted-foreground mt-1">
+                6-month trend
+              </p>
+            </div>
+            <div className="text-right">
+              <p className="text-2xl font-semibold">178 mg/dL</p>
+              <Badge variant="positive" size="sm">Improving</Badge>
+            </div>
+          </CardHeader>
+          <CardContent>
+            <div className="h-56">
+              <ResponsiveContainer width="100%" height="100%">
+                <AreaChart data={basicTrendData} margin={CHART_MARGIN}>
+                  <defs>
+                    <linearGradient id="basicGrad" x1="0" y1="0" x2="0" y2="1">
+                      <stop offset="5%" stopColor={c.chart1} stopOpacity={c.gradientFrom} />
+                      <stop offset="95%" stopColor={c.chart1} stopOpacity={c.gradientTo} />
+                    </linearGradient>
+                  </defs>
+                  <CartesianGrid strokeDasharray="6 4" stroke={c.grid} vertical={false} />
+                  <XAxis dataKey="date" axisLine={false} tickLine={false} tick={{ fill: c.tick, fontSize: 12 }} />
+                  <YAxis
+                    domain={[150, 220]}
+                    ticks={[160, 180, 200]}
+                    axisLine={false}
+                    tickLine={false}
+                    tick={{ fill: c.tick, fontSize: 12 }}
+                  />
+                  <Tooltip />
+                  <Area
+                    type="monotone"
+                    dataKey="value"
+                    stroke={c.chart1}
+                    strokeWidth={2}
+                    fill="url(#basicGrad)"
+                    dot={{ fill: c.chart1, strokeWidth: 0, r: 4 }}
+                    activeDot={{ fill: c.chart1, strokeWidth: 2, stroke: "#fff", r: 6 }}
+                  />
+                </AreaChart>
+              </ResponsiveContainer>
+            </div>
+          </CardContent>
+        </Card>
+      </div>
 
       {/* Reference Range Bands */}
       <div className="space-y-6">
@@ -312,12 +425,23 @@ export default function ChartPage() {
       {/*  CLINICAL EXAMPLES                                               */}
       {/* ================================================================ */}
 
-      <div className="space-y-2 pt-4">
-        <h2 className="text-3xl font-medium">Clinical Examples</h2>
+      <div className="space-y-4 pt-4">
+        <h2 className="text-3xl font-medium">Disease-Specific Charts</h2>
         <p className="text-muted-foreground max-w-2xl">
-          Disease-specific implementations applying evidence-based visualization patterns
-          — reference range bands, KDIGO staging, and medication timelines.
+          Most lab values and vitals use the <strong className="text-foreground">basic trend</strong> or{" "}
+          <strong className="text-foreground">reference range band</strong> patterns above. For conditions
+          where published clinical guidelines define specific staging, targets, or visualization
+          best practices, we implement disease-specific charts with features like KDIGO staging
+          bands, medication timelines, and clinically meaningful thresholds.
         </p>
+        <div className="rounded-lg border bg-muted/50 p-4 max-w-2xl">
+          <p className="text-sm text-muted-foreground">
+            <strong className="text-foreground">When to use disease-specific charts:</strong> Only when a
+            condition has evidence-based visualization patterns — e.g. KDIGO staging for CKD,
+            ADA targets for diabetes, ACC/AHA thresholds for hypertension. All other values
+            default to basic trend or reference range bands.
+          </p>
+        </div>
       </div>
 
       {/* Diabetes: HbA1c */}
@@ -326,7 +450,10 @@ export default function ChartPage() {
         <Card>
           <CardHeader className="flex flex-row items-center justify-between">
             <div>
-              <CardTitle>HbA1c Trend</CardTitle>
+              <CardTitle className="flex items-center gap-2">
+                <Droplet className="size-5 text-muted-foreground" />
+                HbA1c Trend
+              </CardTitle>
               <p className="text-sm text-muted-foreground mt-1">12-month glycemic control</p>
             </div>
             <div className="text-right">
@@ -395,7 +522,10 @@ export default function ChartPage() {
         <Card>
           <CardHeader className="flex flex-row items-center justify-between">
             <div>
-              <CardTitle>Kidney Function Trend</CardTitle>
+              <CardTitle className="flex items-center gap-2">
+                <FlaskConical className="size-5 text-muted-foreground" />
+                Kidney Function Trend
+              </CardTitle>
               <p className="text-sm text-muted-foreground mt-1">2-year eGFR with KDIGO staging</p>
             </div>
             <div className="text-right">
@@ -450,12 +580,15 @@ export default function ChartPage() {
         <Card>
           <CardHeader className="flex flex-row items-center justify-between">
             <div>
-              <CardTitle>Blood Pressure Control</CardTitle>
-              <p className="text-sm text-muted-foreground mt-1">Treatment response over 3 months</p>
+              <CardTitle className="flex items-center gap-2">
+                <HeartPulse className="size-5 text-muted-foreground" />
+                Blood Pressure Control
+              </CardTitle>
+              <p className="text-sm text-muted-foreground mt-1">Medication therapy intensification over 5 months</p>
             </div>
             <div className="text-right">
-              <p className="text-2xl font-semibold">124/80</p>
-              <Badge variant="positive" size="sm">Controlled</Badge>
+              <p className="text-2xl font-semibold">122/76</p>
+              <Badge variant="positive" size="sm">At Goal</Badge>
             </div>
           </CardHeader>
           <CardContent>
@@ -519,11 +652,31 @@ export default function ChartPage() {
                 Diastolic
               </span>
             </div>
-            <MedicationTimeline
-              segments={[
-                { label: "No medication", flex: 1, active: false },
-                { label: "Lisinopril 10mg", flex: 3, active: true },
-                { label: "Lisinopril 20mg", flex: 2, active: true },
+            <MultiMedTimeline
+              rows={[
+                {
+                  drug: "Lisinopril",
+                  segments: [
+                    { label: "", flex: 1, active: false },
+                    { label: "10mg", flex: 2, active: true },
+                    { label: "20mg", flex: 6, active: true },
+                  ],
+                },
+                {
+                  drug: "Amlodipine",
+                  segments: [
+                    { label: "", flex: 4, active: false },
+                    { label: "5mg", flex: 2, active: true },
+                    { label: "10mg", flex: 3, active: true },
+                  ],
+                },
+                {
+                  drug: "HCTZ",
+                  segments: [
+                    { label: "", flex: 8, active: false },
+                    { label: "12.5mg", flex: 1, active: true },
+                  ],
+                },
               ]}
             />
           </CardContent>
