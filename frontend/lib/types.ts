@@ -165,10 +165,8 @@ export interface StreamErrorEvent {
 
 /** Known agent tool names (mirrors backend TOOL_SCHEMAS) */
 export const TOOL_NAMES = {
-  SEARCH_PATIENT_DATA: "search_patient_data",
-  GET_ENCOUNTER_DETAILS: "get_encounter_details",
-  GET_LAB_HISTORY: "get_lab_history",
-  FIND_RELATED_RESOURCES: "find_related_resources",
+  QUERY_PATIENT_DATA: "query_patient_data",
+  EXPLORE_CONNECTIONS: "explore_connections",
   GET_PATIENT_TIMELINE: "get_patient_timeline",
 } as const;
 

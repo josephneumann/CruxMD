@@ -1,5 +1,5 @@
 import type { LucideIcon } from "lucide-react";
-import { FlaskConical, Search, CalendarClock, Network, Stethoscope } from "lucide-react";
+import { Search, CalendarClock, Network } from "lucide-react";
 import { TOOL_NAMES } from "@/lib/types";
 
 interface ToolConfig {
@@ -10,12 +10,37 @@ interface ToolConfig {
   doneLabel: string;
 }
 
+/** Translate FHIR resource types to human-readable terms */
+const RESOURCE_TYPE_LABELS: Record<string, string> = {
+  Condition: "conditions",
+  MedicationRequest: "medications",
+  MedicationStatement: "medications",
+  Observation: "lab results",
+  Procedure: "procedures",
+  Encounter: "visits",
+  AllergyIntolerance: "allergies",
+  Immunization: "immunizations",
+  CarePlan: "care plans",
+  DiagnosticReport: "reports",
+  DocumentReference: "clinical notes",
+};
+
 const TOOL_CONFIG: Record<string, ToolConfig> = {
-  [TOOL_NAMES.SEARCH_PATIENT_DATA]: { icon: Search, activeLabel: "Searching", doneLabel: "Searched patient data" },
-  [TOOL_NAMES.GET_ENCOUNTER_DETAILS]: { icon: Stethoscope, activeLabel: "Retrieving encounter", doneLabel: "Retrieved encounter details" },
-  [TOOL_NAMES.GET_LAB_HISTORY]: { icon: FlaskConical, activeLabel: "Looking up labs", doneLabel: "Looked up lab history" },
-  [TOOL_NAMES.FIND_RELATED_RESOURCES]: { icon: Network, activeLabel: "Finding related resources", doneLabel: "Found related resources" },
-  [TOOL_NAMES.GET_PATIENT_TIMELINE]: { icon: CalendarClock, activeLabel: "Getting timeline", doneLabel: "Retrieved patient timeline" },
+  [TOOL_NAMES.QUERY_PATIENT_DATA]: {
+    icon: Search,
+    activeLabel: "Searching",
+    doneLabel: "Searched",
+  },
+  [TOOL_NAMES.EXPLORE_CONNECTIONS]: {
+    icon: Network,
+    activeLabel: "Exploring connections",
+    doneLabel: "Explored connections",
+  },
+  [TOOL_NAMES.GET_PATIENT_TIMELINE]: {
+    icon: CalendarClock,
+    activeLabel: "Looking at visit history",
+    doneLabel: "Retrieved visit history",
+  },
 };
 
 const DEFAULT_CONFIG: ToolConfig = { icon: Search, activeLabel: "Running tool", doneLabel: "Ran tool" };
@@ -29,14 +54,19 @@ function extractSearchTerm(name: string, argumentsJson: string): string | null {
     const args = JSON.parse(argumentsJson);
 
     switch (name) {
-      case TOOL_NAMES.SEARCH_PATIENT_DATA:
-        return args.query ?? null;
-      case TOOL_NAMES.GET_LAB_HISTORY:
-        return args.lab_name ?? null;
-      case TOOL_NAMES.GET_ENCOUNTER_DETAILS:
-        return args.encounter_fhir_id ?? null;
-      case TOOL_NAMES.FIND_RELATED_RESOURCES:
-        return args.resource_type ?? null;
+      case TOOL_NAMES.QUERY_PATIENT_DATA: {
+        const resourceLabel = args.resource_type
+          ? RESOURCE_TYPE_LABELS[args.resource_type] ?? null
+          : null;
+        const searchName = args.name ?? null;
+        if (resourceLabel && searchName) return `${resourceLabel} — ${searchName}`;
+        if (resourceLabel) return resourceLabel;
+        if (searchName) return searchName;
+        return null;
+      }
+      case TOOL_NAMES.EXPLORE_CONNECTIONS:
+        // fhir_id and resource_type are internals — don't expose
+        return null;
       case TOOL_NAMES.GET_PATIENT_TIMELINE: {
         const parts: string[] = [];
         if (args.start_date) parts.push(args.start_date);
