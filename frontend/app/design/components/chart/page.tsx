@@ -275,15 +275,15 @@ export default function ChartPage() {
         <Card>
           <CardHeader className="flex flex-row items-center justify-between">
             <div>
-              <CardTitle>Total Cholesterol</CardTitle>
-              <p className="text-sm text-muted-foreground mt-1">
-                6-month trend
-              </p>
+              <CardTitle className="flex items-center gap-2">
+                Total Cholesterol
+                <Badge variant="positive" size="sm">Improving</Badge>
+              </CardTitle>
+              <p className="text-sm text-muted-foreground mt-1">6-month trend</p>
             </div>
             <div className="text-right">
               <p className="text-2xl font-semibold">178 mg/dL</p>
               <p className="text-xs text-muted-foreground">↓ 10% over 6mo</p>
-              <Badge variant="positive" size="sm">Improving</Badge>
             </div>
           </CardHeader>
           <CardContent>
@@ -333,15 +333,15 @@ export default function ChartPage() {
         <Card>
           <CardHeader className="flex flex-row items-center justify-between">
             <div>
-              <CardTitle>Lab Value Trend</CardTitle>
-              <p className="text-sm text-muted-foreground mt-1">
-                6-month trend with clinical range zones
-              </p>
+              <CardTitle className="flex items-center gap-2">
+                Lab Value Trend
+                <Badge variant="positive" size="sm">Normal</Badge>
+              </CardTitle>
+              <p className="text-sm text-muted-foreground mt-1">6-month trend with clinical range zones</p>
             </div>
             <div className="text-right">
               <p className="text-2xl font-semibold">5.2</p>
               <p className="text-xs text-muted-foreground">↓ 28% over 6mo</p>
-              <Badge variant="positive" size="sm">Normal</Badge>
             </div>
           </CardHeader>
           <CardContent>
@@ -448,13 +448,13 @@ export default function ChartPage() {
               <CardTitle className="flex items-center gap-2">
                 <Droplet className="size-5 text-muted-foreground" />
                 HbA1c Trend
+                <Badge variant="warning" size="sm">Above Target</Badge>
               </CardTitle>
               <p className="text-sm text-muted-foreground mt-1">12-month glycemic control</p>
             </div>
             <div className="text-right">
               <p className="text-2xl font-semibold">7.2%</p>
               <p className="text-xs text-muted-foreground">↓ 21% over 12mo</p>
-              <Badge variant="warning" size="sm">Above Target</Badge>
             </div>
           </CardHeader>
           <CardContent>
@@ -494,11 +494,23 @@ export default function ChartPage() {
                 </LineChart>
               </ResponsiveContainer>
             </div>
-            <MedicationTimeline
-              segments={[
-                { label: "Metformin 500mg", flex: 1, active: true },
-                { label: "+ Jardiance 25mg", flex: 2, active: true },
-                { label: "↑ Metformin 1000mg", flex: 1, active: true },
+            <MultiMedTimeline
+              rows={[
+                {
+                  drug: "Metformin",
+                  segments: [
+                    { label: "500mg", flex: 1, active: true },
+                    { label: "500mg", flex: 2, active: true },
+                    { label: "1000mg", flex: 1, active: true },
+                  ],
+                },
+                {
+                  drug: "Jardiance",
+                  segments: [
+                    { label: "", flex: 1, active: false },
+                    { label: "25mg", flex: 3, active: true },
+                  ],
+                },
               ]}
             />
           </CardContent>
@@ -514,13 +526,13 @@ export default function ChartPage() {
               <CardTitle className="flex items-center gap-2">
                 <FlaskConical className="size-5 text-muted-foreground" />
                 Kidney Function Trend
+                <Badge variant="warning" size="sm">Stage G3b</Badge>
               </CardTitle>
               <p className="text-sm text-muted-foreground mt-1">2-year eGFR with KDIGO staging</p>
             </div>
             <div className="text-right">
               <p className="text-2xl font-semibold">38 mL/min</p>
               <p className="text-xs text-muted-foreground">↓ 44% over 2yr</p>
-              <Badge variant="warning" size="sm">Stage G3b</Badge>
             </div>
           </CardHeader>
           <CardContent>
@@ -573,13 +585,13 @@ export default function ChartPage() {
               <CardTitle className="flex items-center gap-2">
                 <HeartPulse className="size-5 text-muted-foreground" />
                 Blood Pressure Control
+                <Badge variant="positive" size="sm">At Goal</Badge>
               </CardTitle>
               <p className="text-sm text-muted-foreground mt-1">Medication therapy intensification over 5 months</p>
             </div>
             <div className="text-right">
               <p className="text-2xl font-semibold">122/76</p>
               <p className="text-xs text-muted-foreground">↓ 20% over 5mo</p>
-              <Badge variant="positive" size="sm">At Goal</Badge>
             </div>
           </CardHeader>
           <CardContent>
