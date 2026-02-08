@@ -267,9 +267,22 @@ class TestLightningResponse:
         assert len(response.follow_ups) == 1
 
     def test_lightning_response_has_no_extra_fields(self):
-        """LightningResponse only has narrative and follow_ups -- no thinking, insights, etc."""
+        """LightningResponse has narrative, follow_ups, and needs_deeper_search -- no thinking, insights, etc."""
         fields = set(LightningResponse.model_fields.keys())
-        assert fields == {"narrative", "follow_ups"}
+        assert fields == {"narrative", "follow_ups", "needs_deeper_search"}
+
+    def test_needs_deeper_search_defaults_false(self):
+        """needs_deeper_search defaults to False."""
+        response = LightningResponse(narrative="Patient is on metformin.")
+        assert response.needs_deeper_search is False
+
+    def test_needs_deeper_search_true(self):
+        """needs_deeper_search can be set to True."""
+        response = LightningResponse(
+            narrative="Searching the full patient record for A1c...",
+            needs_deeper_search=True,
+        )
+        assert response.needs_deeper_search is True
 
 
 class TestAgentResponse:
@@ -285,6 +298,17 @@ class TestAgentResponse:
         assert response.tables is None
         assert response.actions is None
         assert response.follow_ups is None
+        assert response.needs_deeper_search is False
+
+    def test_needs_deeper_search_defaults_false(self):
+        """AgentResponse.needs_deeper_search defaults to False."""
+        response = AgentResponse(narrative="Test.")
+        assert response.needs_deeper_search is False
+
+    def test_needs_deeper_search_propagated(self):
+        """AgentResponse.needs_deeper_search can be set to True."""
+        response = AgentResponse(narrative="Searching...", needs_deeper_search=True)
+        assert response.needs_deeper_search is True
 
     def test_full_response(self):
         """AgentResponse with all optional fields."""

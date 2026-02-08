@@ -277,6 +277,10 @@ class TestLayer1Ambiguous:
         "ejection fraction",
         "ferritin level",
         "thyroid panel",
+        "creatinine",
+        "weight",
+        "a1c",
+        "BMI?",
         # Retrieval verb present but no chart entity (weight, glucose not in set)
         "Graph the weight history",
         "Plot the glucose readings",
@@ -589,7 +593,7 @@ class TestQueryProfileValues:
         assert QUICK_PROFILE.reasoning_effort == "low"
         assert QUICK_PROFILE.include_tools is True
         assert QUICK_PROFILE.max_output_tokens == 4096
-        assert QUICK_PROFILE.system_prompt_mode == "fast"
+        assert QUICK_PROFILE.system_prompt_mode == "quick"
         assert QUICK_PROFILE.response_schema == "full"
 
     def test_deep_profile_values(self):
@@ -599,7 +603,7 @@ class TestQueryProfileValues:
         assert DEEP_PROFILE.reasoning_effort == "medium"
         assert DEEP_PROFILE.include_tools is True
         assert DEEP_PROFILE.max_output_tokens == 16384
-        assert DEEP_PROFILE.system_prompt_mode == "standard"
+        assert DEEP_PROFILE.system_prompt_mode == "deep"
         assert DEEP_PROFILE.response_schema == "full"
 
     def test_profiles_are_frozen(self):

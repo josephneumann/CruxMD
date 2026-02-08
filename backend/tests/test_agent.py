@@ -18,11 +18,11 @@ from app.services.agent import (
     DEFAULT_REASONING_EFFORT,
     DEFAULT_MAX_OUTPUT_TOKENS,
     TIER_DEEP,
-    TIER_FAST,
+    TIER_QUICK,
     TIER_LIGHTNING,
-    build_system_prompt_fast,
+    build_system_prompt_quick,
     build_system_prompt_lightning,
-    build_system_prompt_v2,
+    build_system_prompt_deep,
     _build_patient_summary_lightning,
     _build_patient_summary_section,
     _build_safety_section,
@@ -1161,7 +1161,7 @@ class TestPruneFhirResourceGeneral:
 
 
 # =============================================================================
-# build_system_prompt_v2 Tests
+# build_system_prompt_deep Tests
 # =============================================================================
 
 
@@ -1381,29 +1381,29 @@ def full_compiled_summary() -> dict:
     }
 
 
-class TestBuildSystemPromptV2:
-    """Tests for build_system_prompt_v2 function."""
+class TestBuildSystemPromptDeep:
+    """Tests for build_system_prompt_deep function."""
 
     def test_minimal_summary_includes_role(self, minimal_compiled_summary: dict):
         """Test that v2 prompt includes role/PCP persona."""
-        prompt = build_system_prompt_v2(minimal_compiled_summary)
+        prompt = build_system_prompt_deep(minimal_compiled_summary)
         assert "clinical reasoning assistant" in prompt
         assert "primary care physician" in prompt
 
     def test_minimal_summary_includes_patient_orientation(self, minimal_compiled_summary: dict):
         """Test that v2 prompt includes patient orientation."""
-        prompt = build_system_prompt_v2(minimal_compiled_summary)
+        prompt = build_system_prompt_deep(minimal_compiled_summary)
         assert "Jane Doe" in prompt
         assert "age 71" in prompt
 
     def test_minimal_summary_includes_compilation_date(self, minimal_compiled_summary: dict):
         """Test that v2 prompt includes compilation date."""
-        prompt = build_system_prompt_v2(minimal_compiled_summary)
+        prompt = build_system_prompt_deep(minimal_compiled_summary)
         assert "compiled 2026-02-05" in prompt
 
     def test_minimal_summary_includes_reasoning_directives(self, minimal_compiled_summary: dict):
         """Test that v2 prompt includes reasoning directives."""
-        prompt = build_system_prompt_v2(minimal_compiled_summary)
+        prompt = build_system_prompt_deep(minimal_compiled_summary)
         assert "Reasoning Directives" in prompt
         assert "Absence reporting" in prompt
         assert "Cross-condition reasoning" in prompt
@@ -1413,14 +1413,14 @@ class TestBuildSystemPromptV2:
 
     def test_minimal_summary_includes_tool_guidance(self, minimal_compiled_summary: dict):
         """Test that v2 prompt includes tool descriptions and usage guidance."""
-        prompt = build_system_prompt_v2(minimal_compiled_summary)
+        prompt = build_system_prompt_deep(minimal_compiled_summary)
         assert "query_patient_data" in prompt
         assert "explore_connections" in prompt
         assert "get_patient_timeline" in prompt
 
     def test_minimal_summary_includes_trend_guidance(self, minimal_compiled_summary: dict):
         """Test that v2 prompt includes explicit _trend limitation guidance."""
-        prompt = build_system_prompt_v2(minimal_compiled_summary)
+        prompt = build_system_prompt_deep(minimal_compiled_summary)
         assert "_trend" in prompt
         assert "ONE previous value" in prompt
         assert "multi-point trend analysis" in prompt.lower()
@@ -1428,28 +1428,28 @@ class TestBuildSystemPromptV2:
 
     def test_minimal_summary_includes_dose_history_guidance(self, minimal_compiled_summary: dict):
         """Test that v2 prompt includes explicit _dose_history guidance."""
-        prompt = build_system_prompt_v2(minimal_compiled_summary)
+        prompt = build_system_prompt_deep(minimal_compiled_summary)
         assert "_dose_history" in prompt
         assert "dose changes" in prompt
         assert "complete" in prompt.lower()
 
     def test_minimal_summary_includes_safety(self, minimal_compiled_summary: dict):
         """Test that v2 prompt includes safety constraints section."""
-        prompt = build_system_prompt_v2(minimal_compiled_summary)
+        prompt = build_system_prompt_deep(minimal_compiled_summary)
         assert "Safety Constraints" in prompt
         assert "drug allergies" in prompt
         assert "Never recommend starting, stopping, or changing medications" in prompt
 
     def test_minimal_summary_includes_response_format(self, minimal_compiled_summary: dict):
         """Test that v2 prompt includes response format guidance."""
-        prompt = build_system_prompt_v2(minimal_compiled_summary)
+        prompt = build_system_prompt_deep(minimal_compiled_summary)
         assert "Response Format" in prompt
         assert "narrative" in prompt
         assert "follow_ups" in prompt
 
     def test_full_summary_includes_conditions(self, full_compiled_summary: dict):
         """Test that v2 prompt includes active conditions."""
-        prompt = build_system_prompt_v2(full_compiled_summary)
+        prompt = build_system_prompt_deep(full_compiled_summary)
         assert "Type 2 diabetes mellitus" in prompt
         assert "Essential hypertension" in prompt
         assert "cond-diabetes" in prompt
@@ -1457,7 +1457,7 @@ class TestBuildSystemPromptV2:
 
     def test_full_summary_includes_treating_medications(self, full_compiled_summary: dict):
         """Test that v2 prompt includes treating medications as table with enrichments."""
-        prompt = build_system_prompt_v2(full_compiled_summary)
+        prompt = build_system_prompt_deep(full_compiled_summary)
         assert "Metformin 500 MG" in prompt
         assert "Lisinopril 10 MG" in prompt
         assert "established" in prompt
@@ -1469,52 +1469,52 @@ class TestBuildSystemPromptV2:
 
     def test_full_summary_includes_dose_history_data(self, full_compiled_summary: dict):
         """Test that v2 prompt includes dose history data when present."""
-        prompt = build_system_prompt_v2(full_compiled_summary)
+        prompt = build_system_prompt_deep(full_compiled_summary)
         assert "250 MG" in prompt
         assert "2015-03-10" in prompt
 
     def test_full_summary_includes_recently_resolved(self, full_compiled_summary: dict):
         """Test that v2 prompt includes recently resolved conditions."""
-        prompt = build_system_prompt_v2(full_compiled_summary)
+        prompt = build_system_prompt_deep(full_compiled_summary)
         assert "Recently Resolved" in prompt
         assert "Acute bronchitis" in prompt
 
     def test_full_summary_includes_unlinked_medications(self, full_compiled_summary: dict):
         """Test that v2 prompt includes unlinked medications."""
-        prompt = build_system_prompt_v2(full_compiled_summary)
+        prompt = build_system_prompt_deep(full_compiled_summary)
         assert "Aspirin 81 MG" in prompt
         assert "not linked to a condition" in prompt
 
     def test_full_summary_includes_allergies(self, full_compiled_summary: dict):
         """Test that v2 prompt includes allergies as table and in safety."""
-        prompt = build_system_prompt_v2(full_compiled_summary)
+        prompt = build_system_prompt_deep(full_compiled_summary)
         assert "Penicillin" in prompt
         assert "high" in prompt
         assert "| Allergen |" in prompt
 
     def test_full_summary_includes_immunizations(self, full_compiled_summary: dict):
         """Test that v2 prompt includes immunizations as table."""
-        prompt = build_system_prompt_v2(full_compiled_summary)
+        prompt = build_system_prompt_deep(full_compiled_summary)
         assert "Influenza vaccine" in prompt
         assert "2025-10-15" in prompt
         assert "| Vaccine |" in prompt
 
     def test_full_summary_includes_care_plans(self, full_compiled_summary: dict):
         """Test that v2 prompt includes care plans (inline and standalone)."""
-        prompt = build_system_prompt_v2(full_compiled_summary)
+        prompt = build_system_prompt_deep(full_compiled_summary)
         assert "Diabetes self management plan" in prompt
         assert "Routine wellness plan" in prompt
 
     def test_full_summary_includes_encounters(self, full_compiled_summary: dict):
         """Test that v2 prompt includes recent encounters."""
-        prompt = build_system_prompt_v2(full_compiled_summary)
+        prompt = build_system_prompt_deep(full_compiled_summary)
         assert "2026-01-15" in prompt
         assert "General examination" in prompt
         assert "good adherence" in prompt
 
     def test_full_summary_includes_observations_with_trend(self, full_compiled_summary: dict):
         """Test that v2 prompt includes observations as table with trend data."""
-        prompt = build_system_prompt_v2(full_compiled_summary)
+        prompt = build_system_prompt_deep(full_compiled_summary)
         assert "Hemoglobin A1c" in prompt
         assert "7.2" in prompt
         assert "rising" in prompt
@@ -1525,31 +1525,31 @@ class TestBuildSystemPromptV2:
 
     def test_full_summary_includes_vital_signs(self, full_compiled_summary: dict):
         """Test that v2 prompt includes vital signs."""
-        prompt = build_system_prompt_v2(full_compiled_summary)
+        prompt = build_system_prompt_deep(full_compiled_summary)
         assert "Systolic blood pressure" in prompt
         assert "138" in prompt
 
     def test_full_summary_safety_includes_allergy(self, full_compiled_summary: dict):
         """Test that safety constraints include the allergy."""
-        prompt = build_system_prompt_v2(full_compiled_summary)
+        prompt = build_system_prompt_deep(full_compiled_summary)
         assert "ALLERGY: Penicillin" in prompt
 
     def test_with_patient_profile(self, minimal_compiled_summary: dict):
         """Test that patient profile is included when provided."""
         profile = "Active retired teacher who enjoys gardening and cooking."
-        prompt = build_system_prompt_v2(minimal_compiled_summary, patient_profile=profile)
+        prompt = build_system_prompt_deep(minimal_compiled_summary, patient_profile=profile)
         assert "Active retired teacher" in prompt
         assert "Profile:" in prompt
 
     def test_without_patient_profile(self, minimal_compiled_summary: dict):
         """Test that profile section is absent when not provided."""
-        prompt = build_system_prompt_v2(minimal_compiled_summary)
+        prompt = build_system_prompt_deep(minimal_compiled_summary)
         assert "Profile:" not in prompt
 
     def test_prompt_token_count_reasonable(self, full_compiled_summary: dict):
         """Test that full prompt is within reasonable token range (~22-38k chars ~ 5.5-9.5k tokens)."""
         profile = "Active retired teacher who enjoys gardening and has 3 grandchildren."
-        prompt = build_system_prompt_v2(full_compiled_summary, patient_profile=profile)
+        prompt = build_system_prompt_deep(full_compiled_summary, patient_profile=profile)
         # The prompt itself (without a real patient with many conditions) should be
         # well-structured. With a real patient the compiled summary would be much larger.
         # For our test fixture, verify the prompt has reasonable structure.
@@ -1681,7 +1681,7 @@ class TestFormatTier1Conditions:
                 "related_procedures": [],
             },
         ]
-        result = _format_tier1_conditions(conditions, tier=TIER_FAST)
+        result = _format_tier1_conditions(conditions, tier=TIER_QUICK)
         assert "cond-1" not in result
 
     def test_condition_with_care_plan_and_procedure(self):
@@ -2092,57 +2092,57 @@ class TestBuildSafetySectionLightning:
 
 
 # =============================================================================
-# build_system_prompt_fast Tests
+# build_system_prompt_quick Tests
 # =============================================================================
 
 
-class TestBuildSystemPromptFast:
-    """Tests for the fast (chart lookup) system prompt."""
+class TestBuildSystemPromptQuick:
+    """Tests for the Quick-tier (chart lookup) system prompt."""
 
     def test_includes_patient_data(self, full_compiled_summary: dict):
-        """Fast prompt includes the same patient data as standard."""
-        prompt = build_system_prompt_fast(full_compiled_summary)
+        """Quick prompt includes the same patient data as Deep."""
+        prompt = build_system_prompt_quick(full_compiled_summary)
         assert "John Smith" in prompt
         assert "Type 2 diabetes mellitus" in prompt
         assert "Metformin 500 MG" in prompt
         assert "Hemoglobin A1c" in prompt
 
     def test_includes_safety(self, full_compiled_summary: dict):
-        """Fast prompt includes safety constraints."""
-        prompt = build_system_prompt_fast(full_compiled_summary)
+        """Quick prompt includes safety constraints."""
+        prompt = build_system_prompt_quick(full_compiled_summary)
         assert "Safety Constraints" in prompt
         assert "ALLERGY: Penicillin" in prompt
 
     def test_excludes_tool_descriptions(self, full_compiled_summary: dict):
-        """Fast prompt does NOT include tool descriptions."""
-        prompt = build_system_prompt_fast(full_compiled_summary)
+        """Quick prompt does NOT include tool descriptions."""
+        prompt = build_system_prompt_quick(full_compiled_summary)
         assert "query_patient_data" not in prompt
         assert "explore_connections" not in prompt
         assert "get_patient_timeline" not in prompt
 
     def test_excludes_heavy_reasoning_directives(self, full_compiled_summary: dict):
-        """Fast prompt does NOT include reasoning directives."""
-        prompt = build_system_prompt_fast(full_compiled_summary)
+        """Quick prompt does NOT include reasoning directives."""
+        prompt = build_system_prompt_quick(full_compiled_summary)
         assert "Reasoning Directives" not in prompt
         assert "Cross-condition reasoning" not in prompt
         assert "Tool-chain self-checking" not in prompt
 
-    def test_shorter_than_standard(self, full_compiled_summary: dict):
-        """Fast prompt is significantly shorter than standard."""
-        fast = build_system_prompt_fast(full_compiled_summary)
-        standard = build_system_prompt_v2(full_compiled_summary)
-        assert len(fast) < len(standard) - 2000
+    def test_shorter_than_deep(self, full_compiled_summary: dict):
+        """Quick prompt is significantly shorter than Deep."""
+        quick = build_system_prompt_quick(full_compiled_summary)
+        deep = build_system_prompt_deep(full_compiled_summary)
+        assert len(quick) < len(deep) - 2000
 
     def test_includes_profile_when_provided(self, minimal_compiled_summary: dict):
-        """Fast prompt includes patient profile when provided."""
-        prompt = build_system_prompt_fast(
+        """Quick prompt includes patient profile when provided."""
+        prompt = build_system_prompt_quick(
             minimal_compiled_summary, patient_profile="Active retired teacher."
         )
         assert "Active retired teacher" in prompt
 
     def test_has_concise_role(self, minimal_compiled_summary: dict):
-        """Fast prompt has a concise role statement."""
-        prompt = build_system_prompt_fast(minimal_compiled_summary)
+        """Quick prompt has a concise role statement."""
+        prompt = build_system_prompt_quick(minimal_compiled_summary)
         assert "chart assistant" in prompt
         assert "Answer directly" in prompt
 
@@ -2303,25 +2303,32 @@ class TestBuildSystemPromptLightning:
         assert "Extract and present" in prompt
 
     def test_has_simple_format_section(self, minimal_compiled_summary: dict):
-        """Lightning prompt format section mentions only narrative and follow_ups."""
+        """Lightning prompt format section mentions narrative, follow_ups, and needs_deeper_search."""
         prompt = build_system_prompt_lightning(minimal_compiled_summary)
         assert "narrative" in prompt
         assert "follow_ups" in prompt
+        assert "needs_deeper_search" in prompt
         # Should NOT mention insights, visualizations, tables, actions
         assert "insights" not in prompt.split("Response Format")[1]
         assert "visualizations" not in prompt.split("Response Format")[1]
 
-    def test_shorter_than_fast(self, full_compiled_summary: dict):
-        """Lightning prompt is shorter than fast prompt."""
-        lightning = build_system_prompt_lightning(full_compiled_summary)
-        fast = build_system_prompt_fast(full_compiled_summary)
-        assert len(lightning) < len(fast)
+    def test_role_instructs_deeper_search_on_miss(self, minimal_compiled_summary: dict):
+        """Lightning prompt role instructs model to set needs_deeper_search on miss."""
+        prompt = build_system_prompt_lightning(minimal_compiled_summary)
+        assert "needs_deeper_search" in prompt
+        assert "Searching the full patient record" in prompt
 
-    def test_shorter_than_standard(self, full_compiled_summary: dict):
-        """Lightning prompt is significantly shorter than standard."""
+    def test_shorter_than_quick(self, full_compiled_summary: dict):
+        """Lightning prompt is shorter than Quick prompt."""
         lightning = build_system_prompt_lightning(full_compiled_summary)
-        standard = build_system_prompt_v2(full_compiled_summary)
-        assert len(lightning) < len(standard) - 2000
+        quick = build_system_prompt_quick(full_compiled_summary)
+        assert len(lightning) < len(quick)
+
+    def test_shorter_than_deep(self, full_compiled_summary: dict):
+        """Lightning prompt is significantly shorter than Deep."""
+        lightning = build_system_prompt_lightning(full_compiled_summary)
+        deep = build_system_prompt_deep(full_compiled_summary)
+        assert len(lightning) < len(deep) - 2000
 
     def test_includes_profile_when_provided(self, minimal_compiled_summary: dict):
         """Lightning prompt includes patient profile when provided."""
@@ -2410,12 +2417,12 @@ class TestBuildSystemPromptLightning:
         assert "Dose History" not in prompt
 
 
-class TestBuildSystemPromptFastFhirIds:
-    """Test that Fast prompt excludes FHIR IDs."""
+class TestBuildSystemPromptQuickFhirIds:
+    """Test that Quick prompt excludes FHIR IDs."""
 
     def test_excludes_fhir_ids(self, full_compiled_summary: dict):
-        """Fast prompt does NOT include FHIR IDs."""
-        prompt = build_system_prompt_fast(full_compiled_summary)
+        """Quick prompt does NOT include FHIR IDs."""
+        prompt = build_system_prompt_quick(full_compiled_summary)
         assert "cond-diabetes" not in prompt
         assert "cond-hypertension" not in prompt
 
@@ -2483,11 +2490,40 @@ class TestLightningModelRouting:
         assert result.narrative == "Metformin 500mg, Lisinopril 10mg"
         assert len(result.follow_ups) == 1
         assert result.follow_ups[0].question == "What are the allergies?"
+        assert result.needs_deeper_search is False
         # Optional fields should be None
         assert result.insights is None
         assert result.visualizations is None
         assert result.tables is None
         assert result.actions is None
+
+    @pytest.mark.asyncio
+    async def test_lightning_wraps_needs_deeper_search_true(
+        self, system_prompt: str, patient_id: str
+    ):
+        """Lightning tier propagates needs_deeper_search=True to AgentResponse."""
+        mock_client = AsyncMock()
+        lightning_resp = LightningResponse(
+            narrative="Searching the full patient record for A1c...",
+            follow_ups=None,
+            needs_deeper_search=True,
+        )
+        mock_response = MagicMock()
+        mock_response.output_parsed = lightning_resp
+        mock_response.output_text = lightning_resp.model_dump_json()
+        mock_client.responses.parse = AsyncMock(return_value=mock_response)
+
+        service = AgentService(client=mock_client)
+
+        result = await service.generate_response(
+            system_prompt=system_prompt,
+            patient_id=patient_id,
+            message="a1c?",
+            query_profile=LIGHTNING_PROFILE,
+        )
+
+        assert isinstance(result, AgentResponse)
+        assert result.needs_deeper_search is True
 
     @pytest.mark.asyncio
     async def test_stream_lightning_wraps_response(

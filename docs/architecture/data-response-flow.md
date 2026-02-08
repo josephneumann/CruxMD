@@ -215,14 +215,14 @@ Called only when Layer 1 returns `None`. Uses gpt-4o-mini with structured output
 | Profile | Model | Reasoning | Tools | Max Tokens | Prompt Mode | Response Schema |
 |---------|-------|-----------|-------|------------|-------------|----------------|
 | `LIGHTNING` | gpt-4o-mini | Off | Off | 2048 | lightning | LightningResponse |
-| `QUICK` | gpt-5-mini | On (low) | On | 4096 | fast | AgentResponse |
-| `DEEP` | gpt-5-mini | On (medium) | On | 16384 | standard | AgentResponse |
+| `QUICK` | gpt-5-mini | On (low) | On | 4096 | quick | AgentResponse |
+| `DEEP` | gpt-5-mini | On (medium) | On | 16384 | deep | AgentResponse |
 
 ### Tier Definitions
 
 | Tier | When to use | Example |
 |------|-------------|---------|
-| **Lightning** | Answer exists in pre-compiled patient summary. No retrieval, no reasoning. | "BMI?", "medications", "allergies", "what's the A1c?" |
+| **Lightning** | Answer exists in pre-compiled patient record. No retrieval, no reasoning. Auto-upgrades to Quick if data not found. | "BMI?", "medications", "allergies", "what's the A1c?" |
 | **Quick** | Focused data retrieval: filter by date, trend a value, search history. Tools needed but minimal reasoning. | "trend a1c results", "labs from last month", "find latest bp readings" |
 | **Deep** | Clinical interpretation, reasoning across entities, recommendations. | "why was lisinopril prescribed?", "assess cardiovascular risk" |
 
@@ -237,7 +237,7 @@ class QueryProfile:
     reasoning_effort: str     # "low" | "medium" | "high"
     include_tools: bool       # whether tools are available
     max_output_tokens: int    # response token budget
-    system_prompt_mode: str   # "lightning" | "fast" | "standard"
+    system_prompt_mode: str   # "lightning" | "quick" | "deep"
     response_schema: str      # "lightning" | "full"
 ```
 
@@ -259,15 +259,15 @@ Minimal prompt for fact extraction with gpt-4o-mini (non-reasoning model):
 - **Safety:** `_build_safety_section_lightning()` -- allergy alerts + single fabrication guard line
 - **Format:** Minimal -- just narrative + follow_ups
 
-#### `build_system_prompt_fast(compiled_summary, patient_profile)`
+#### `build_system_prompt_quick(compiled_summary, patient_profile)`
 
 Trimmed prompt for QUICK-tier queries with light reasoning:
 - **Role:** Concise clinical chart assistant
-- **Patient summary:** `_build_patient_summary_section(tier=TIER_FAST)` -- full Tier 1/2/3 data, but omits FHIR IDs
+- **Patient summary:** `_build_patient_summary_section(tier=TIER_QUICK)` -- full Tier 1/2/3 data, but omits FHIR IDs
 - **Safety:** Full safety section
 - **Format:** Narrative + insights + follow_ups (no thinking, no tool descriptions)
 
-#### `build_system_prompt_v2(compiled_summary, patient_profile)`
+#### `build_system_prompt_deep(compiled_summary, patient_profile)`
 
 Full prompt for DEEP-tier clinical reasoning:
 - **Section 1: Role + PCP Context Persona** -- detailed clinical reasoning assistant identity
@@ -284,7 +284,7 @@ How each compiled summary field maps to prompt sections:
 | Compiled Summary Field | Prompt Section | Formatting Function |
 |----------------------|----------------|---------------------|
 | `patient_orientation` | `**Patient:** ...` header | Direct string |
-| `compilation_date` | `## Patient Summary (compiled ...)` | Direct string |
+| `compilation_date` | `## Patient Record (compiled ...)` | Direct string |
 | `tier1_active_conditions` | `### Active Conditions & Treatments` | `_format_tier1_conditions()` -- condition bullet + nested medication markdown table |
 | `tier1_recently_resolved` | `### Recently Resolved Conditions` | `_format_tier1_conditions()` |
 | `tier1_allergies` | `Allergies:` table | `_format_tier1_section()` with `_allergy_row()` -> markdown table [Allergen, Criticality, Category] |
@@ -309,7 +309,7 @@ How each compiled summary field maps to prompt sections:
 
 The `tier` parameter controls verbosity in formatting functions:
 - **TIER_DEEP:** Includes FHIR IDs on conditions and encounters (e.g. `id: abc-123`). Full enrichments including `_dose_history` details.
-- **TIER_FAST:** Same structure but omits FHIR IDs.
+- **TIER_QUICK:** Same structure but omits FHIR IDs.
 - **TIER_LIGHTNING:** Uses `_format_tier1_conditions_lightning()` which only shows condition name + onset + treating meds table (3 columns instead of 4, no dose history). Skips care plans, procedures, unlinked meds, recently resolved conditions, and encounters entirely.
 
 ---
@@ -334,6 +334,7 @@ Two Pydantic models control structured output:
 class LightningResponse(BaseModel):
     narrative: str          # Direct answer in markdown
     follow_ups: list[FollowUp] | None  # 2-3 follow-up questions
+    needs_deeper_search: bool  # True if data not found in patient record
 ```
 
 #### `AgentResponse` (for QUICK and DEEP tiers)
@@ -347,6 +348,7 @@ class AgentResponse(BaseModel):
     tables: list[DataTable] | None    # Structured data tables with DataQuery
     actions: list[Action] | None      # Suggested clinical actions
     follow_ups: list[FollowUp] | None # Clickable follow-up questions
+    needs_deeper_search: bool         # Internal flag: True if Lightning couldn't answer
 ```
 
 ### Generation Flow
@@ -406,8 +408,19 @@ Tools return pruned FHIR JSON strings. The agent appends results as `function_ca
 5. Classify query: `classify_query(message, has_history=bool(conversation_history))`
 6. Select prompt builder based on `query_profile.system_prompt_mode`:
    - `"lightning"` -> `build_system_prompt_lightning()`
-   - `"fast"` -> `build_system_prompt_fast()`
-   - `"standard"` -> `build_system_prompt_v2()`
+   - `"quick"` -> `build_system_prompt_quick()`
+   - `"deep"` -> `build_system_prompt_deep()`
+
+### Lightning Auto-Upgrade
+
+When Lightning tier can't answer from the pre-compiled patient record (data not in snapshot), it automatically upgrades to Quick tier:
+
+1. **Both endpoints** (non-streaming and streaming) always **buffer** Lightning responses using `generate_response()` (non-streaming), never `generate_response_stream()`.
+2. Check `needs_deeper_search` flag on the response.
+3. If `true`: rebuild system prompt via `ChatContext.build_prompt_for(QUICK_PROFILE)` and retry with Quick tier (which has tools to search full FHIR records).
+4. If `false`: return the buffered response directly (non-streaming) or emit a single `done` SSE event (streaming).
+
+This adds ~0s latency for Lightning hits and avoids streaming a "not found" narrative before discovering the miss.
 
 ### POST `/api/chat/stream` Endpoint
 
@@ -415,7 +428,10 @@ Returns a `StreamingResponse` with `text/event-stream` media type.
 
 Architecture: background task + asyncio.Queue pattern for disconnect resilience.
 
-1. **Background task** (`generate_and_persist`): calls `agent.generate_response_stream()`, pushes `(event_type, data_json)` tuples into an `asyncio.Queue`. Wrapped in `generate_with_timeout()` (10-minute limit).
+1. **Background task** (`generate_and_persist`):
+   - **Lightning tier**: buffers via `generate_response()`, checks `needs_deeper_search`. If miss, upgrades to Quick and streams via `generate_response_stream()`. If hit, emits buffered response as a single `done` event.
+   - **Quick/Deep tiers**: streams normally via `generate_response_stream()`.
+   - Pushes `(event_type, data_json)` tuples into an `asyncio.Queue`. Wrapped in `generate_with_timeout()` (10-minute limit).
 2. **SSE generator** (`event_generator`): reads from the queue, formats as SSE:
    ```
    event: <event_type>

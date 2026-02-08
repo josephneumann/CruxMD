@@ -44,7 +44,7 @@ class QueryProfile:
     reasoning_effort: Literal["low", "medium", "high"]
     include_tools: bool
     max_output_tokens: int
-    system_prompt_mode: Literal["lightning", "fast", "standard"]
+    system_prompt_mode: Literal["lightning", "quick", "deep"]
     response_schema: str
 
 
@@ -66,7 +66,7 @@ QUICK_PROFILE = QueryProfile(
     reasoning_effort="low",
     include_tools=True,
     max_output_tokens=4096,
-    system_prompt_mode="fast",
+    system_prompt_mode="quick",
     response_schema="full",
 )
 
@@ -77,7 +77,7 @@ DEEP_PROFILE = QueryProfile(
     reasoning_effort="medium",
     include_tools=True,
     max_output_tokens=16384,
-    system_prompt_mode="standard",
+    system_prompt_mode="deep",
     response_schema="full",
 )
 
@@ -374,10 +374,13 @@ def _classify_layer1(message: str) -> QueryProfile | None:
 
 _LAYER2_PROMPT = """Classify this patient chart query into exactly one tier:
 
-LIGHTNING — The answer is a fact directly readable from a patient summary
-  (e.g., current meds, latest vitals, active conditions, allergy list)
-QUICK — Requires focused data retrieval: filtering by date, trending a value,
-  searching history (equivalent to a simple database query)
+LIGHTNING — The answer is a CATEGORY of data always present in a patient summary
+  (e.g., "medications", "allergies", "vitals", "labs", "conditions", "immunizations")
+QUICK — Requires looking up a SPECIFIC clinical value, filtering by date, trending
+  a value, or searching history. Includes specific lab names, measurements, or
+  clinical terms not found as standard summary categories
+  (e.g., "hemoglobin", "potassium", "ejection fraction", "ferritin", "thyroid",
+   "creatinine", "glucose", "weight", "a1c", "trend bp")
 DEEP — Requires clinical reasoning, interpretation, comparison, risk assessment,
   recommendations, or combining information across multiple clinical domains
 

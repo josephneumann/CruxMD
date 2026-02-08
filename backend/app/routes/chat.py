@@ -7,7 +7,7 @@ import time
 import uuid
 from dataclasses import dataclass
 from datetime import datetime, timezone
-from typing import Literal
+from typing import Any, Literal
 
 from fastapi import APIRouter, Depends, HTTPException, status
 from fastapi.responses import StreamingResponse
@@ -20,11 +20,11 @@ from app.database import async_session_maker, get_db
 from app.models import FhirResource
 from app.models.session import Session
 from app.schemas import AgentResponse
-from app.services.agent import AgentService, build_system_prompt_fast, build_system_prompt_lightning, build_system_prompt_v2
+from app.services.agent import AgentService, build_system_prompt_quick, build_system_prompt_lightning, build_system_prompt_deep
 from app.services.compiler import compile_and_store, get_compiled_summary
 from app.services.fhir_loader import get_patient_profile
 from app.services.graph import KnowledgeGraph
-from app.services.query_classifier import QueryProfile, classify_query
+from app.services.query_classifier import QUICK_PROFILE, QueryProfile, QueryTier, classify_query
 
 logger = logging.getLogger(__name__)
 
@@ -118,6 +118,17 @@ class ChatContext:
     graph: KnowledgeGraph
     agent: AgentService
     query_profile: QueryProfile
+    compiled_summary: dict[str, Any]
+    profile_summary: str | None
+
+    def build_prompt_for(self, profile: QueryProfile) -> str:
+        """Build system prompt for a different tier profile."""
+        if profile.system_prompt_mode == "lightning":
+            return build_system_prompt_lightning(self.compiled_summary, patient_profile=self.profile_summary)
+        elif profile.system_prompt_mode == "quick":
+            return build_system_prompt_quick(self.compiled_summary, patient_profile=self.profile_summary)
+        else:
+            return build_system_prompt_deep(self.compiled_summary, patient_profile=self.profile_summary)
 
     async def cleanup(self) -> None:
         """Close all services."""
@@ -184,10 +195,10 @@ async def _prepare_chat_context(
 
     if query_profile.system_prompt_mode == "lightning":
         system_prompt = build_system_prompt_lightning(compiled_summary, patient_profile=profile_summary)
-    elif query_profile.system_prompt_mode == "fast":
-        system_prompt = build_system_prompt_fast(compiled_summary, patient_profile=profile_summary)
+    elif query_profile.system_prompt_mode == "quick":
+        system_prompt = build_system_prompt_quick(compiled_summary, patient_profile=profile_summary)
     else:
-        system_prompt = build_system_prompt_v2(compiled_summary, patient_profile=profile_summary)
+        system_prompt = build_system_prompt_deep(compiled_summary, patient_profile=profile_summary)
 
     elapsed_ms = (time.perf_counter() - t0) * 1000
     logger.info(
@@ -218,6 +229,8 @@ async def _prepare_chat_context(
         graph=graph,
         agent=agent,
         query_profile=query_profile,
+        compiled_summary=compiled_summary,
+        profile_summary=profile_summary,
     )
 
 
@@ -297,6 +310,24 @@ async def chat(
             query_profile=chat_ctx.query_profile,
         )
 
+        # Auto-upgrade: if Lightning couldn't find data, retry with Quick
+        if agent_response.needs_deeper_search:
+            logger.info(
+                "Lightning miss for %r, upgrading to Quick tier",
+                request.message[:80],
+            )
+            quick_prompt = chat_ctx.build_prompt_for(QUICK_PROFILE)
+            agent_response = await chat_ctx.agent.generate_response(
+                system_prompt=quick_prompt,
+                patient_id=chat_ctx.patient_id,
+                message=request.message,
+                history=chat_ctx.history,
+                reasoning_effort=request.reasoning_effort,
+                graph=chat_ctx.graph,
+                db=db,
+                query_profile=QUICK_PROFILE,
+            )
+
         # Persist assistant message when done
         if request.session_id:
             await _persist_message(request.session_id, "assistant", agent_response.narrative)
@@ -375,19 +406,54 @@ async def chat_stream(
         final_response_json: str | None = None
 
         try:
-            async for event_type, data_json in chat_ctx.agent.generate_response_stream(
-                system_prompt=chat_ctx.system_prompt,
-                patient_id=chat_ctx.patient_id,
-                message=request.message,
-                history=chat_ctx.history,
-                reasoning_effort=request.reasoning_effort,
-                graph=chat_ctx.graph,
-                db=db,
-                query_profile=chat_ctx.query_profile,
-            ):
-                await event_queue.put((event_type, data_json))
-                if event_type == "done":
-                    final_response_json = data_json
+            # Lightning tier: buffer response, check for miss before streaming
+            if chat_ctx.query_profile.tier == QueryTier.LIGHTNING:
+                lightning_response = await chat_ctx.agent.generate_response(
+                    system_prompt=chat_ctx.system_prompt,
+                    patient_id=chat_ctx.patient_id,
+                    message=request.message,
+                    history=chat_ctx.history,
+                    graph=chat_ctx.graph,
+                    db=db,
+                    query_profile=chat_ctx.query_profile,
+                )
+                if lightning_response.needs_deeper_search:
+                    logger.info(
+                        "Lightning miss (stream) for %r, upgrading to Quick",
+                        request.message[:80],
+                    )
+                    quick_prompt = chat_ctx.build_prompt_for(QUICK_PROFILE)
+                    async for event_type, data_json in chat_ctx.agent.generate_response_stream(
+                        system_prompt=quick_prompt,
+                        patient_id=chat_ctx.patient_id,
+                        message=request.message,
+                        history=chat_ctx.history,
+                        graph=chat_ctx.graph,
+                        db=db,
+                        query_profile=QUICK_PROFILE,
+                    ):
+                        await event_queue.put((event_type, data_json))
+                        if event_type == "done":
+                            final_response_json = data_json
+                else:
+                    # Lightning hit — return buffered response directly
+                    final_response_json = lightning_response.model_dump_json()
+                    await event_queue.put(("done", final_response_json))
+            else:
+                # Normal Quick/Deep streaming path
+                async for event_type, data_json in chat_ctx.agent.generate_response_stream(
+                    system_prompt=chat_ctx.system_prompt,
+                    patient_id=chat_ctx.patient_id,
+                    message=request.message,
+                    history=chat_ctx.history,
+                    reasoning_effort=request.reasoning_effort,
+                    graph=chat_ctx.graph,
+                    db=db,
+                    query_profile=chat_ctx.query_profile,
+                ):
+                    await event_queue.put((event_type, data_json))
+                    if event_type == "done":
+                        final_response_json = data_json
 
         except ValueError as e:
             logger.error("ValueError in chat stream: %s", e, exc_info=True)

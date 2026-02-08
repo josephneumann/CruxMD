@@ -30,7 +30,7 @@ logger = logging.getLogger(__name__)
 
 # Tier constants for controlling output verbosity
 TIER_DEEP = "deep"
-TIER_FAST = "fast"
+TIER_QUICK = "quick"
 TIER_LIGHTNING = "lightning"
 
 # Default model for agent responses
@@ -269,9 +269,9 @@ def _format_tier1_conditions(conditions: list[dict[str, Any]], tier: str = TIER_
         if onset:
             onset = onset[:10]
 
-        # Build condition header — omit "status: active" under Active Conditions
+        # Build condition header — Lightning: name + onset only; others add status + optional FHIR ID
         cond_parts: list[str] = []
-        if clinical_status.lower() != "active":
+        if tier != TIER_LIGHTNING and clinical_status.lower() != "active":
             cond_parts.append(f"status: {clinical_status}")
         if onset:
             cond_parts.append(f"onset: {onset}")
@@ -284,6 +284,7 @@ def _format_tier1_conditions(conditions: list[dict[str, Any]], tier: str = TIER_
         lines.append(cond_line)
 
         # Treating medications — markdown table
+        # Lightning: 3-column table (no dose history). Quick/Deep: 4-column with dose history.
         treating_meds = entry.get("treating_medications", [])
         if treating_meds:
             med_rows: list[list[str]] = []
@@ -295,41 +296,47 @@ def _format_tier1_conditions(conditions: list[dict[str, Any]], tier: str = TIER_
                     med_display = _get_display_name(med, "medicationCodeableConcept") or "Unknown medication"
                 med_status = med.get("status", "unknown")
                 recency = med.get("_recency", "")
-                dose_hist_str = ""
-                if med.get("_dose_history"):
-                    dose_hist = med["_dose_history"]
-                    changes = [f"{d.get('dose', '?')} on {(d.get('authoredOn', ''))[:10]}" for d in dose_hist]
-                    dose_hist_str = ", ".join(changes)
-                med_rows.append([med_display, med_status, recency, dose_hist_str])
-            table = _format_as_table(["Medication", "Status", "Recency", "Dose History"], med_rows)
+                if tier == TIER_LIGHTNING:
+                    med_rows.append([med_display, med_status, recency])
+                else:
+                    dose_hist_str = ""
+                    if med.get("_dose_history"):
+                        dose_hist = med["_dose_history"]
+                        changes = [f"{d.get('dose', '?')} on {(d.get('authoredOn', ''))[:10]}" for d in dose_hist]
+                        dose_hist_str = ", ".join(changes)
+                    med_rows.append([med_display, med_status, recency, dose_hist_str])
+            if tier == TIER_LIGHTNING:
+                table = _format_as_table(["Medication", "Status", "Recency"], med_rows)
+            else:
+                table = _format_as_table(["Medication", "Status", "Recency", "Dose History"], med_rows)
             # Indent the table under the condition
             for table_line in table.split("\n"):
                 lines.append(f"    {table_line}")
 
-        # Care plans
-        care_plans = entry.get("care_plans", [])
-        if care_plans:
-            for cp in care_plans:
-                cat_val = cp.get("category")
-                if isinstance(cat_val, str):
-                    cp_display = cat_val
-                else:
-                    cp_display = _get_display_name(cp) or cp.get("title", "Unknown care plan")
-                    if cp_display == "Unknown care plan" and isinstance(cat_val, str):
+        # Care plans and procedures — skip for Lightning (token savings)
+        if tier != TIER_LIGHTNING:
+            care_plans = entry.get("care_plans", [])
+            if care_plans:
+                for cp in care_plans:
+                    cat_val = cp.get("category")
+                    if isinstance(cat_val, str):
                         cp_display = cat_val
-                cp_status = cp.get("status", "unknown")
-                lines.append(f"      CarePlan: {cp_display} (status: {cp_status})")
+                    else:
+                        cp_display = _get_display_name(cp) or cp.get("title", "Unknown care plan")
+                        if cp_display == "Unknown care plan" and isinstance(cat_val, str):
+                            cp_display = cat_val
+                    cp_status = cp.get("status", "unknown")
+                    lines.append(f"      CarePlan: {cp_display} (status: {cp_status})")
 
-        # Related procedures
-        procedures = entry.get("related_procedures", [])
-        if procedures:
-            for proc in procedures:
-                code_val = proc.get("code")
-                if isinstance(code_val, str):
-                    proc_display = code_val
-                else:
-                    proc_display = _get_display_name(proc) or "Unknown procedure"
-                lines.append(f"      Procedure: {proc_display}")
+            procedures = entry.get("related_procedures", [])
+            if procedures:
+                for proc in procedures:
+                    code_val = proc.get("code")
+                    if isinstance(code_val, str):
+                        proc_display = code_val
+                    else:
+                        proc_display = _get_display_name(proc) or "Unknown procedure"
+                    lines.append(f"      Procedure: {proc_display}")
 
     return "\n".join(lines)
 
@@ -609,7 +616,7 @@ def _build_patient_summary_section(
     compilation_date = compiled_summary.get("compilation_date", "unknown")
 
     summary_parts: list[str] = [
-        f"## Patient Summary (compiled {compilation_date})\n",
+        f"## Patient Record (compiled {compilation_date})\n",
         f"**Patient:** {patient_orientation}\n",
     ]
 
@@ -753,7 +760,7 @@ def _build_patient_summary_lightning(
     compilation_date = compiled_summary.get("compilation_date", "unknown")
 
     summary_parts: list[str] = [
-        f"## Patient Summary (compiled {compilation_date})\n",
+        f"## Patient Record (compiled {compilation_date})\n",
         f"**Patient:** {patient_orientation}\n",
     ]
 
@@ -853,7 +860,7 @@ def build_system_prompt_lightning(
 ) -> str:
     """Build a minimal system prompt for Lightning-tier fact extraction.
 
-    Even more trimmed than the fast prompt: concise role, slim patient
+    Even more trimmed than the Quick prompt: concise role, slim patient
     summary (no encounters, care plans, or procedures), minimal safety
     (allergy alerts + fabrication guard only), brief format section.
     No reasoning directives, no tool descriptions, no insight/viz/table
@@ -868,8 +875,12 @@ def build_system_prompt_lightning(
     """
     role_section = (
         "You are a clinical chart assistant. Extract and present the requested data "
-        "from the patient summary below. Cite specific values and dates. "
-        "Never fabricate clinical data. If the data isn't in the summary, say so."
+        "from the patient record below. Cite specific values and dates. "
+        "Never fabricate clinical data. Never use the phrase 'patient summary' in your response — "
+        "say 'the patient's record' or 'the chart' instead. "
+        "If the requested information is not available "
+        "in the record below, set needs_deeper_search to true and write a brief "
+        "narrative like 'Searching the full patient record for [value]...'"
     )
 
     summary_section = _build_patient_summary_lightning(compiled_summary, patient_profile)
@@ -880,7 +891,9 @@ def build_system_prompt_lightning(
         "## Response Format\n"
         "Respond with a JSON object containing:\n"
         "- narrative: Your answer in concise markdown. Use bullet lists for multiple items.\n"
-        "- follow_ups: 2-3 short follow-up questions (under 80 chars each)"
+        "- follow_ups: 2-3 short follow-up questions (under 80 chars each)\n"
+        "- needs_deeper_search: Set to true ONLY if the requested data is not present "
+        "in the patient record above. If you found the answer, set to false."
     )
 
     return "\n\n".join([
@@ -891,15 +904,15 @@ def build_system_prompt_lightning(
     ])
 
 
-def build_system_prompt_fast(
+def build_system_prompt_quick(
     compiled_summary: dict[str, Any],
     patient_profile: str | None = None,
 ) -> str:
-    """Build a fast system prompt for simple chart lookups.
+    """Build the Quick-tier system prompt for focused chart lookups.
 
-    Trimmed prompt for FAST-tier queries: no reasoning directives, no tool
+    Trimmed prompt for Quick-tier queries: no reasoning directives, no tool
     descriptions, concise role and response format. Saves ~2700-3000 chars
-    (~750 tokens) of input vs the standard prompt.
+    (~750 tokens) of input vs the Deep prompt.
 
     Args:
         compiled_summary: Dict from compile_patient_summary().
@@ -909,11 +922,12 @@ def build_system_prompt_fast(
         Formatted system prompt string.
     """
     role_section = (
-        "You are a clinical chart assistant. Answer directly from the patient summary below. "
-        "Cite specific data points (dates, values) when available. Never fabricate clinical data."
+        "You are a clinical chart assistant. Answer directly from the patient record below. "
+        "Cite specific data points (dates, values) when available. Never fabricate clinical data. "
+        "Never use the phrase 'patient summary' in your response — say 'the patient's record' or 'the chart' instead."
     )
 
-    summary_section = _build_patient_summary_section(compiled_summary, patient_profile, tier=TIER_FAST)
+    summary_section = _build_patient_summary_section(compiled_summary, patient_profile, tier=TIER_QUICK)
 
     safety_section = _build_safety_section(compiled_summary)
 
@@ -933,13 +947,13 @@ def build_system_prompt_fast(
     ])
 
 
-def build_system_prompt_v2(
+def build_system_prompt_deep(
     compiled_summary: dict[str, Any],
     patient_profile: str | None = None,
 ) -> str:
-    """Build a v2 system prompt from a pre-compiled patient summary.
+    """Build the Deep-tier system prompt for full clinical reasoning.
 
-    This replaces the v1 prompt by consuming the output of compile_patient_summary()
+    Consumes the output of compile_patient_summary()
     directly, embedding the full structured summary in the prompt instead of
     formatting raw FHIR resources at prompt-build time.
 
@@ -968,7 +982,8 @@ def build_system_prompt_v2(
         "- You proactively surface cross-condition interactions and medication conflicts\n"
         "- You cite specific data points (dates, values, FHIR IDs) to support assertions\n"
         "- You flag when data is absent or when the record may be incomplete\n"
-        "- You never fabricate clinical data — if uncertain, say so and offer to search"
+        "- You never fabricate clinical data — if uncertain, say so and offer to search\n"
+        "- Never use the phrase 'patient summary' in your response — say 'the patient's record' or 'the chart' instead"
     )
 
     # ── Section 2: Pre-compiled Patient Summary ──────────────────────────────
@@ -978,9 +993,9 @@ def build_system_prompt_v2(
     reasoning_section = (
         "## Reasoning Directives\n"
         "\n"
-        "Follow these reasoning principles when analyzing the patient summary:\n"
+        "Follow these reasoning principles when analyzing the patient record:\n"
         "\n"
-        "1. **Absence reporting**: When asked about data that is NOT in the summary, "
+        "1. **Absence reporting**: When asked about data that is NOT in the record, "
         "explicitly state it is absent from the record. Do not assume absence means "
         "normal — it may indicate a gap in documentation. Suggest using a tool to "
         "search for it.\n"
@@ -1383,6 +1398,7 @@ class AgentService:
             agent_response = AgentResponse(
                 narrative=parsed_response.narrative,
                 follow_ups=parsed_response.follow_ups,
+                needs_deeper_search=parsed_response.needs_deeper_search,
             )
         else:
             agent_response = parsed_response
@@ -1623,6 +1639,7 @@ class AgentService:
             agent_response = AgentResponse(
                 narrative=parsed_response.narrative,
                 follow_ups=parsed_response.follow_ups,
+                needs_deeper_search=parsed_response.needs_deeper_search,
             )
         else:
             agent_response = parsed_response

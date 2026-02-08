@@ -64,7 +64,7 @@ class QueryProfile:
     reasoning_effort: Literal["low", "medium", "high"]
     include_tools: bool
     max_output_tokens: int
-    system_prompt_mode: Literal["lightning", "fast", "standard"]  # UPDATED
+    system_prompt_mode: Literal["lightning", "quick", "deep"]  # UPDATED
     response_schema: str                                # NEW — "lightning" or "full"
 
 LIGHTNING_PROFILE = QueryProfile(
@@ -85,7 +85,7 @@ QUICK_PROFILE = QueryProfile(
     reasoning_effort="low",
     include_tools=True,
     max_output_tokens=4096,
-    system_prompt_mode="fast",
+    system_prompt_mode="quick",
     response_schema="full",
 )
 
@@ -96,7 +96,7 @@ DEEP_PROFILE = QueryProfile(
     reasoning_effort="medium",
     include_tools=True,
     max_output_tokens=16384,
-    system_prompt_mode="standard",
+    system_prompt_mode="deep",
     response_schema="full",
 )
 ```
@@ -272,10 +272,10 @@ query_profile = classify_query(request.message, has_history=has_history)
 ```python
 if query_profile.system_prompt_mode == "lightning":
     system_prompt = build_system_prompt_lightning(compiled_summary, patient_profile=profile_summary)
-elif query_profile.system_prompt_mode == "fast":
-    system_prompt = build_system_prompt_fast(compiled_summary, patient_profile=profile_summary)
+elif query_profile.system_prompt_mode == "quick":
+    system_prompt = build_system_prompt_quick(compiled_summary, patient_profile=profile_summary)
 else:
-    system_prompt = build_system_prompt_v2(compiled_summary, patient_profile=profile_summary)
+    system_prompt = build_system_prompt_deep(compiled_summary, patient_profile=profile_summary)
 ```
 
 #### Enhanced logging

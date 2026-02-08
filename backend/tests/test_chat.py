@@ -20,7 +20,7 @@ from sqlalchemy.ext.asyncio import AsyncSession, async_sessionmaker
 
 from app.models import FhirResource
 from app.schemas import AgentResponse, FollowUp, Insight
-from app.services.query_classifier import LIGHTNING_PROFILE, STANDARD_PROFILE
+from app.services.query_classifier import DEEP_PROFILE, LIGHTNING_PROFILE, QUICK_PROFILE
 
 
 # =============================================================================
@@ -219,8 +219,8 @@ class TestChatSuccess:
     ):
         """Test successful chat with minimal request."""
         with patch("app.routes.chat.get_compiled_summary", new_callable=AsyncMock, return_value=sample_compiled_summary), \
-             patch("app.routes.chat.classify_query", new_callable=AsyncMock, return_value=STANDARD_PROFILE), \
-             patch("app.routes.chat.build_system_prompt_v2", return_value="system prompt") as mock_prompt, \
+             patch("app.routes.chat.classify_query", new_callable=AsyncMock, return_value=DEEP_PROFILE), \
+             patch("app.routes.chat.build_system_prompt_deep", return_value="system prompt") as mock_prompt, \
              patch("app.routes.chat.AgentService") as mock_agent_cls, \
              patch("app.routes.chat.KnowledgeGraph") as mock_graph_cls:
 
@@ -247,7 +247,7 @@ class TestChatSuccess:
             assert "response" in data
             assert data["response"]["narrative"] == sample_agent_response.narrative
 
-            # Verify build_system_prompt_v2 was called with compiled summary
+            # Verify build_system_prompt_deep was called with compiled summary
             mock_prompt.assert_called_once()
             call_args = mock_prompt.call_args
             assert call_args[0][0] == sample_compiled_summary
@@ -263,8 +263,8 @@ class TestChatSuccess:
     ):
         """Test that conversation_id is generated when not provided."""
         with patch("app.routes.chat.get_compiled_summary", new_callable=AsyncMock, return_value=sample_compiled_summary), \
-             patch("app.routes.chat.classify_query", new_callable=AsyncMock, return_value=STANDARD_PROFILE), \
-             patch("app.routes.chat.build_system_prompt_v2", return_value="system prompt"), \
+             patch("app.routes.chat.classify_query", new_callable=AsyncMock, return_value=DEEP_PROFILE), \
+             patch("app.routes.chat.build_system_prompt_deep", return_value="system prompt"), \
              patch("app.routes.chat.AgentService") as mock_agent_cls, \
              patch("app.routes.chat.KnowledgeGraph") as mock_graph_cls:
 
@@ -303,8 +303,8 @@ class TestChatSuccess:
         provided_conversation_id = uuid.uuid4()
 
         with patch("app.routes.chat.get_compiled_summary", new_callable=AsyncMock, return_value=sample_compiled_summary), \
-             patch("app.routes.chat.classify_query", new_callable=AsyncMock, return_value=STANDARD_PROFILE), \
-             patch("app.routes.chat.build_system_prompt_v2", return_value="system prompt"), \
+             patch("app.routes.chat.classify_query", new_callable=AsyncMock, return_value=DEEP_PROFILE), \
+             patch("app.routes.chat.build_system_prompt_deep", return_value="system prompt"), \
              patch("app.routes.chat.AgentService") as mock_agent_cls, \
              patch("app.routes.chat.KnowledgeGraph") as mock_graph_cls:
 
@@ -340,8 +340,8 @@ class TestChatSuccess:
     ):
         """Test chat with conversation history."""
         with patch("app.routes.chat.get_compiled_summary", new_callable=AsyncMock, return_value=sample_compiled_summary), \
-             patch("app.routes.chat.classify_query", new_callable=AsyncMock, return_value=STANDARD_PROFILE), \
-             patch("app.routes.chat.build_system_prompt_v2", return_value="system prompt"), \
+             patch("app.routes.chat.classify_query", new_callable=AsyncMock, return_value=DEEP_PROFILE), \
+             patch("app.routes.chat.build_system_prompt_deep", return_value="system prompt"), \
              patch("app.routes.chat.AgentService") as mock_agent_cls, \
              patch("app.routes.chat.KnowledgeGraph") as mock_graph_cls:
 
@@ -395,8 +395,8 @@ class TestChatOnDemandCompilation:
         """Test that compile_and_store is called when get_compiled_summary returns None."""
         with patch("app.routes.chat.get_compiled_summary", new_callable=AsyncMock, return_value=None) as mock_get, \
              patch("app.routes.chat.compile_and_store", new_callable=AsyncMock, return_value=sample_compiled_summary) as mock_compile, \
-             patch("app.routes.chat.classify_query", new_callable=AsyncMock, return_value=STANDARD_PROFILE), \
-             patch("app.routes.chat.build_system_prompt_v2", return_value="system prompt"), \
+             patch("app.routes.chat.classify_query", new_callable=AsyncMock, return_value=DEEP_PROFILE), \
+             patch("app.routes.chat.build_system_prompt_deep", return_value="system prompt"), \
              patch("app.routes.chat.AgentService") as mock_agent_cls, \
              patch("app.routes.chat.KnowledgeGraph") as mock_graph_cls:
 
@@ -435,8 +435,8 @@ class TestChatOnDemandCompilation:
         """Test that compile_and_store is NOT called when cached summary exists."""
         with patch("app.routes.chat.get_compiled_summary", new_callable=AsyncMock, return_value=sample_compiled_summary) as mock_get, \
              patch("app.routes.chat.compile_and_store", new_callable=AsyncMock) as mock_compile, \
-             patch("app.routes.chat.classify_query", new_callable=AsyncMock, return_value=STANDARD_PROFILE), \
-             patch("app.routes.chat.build_system_prompt_v2", return_value="system prompt"), \
+             patch("app.routes.chat.classify_query", new_callable=AsyncMock, return_value=DEEP_PROFILE), \
+             patch("app.routes.chat.build_system_prompt_deep", return_value="system prompt"), \
              patch("app.routes.chat.AgentService") as mock_agent_cls, \
              patch("app.routes.chat.KnowledgeGraph") as mock_graph_cls:
 
@@ -482,8 +482,8 @@ class TestChatErrorHandling:
     ):
         """Test that RuntimeError from agent returns 500."""
         with patch("app.routes.chat.get_compiled_summary", new_callable=AsyncMock, return_value=sample_compiled_summary), \
-             patch("app.routes.chat.classify_query", new_callable=AsyncMock, return_value=STANDARD_PROFILE), \
-             patch("app.routes.chat.build_system_prompt_v2", return_value="system prompt"), \
+             patch("app.routes.chat.classify_query", new_callable=AsyncMock, return_value=DEEP_PROFILE), \
+             patch("app.routes.chat.build_system_prompt_deep", return_value="system prompt"), \
              patch("app.routes.chat.AgentService") as mock_agent_cls, \
              patch("app.routes.chat.KnowledgeGraph") as mock_graph_cls:
 
@@ -517,8 +517,8 @@ class TestChatErrorHandling:
     ):
         """Test that ValueError from agent returns 400."""
         with patch("app.routes.chat.get_compiled_summary", new_callable=AsyncMock, return_value=sample_compiled_summary), \
-             patch("app.routes.chat.classify_query", new_callable=AsyncMock, return_value=STANDARD_PROFILE), \
-             patch("app.routes.chat.build_system_prompt_v2", return_value="system prompt"), \
+             patch("app.routes.chat.classify_query", new_callable=AsyncMock, return_value=DEEP_PROFILE), \
+             patch("app.routes.chat.build_system_prompt_deep", return_value="system prompt"), \
              patch("app.routes.chat.AgentService") as mock_agent_cls, \
              patch("app.routes.chat.KnowledgeGraph") as mock_graph_cls:
 
@@ -597,8 +597,8 @@ class TestChatInputValidation:
     ):
         """Test that messages at max length are accepted."""
         with patch("app.routes.chat.get_compiled_summary", new_callable=AsyncMock, return_value=sample_compiled_summary), \
-             patch("app.routes.chat.classify_query", new_callable=AsyncMock, return_value=STANDARD_PROFILE), \
-             patch("app.routes.chat.build_system_prompt_v2", return_value="system prompt"), \
+             patch("app.routes.chat.classify_query", new_callable=AsyncMock, return_value=DEEP_PROFILE), \
+             patch("app.routes.chat.build_system_prompt_deep", return_value="system prompt"), \
              patch("app.routes.chat.AgentService") as mock_agent_cls, \
              patch("app.routes.chat.KnowledgeGraph") as mock_graph_cls:
 
@@ -662,8 +662,8 @@ class TestChatIntegration:
     ):
         """Test that get_compiled_summary is called with the correct patient_id."""
         with patch("app.routes.chat.get_compiled_summary", new_callable=AsyncMock, return_value=sample_compiled_summary) as mock_get, \
-             patch("app.routes.chat.classify_query", new_callable=AsyncMock, return_value=STANDARD_PROFILE), \
-             patch("app.routes.chat.build_system_prompt_v2", return_value="system prompt"), \
+             patch("app.routes.chat.classify_query", new_callable=AsyncMock, return_value=DEEP_PROFILE), \
+             patch("app.routes.chat.build_system_prompt_deep", return_value="system prompt"), \
              patch("app.routes.chat.AgentService") as mock_agent_cls, \
              patch("app.routes.chat.KnowledgeGraph") as mock_graph_cls:
 
@@ -700,8 +700,8 @@ class TestChatIntegration:
     ):
         """Test that AgentService receives the system_prompt and patient_id."""
         with patch("app.routes.chat.get_compiled_summary", new_callable=AsyncMock, return_value=sample_compiled_summary), \
-             patch("app.routes.chat.classify_query", new_callable=AsyncMock, return_value=STANDARD_PROFILE), \
-             patch("app.routes.chat.build_system_prompt_v2", return_value="test system prompt"), \
+             patch("app.routes.chat.classify_query", new_callable=AsyncMock, return_value=DEEP_PROFILE), \
+             patch("app.routes.chat.build_system_prompt_deep", return_value="test system prompt"), \
              patch("app.routes.chat.AgentService") as mock_agent_cls, \
              patch("app.routes.chat.KnowledgeGraph") as mock_graph_cls:
 
@@ -743,8 +743,8 @@ class TestChatIntegration:
     ):
         """Test that services are cleaned up after successful request."""
         with patch("app.routes.chat.get_compiled_summary", new_callable=AsyncMock, return_value=sample_compiled_summary), \
-             patch("app.routes.chat.classify_query", new_callable=AsyncMock, return_value=STANDARD_PROFILE), \
-             patch("app.routes.chat.build_system_prompt_v2", return_value="system prompt"), \
+             patch("app.routes.chat.classify_query", new_callable=AsyncMock, return_value=DEEP_PROFILE), \
+             patch("app.routes.chat.build_system_prompt_deep", return_value="system prompt"), \
              patch("app.routes.chat.AgentService") as mock_agent_cls, \
              patch("app.routes.chat.KnowledgeGraph") as mock_graph_cls:
 
@@ -780,8 +780,8 @@ class TestChatIntegration:
     ):
         """Test that services are cleaned up even on error."""
         with patch("app.routes.chat.get_compiled_summary", new_callable=AsyncMock, return_value=sample_compiled_summary), \
-             patch("app.routes.chat.classify_query", new_callable=AsyncMock, return_value=STANDARD_PROFILE), \
-             patch("app.routes.chat.build_system_prompt_v2", return_value="system prompt"), \
+             patch("app.routes.chat.classify_query", new_callable=AsyncMock, return_value=DEEP_PROFILE), \
+             patch("app.routes.chat.build_system_prompt_deep", return_value="system prompt"), \
              patch("app.routes.chat.AgentService") as mock_agent_cls, \
              patch("app.routes.chat.KnowledgeGraph") as mock_graph_cls:
 
@@ -820,8 +820,8 @@ class TestChatIntegration:
     ):
         """Test that graph and db are passed to agent for tool execution."""
         with patch("app.routes.chat.get_compiled_summary", new_callable=AsyncMock, return_value=sample_compiled_summary), \
-             patch("app.routes.chat.classify_query", new_callable=AsyncMock, return_value=STANDARD_PROFILE), \
-             patch("app.routes.chat.build_system_prompt_v2", return_value="system prompt"), \
+             patch("app.routes.chat.classify_query", new_callable=AsyncMock, return_value=DEEP_PROFILE), \
+             patch("app.routes.chat.build_system_prompt_deep", return_value="system prompt"), \
              patch("app.routes.chat.AgentService") as mock_agent_cls, \
              patch("app.routes.chat.KnowledgeGraph") as mock_graph_cls:
 
@@ -909,8 +909,8 @@ class TestChatStream:
     ):
         """Test successful streaming returns reasoning, narrative, and done SSE events."""
         with patch("app.routes.chat.get_compiled_summary", new_callable=AsyncMock, return_value=sample_compiled_summary), \
-             patch("app.routes.chat.classify_query", new_callable=AsyncMock, return_value=STANDARD_PROFILE), \
-             patch("app.routes.chat.build_system_prompt_v2", return_value="system prompt"), \
+             patch("app.routes.chat.classify_query", new_callable=AsyncMock, return_value=DEEP_PROFILE), \
+             patch("app.routes.chat.build_system_prompt_deep", return_value="system prompt"), \
              patch("app.routes.chat.AgentService") as mock_agent_cls, \
              patch("app.routes.chat.KnowledgeGraph") as mock_graph_cls:
 
@@ -960,8 +960,8 @@ class TestChatStream:
             raise RuntimeError("LLM crashed")
 
         with patch("app.routes.chat.get_compiled_summary", new_callable=AsyncMock, return_value=sample_compiled_summary), \
-             patch("app.routes.chat.classify_query", new_callable=AsyncMock, return_value=STANDARD_PROFILE), \
-             patch("app.routes.chat.build_system_prompt_v2", return_value="system prompt"), \
+             patch("app.routes.chat.classify_query", new_callable=AsyncMock, return_value=DEEP_PROFILE), \
+             patch("app.routes.chat.build_system_prompt_deep", return_value="system prompt"), \
              patch("app.routes.chat.AgentService") as mock_agent_cls, \
              patch("app.routes.chat.KnowledgeGraph") as mock_graph_cls:
 
@@ -998,8 +998,8 @@ class TestChatStream:
     ):
         """Test that services are cleaned up after streaming completes."""
         with patch("app.routes.chat.get_compiled_summary", new_callable=AsyncMock, return_value=sample_compiled_summary), \
-             patch("app.routes.chat.classify_query", new_callable=AsyncMock, return_value=STANDARD_PROFILE), \
-             patch("app.routes.chat.build_system_prompt_v2", return_value="system prompt"), \
+             patch("app.routes.chat.classify_query", new_callable=AsyncMock, return_value=DEEP_PROFILE), \
+             patch("app.routes.chat.build_system_prompt_deep", return_value="system prompt"), \
              patch("app.routes.chat.AgentService") as mock_agent_cls, \
              patch("app.routes.chat.KnowledgeGraph") as mock_graph_cls:
 
@@ -1033,8 +1033,8 @@ class TestChatStream:
         """Test that streaming also triggers on-demand compilation when needed."""
         with patch("app.routes.chat.get_compiled_summary", new_callable=AsyncMock, return_value=None) as mock_get, \
              patch("app.routes.chat.compile_and_store", new_callable=AsyncMock, return_value=sample_compiled_summary) as mock_compile, \
-             patch("app.routes.chat.classify_query", new_callable=AsyncMock, return_value=STANDARD_PROFILE), \
-             patch("app.routes.chat.build_system_prompt_v2", return_value="system prompt"), \
+             patch("app.routes.chat.classify_query", new_callable=AsyncMock, return_value=DEEP_PROFILE), \
+             patch("app.routes.chat.build_system_prompt_deep", return_value="system prompt"), \
              patch("app.routes.chat.AgentService") as mock_agent_cls, \
              patch("app.routes.chat.KnowledgeGraph") as mock_graph_cls:
 
@@ -1081,8 +1081,8 @@ class TestChatQueryRouting:
         with patch("app.routes.chat.get_compiled_summary", new_callable=AsyncMock, return_value=sample_compiled_summary), \
              patch("app.routes.chat.classify_query", new_callable=AsyncMock, return_value=LIGHTNING_PROFILE), \
              patch("app.routes.chat.build_system_prompt_lightning", return_value="lightning prompt") as mock_lightning, \
-             patch("app.routes.chat.build_system_prompt_fast", return_value="fast prompt") as mock_fast, \
-             patch("app.routes.chat.build_system_prompt_v2", return_value="standard prompt") as mock_standard, \
+             patch("app.routes.chat.build_system_prompt_quick", return_value="fast prompt") as mock_fast, \
+             patch("app.routes.chat.build_system_prompt_deep", return_value="standard prompt") as mock_standard, \
              patch("app.routes.chat.AgentService") as mock_agent_cls, \
              patch("app.routes.chat.KnowledgeGraph") as mock_graph_cls:
 
@@ -1119,11 +1119,11 @@ class TestChatQueryRouting:
         sample_agent_response: AgentResponse,
         sample_compiled_summary: dict,
     ):
-        """'Explain the HbA1c trend' → build_system_prompt_v2 called."""
+        """'Explain the HbA1c trend' → build_system_prompt_deep called."""
         with patch("app.routes.chat.get_compiled_summary", new_callable=AsyncMock, return_value=sample_compiled_summary), \
-             patch("app.routes.chat.classify_query", new_callable=AsyncMock, return_value=STANDARD_PROFILE), \
-             patch("app.routes.chat.build_system_prompt_fast", return_value="fast prompt") as mock_fast, \
-             patch("app.routes.chat.build_system_prompt_v2", return_value="standard prompt") as mock_standard, \
+             patch("app.routes.chat.classify_query", new_callable=AsyncMock, return_value=DEEP_PROFILE), \
+             patch("app.routes.chat.build_system_prompt_quick", return_value="fast prompt") as mock_fast, \
+             patch("app.routes.chat.build_system_prompt_deep", return_value="standard prompt") as mock_standard, \
              patch("app.routes.chat.AgentService") as mock_agent_cls, \
              patch("app.routes.chat.KnowledgeGraph") as mock_graph_cls:
 
@@ -1191,21 +1191,23 @@ class TestChatQueryRouting:
         client: AsyncClient,
         auth_headers: dict,
         patient_in_db: uuid.UUID,
+        sample_agent_response: AgentResponse,
         sample_compiled_summary: dict,
     ):
-        """Streaming endpoint uses lightning prompt for LIGHTNING queries."""
+        """Streaming endpoint uses lightning prompt for LIGHTNING queries (buffered path)."""
         with patch("app.routes.chat.get_compiled_summary", new_callable=AsyncMock, return_value=sample_compiled_summary), \
              patch("app.routes.chat.classify_query", new_callable=AsyncMock, return_value=LIGHTNING_PROFILE), \
              patch("app.routes.chat.build_system_prompt_lightning", return_value="lightning prompt") as mock_lightning, \
-             patch("app.routes.chat.build_system_prompt_fast", return_value="fast prompt") as mock_fast, \
-             patch("app.routes.chat.build_system_prompt_v2", return_value="standard prompt") as mock_standard, \
+             patch("app.routes.chat.build_system_prompt_quick", return_value="fast prompt") as mock_fast, \
+             patch("app.routes.chat.build_system_prompt_deep", return_value="standard prompt") as mock_standard, \
              patch("app.routes.chat.AgentService") as mock_agent_cls, \
              patch("app.routes.chat.KnowledgeGraph") as mock_graph_cls:
 
             mock_graph_cls.return_value = AsyncMock()
 
             mock_agent = AsyncMock()
-            mock_agent.generate_response_stream = MagicMock(return_value=_mock_stream_generator())
+            # Lightning streaming uses generate_response (buffered), not generate_response_stream
+            mock_agent.generate_response = AsyncMock(return_value=sample_agent_response)
             mock_agent_cls.return_value = mock_agent
 
             response = await client.post(
@@ -1228,9 +1230,10 @@ class TestChatQueryRouting:
         client: AsyncClient,
         auth_headers: dict,
         patient_in_db: uuid.UUID,
+        sample_agent_response: AgentResponse,
         sample_compiled_summary: dict,
     ):
-        """Verify query_profile is propagated to agent.generate_response_stream."""
+        """Verify query_profile is propagated to agent.generate_response for Lightning buffered path."""
         with patch("app.routes.chat.get_compiled_summary", new_callable=AsyncMock, return_value=sample_compiled_summary), \
              patch("app.routes.chat.classify_query", new_callable=AsyncMock, return_value=LIGHTNING_PROFILE), \
              patch("app.routes.chat.build_system_prompt_lightning", return_value="lightning prompt"), \
@@ -1240,7 +1243,8 @@ class TestChatQueryRouting:
             mock_graph_cls.return_value = AsyncMock()
 
             mock_agent = AsyncMock()
-            mock_agent.generate_response_stream = MagicMock(return_value=_mock_stream_generator())
+            # Lightning streaming uses generate_response (buffered)
+            mock_agent.generate_response = AsyncMock(return_value=sample_agent_response)
             mock_agent_cls.return_value = mock_agent
 
             response = await client.post(
@@ -1254,7 +1258,7 @@ class TestChatQueryRouting:
 
             assert response.status_code == 200
 
-            call_kwargs = mock_agent.generate_response_stream.call_args.kwargs
+            call_kwargs = mock_agent.generate_response.call_args.kwargs
             assert call_kwargs["query_profile"] is LIGHTNING_PROFILE
 
     @pytest.mark.asyncio
@@ -1268,7 +1272,7 @@ class TestChatQueryRouting:
     ):
         """classify_query called with has_history=False when no conversation history."""
         with patch("app.routes.chat.get_compiled_summary", new_callable=AsyncMock, return_value=sample_compiled_summary), \
-             patch("app.routes.chat.classify_query", new_callable=AsyncMock, return_value=STANDARD_PROFILE) as mock_classify, \
+             patch("app.routes.chat.classify_query", new_callable=AsyncMock, return_value=DEEP_PROFILE) as mock_classify, \
              patch("app.routes.chat.AgentService") as mock_agent_cls, \
              patch("app.routes.chat.KnowledgeGraph") as mock_graph_cls:
 
@@ -1301,7 +1305,7 @@ class TestChatQueryRouting:
     ):
         """classify_query called with has_history=True when conversation history present."""
         with patch("app.routes.chat.get_compiled_summary", new_callable=AsyncMock, return_value=sample_compiled_summary), \
-             patch("app.routes.chat.classify_query", new_callable=AsyncMock, return_value=STANDARD_PROFILE) as mock_classify, \
+             patch("app.routes.chat.classify_query", new_callable=AsyncMock, return_value=DEEP_PROFILE) as mock_classify, \
              patch("app.routes.chat.AgentService") as mock_agent_cls, \
              patch("app.routes.chat.KnowledgeGraph") as mock_graph_cls:
 
@@ -1337,7 +1341,7 @@ class TestChatQueryRouting:
     ):
         """Streaming endpoint passes has_history to classify_query."""
         with patch("app.routes.chat.get_compiled_summary", new_callable=AsyncMock, return_value=sample_compiled_summary), \
-             patch("app.routes.chat.classify_query", new_callable=AsyncMock, return_value=STANDARD_PROFILE) as mock_classify, \
+             patch("app.routes.chat.classify_query", new_callable=AsyncMock, return_value=DEEP_PROFILE) as mock_classify, \
              patch("app.routes.chat.AgentService") as mock_agent_cls, \
              patch("app.routes.chat.KnowledgeGraph") as mock_graph_cls:
 
@@ -1362,3 +1366,246 @@ class TestChatQueryRouting:
 
             assert response.status_code == 200
             mock_classify.assert_called_once_with("What medications?", has_history=True)
+
+
+# =============================================================================
+# Lightning Auto-Upgrade Tests
+# =============================================================================
+
+
+class TestLightningAutoUpgrade:
+    """Tests for Lightning miss → Quick auto-upgrade in both endpoints."""
+
+    @pytest.mark.asyncio
+    async def test_non_streaming_auto_upgrade_on_lightning_miss(
+        self,
+        client: AsyncClient,
+        auth_headers: dict,
+        patient_in_db: uuid.UUID,
+        sample_compiled_summary: dict,
+    ):
+        """Non-streaming: Lightning miss triggers retry with QUICK_PROFILE."""
+        lightning_miss_response = AgentResponse(
+            narrative="Searching the full patient record for A1c...",
+            needs_deeper_search=True,
+        )
+        quick_response = AgentResponse(
+            narrative="HbA1c is 7.2% as of 2026-01-15.",
+            needs_deeper_search=False,
+        )
+
+        with patch("app.routes.chat.get_compiled_summary", new_callable=AsyncMock, return_value=sample_compiled_summary), \
+             patch("app.routes.chat.classify_query", new_callable=AsyncMock, return_value=LIGHTNING_PROFILE), \
+             patch("app.routes.chat.build_system_prompt_lightning", return_value="lightning prompt"), \
+             patch("app.routes.chat.build_system_prompt_quick", return_value="fast prompt") as mock_fast_prompt, \
+             patch("app.routes.chat.AgentService") as mock_agent_cls, \
+             patch("app.routes.chat.KnowledgeGraph") as mock_graph_cls:
+
+            mock_graph_cls.return_value = AsyncMock()
+
+            mock_agent = AsyncMock()
+            # First call returns miss, second call returns actual data
+            mock_agent.generate_response = AsyncMock(
+                side_effect=[lightning_miss_response, quick_response]
+            )
+            mock_agent_cls.return_value = mock_agent
+
+            response = await client.post(
+                "/api/chat",
+                json={
+                    "patient_id": str(patient_in_db),
+                    "message": "a1c?",
+                },
+                headers=auth_headers,
+            )
+
+            assert response.status_code == 200
+            data = response.json()
+            assert data["response"]["narrative"] == "HbA1c is 7.2% as of 2026-01-15."
+
+            # Verify generate_response was called twice
+            assert mock_agent.generate_response.call_count == 2
+
+            # First call: Lightning profile
+            first_call = mock_agent.generate_response.call_args_list[0]
+            assert first_call.kwargs["query_profile"] is LIGHTNING_PROFILE
+
+            # Second call: Quick profile with fast prompt
+            second_call = mock_agent.generate_response.call_args_list[1]
+            assert second_call.kwargs["query_profile"] is QUICK_PROFILE
+            mock_fast_prompt.assert_called_once()
+
+    @pytest.mark.asyncio
+    async def test_non_streaming_no_upgrade_when_lightning_hits(
+        self,
+        client: AsyncClient,
+        auth_headers: dict,
+        patient_in_db: uuid.UUID,
+        sample_agent_response: AgentResponse,
+        sample_compiled_summary: dict,
+    ):
+        """Non-streaming: Lightning hit (needs_deeper_search=False) returns directly, no retry."""
+        with patch("app.routes.chat.get_compiled_summary", new_callable=AsyncMock, return_value=sample_compiled_summary), \
+             patch("app.routes.chat.classify_query", new_callable=AsyncMock, return_value=LIGHTNING_PROFILE), \
+             patch("app.routes.chat.build_system_prompt_lightning", return_value="lightning prompt"), \
+             patch("app.routes.chat.AgentService") as mock_agent_cls, \
+             patch("app.routes.chat.KnowledgeGraph") as mock_graph_cls:
+
+            mock_graph_cls.return_value = AsyncMock()
+
+            mock_agent = AsyncMock()
+            mock_agent.generate_response = AsyncMock(return_value=sample_agent_response)
+            mock_agent_cls.return_value = mock_agent
+
+            response = await client.post(
+                "/api/chat",
+                json={
+                    "patient_id": str(patient_in_db),
+                    "message": "medications",
+                },
+                headers=auth_headers,
+            )
+
+            assert response.status_code == 200
+
+            # Verify generate_response was called only once (no retry)
+            assert mock_agent.generate_response.call_count == 1
+
+    @pytest.mark.asyncio
+    async def test_streaming_lightning_hit_returns_buffered_done_event(
+        self,
+        client: AsyncClient,
+        auth_headers: dict,
+        patient_in_db: uuid.UUID,
+        sample_compiled_summary: dict,
+    ):
+        """Streaming: Lightning hit buffers response and emits done event directly."""
+        lightning_hit_response = AgentResponse(
+            narrative="## Medications\n\n- Metformin 500mg",
+            needs_deeper_search=False,
+        )
+
+        with patch("app.routes.chat.get_compiled_summary", new_callable=AsyncMock, return_value=sample_compiled_summary), \
+             patch("app.routes.chat.classify_query", new_callable=AsyncMock, return_value=LIGHTNING_PROFILE), \
+             patch("app.routes.chat.build_system_prompt_lightning", return_value="lightning prompt"), \
+             patch("app.routes.chat.AgentService") as mock_agent_cls, \
+             patch("app.routes.chat.KnowledgeGraph") as mock_graph_cls:
+
+            mock_graph_cls.return_value = AsyncMock()
+
+            mock_agent = AsyncMock()
+            # For streaming Lightning, we use generate_response (non-streaming) first
+            mock_agent.generate_response = AsyncMock(return_value=lightning_hit_response)
+            mock_agent_cls.return_value = mock_agent
+
+            response = await client.post(
+                "/api/chat/stream",
+                json={
+                    "patient_id": str(patient_in_db),
+                    "message": "medications",
+                },
+                headers=auth_headers,
+            )
+
+            assert response.status_code == 200
+            events = _parse_sse_events(response.text)
+            event_types = [e["event"] for e in events]
+
+            # Should get a done event (from buffered response)
+            assert "done" in event_types
+            done_event = next(e for e in events if e["event"] == "done")
+            assert "Metformin 500mg" in done_event["data"]["response"]["narrative"]
+
+            # generate_response called once, generate_response_stream NOT called
+            mock_agent.generate_response.assert_called_once()
+
+    @pytest.mark.asyncio
+    async def test_streaming_lightning_miss_upgrades_to_quick_stream(
+        self,
+        client: AsyncClient,
+        auth_headers: dict,
+        patient_in_db: uuid.UUID,
+        sample_compiled_summary: dict,
+    ):
+        """Streaming: Lightning miss triggers Quick streaming with generate_response_stream."""
+        lightning_miss_response = AgentResponse(
+            narrative="Searching...",
+            needs_deeper_search=True,
+        )
+
+        with patch("app.routes.chat.get_compiled_summary", new_callable=AsyncMock, return_value=sample_compiled_summary), \
+             patch("app.routes.chat.classify_query", new_callable=AsyncMock, return_value=LIGHTNING_PROFILE), \
+             patch("app.routes.chat.build_system_prompt_lightning", return_value="lightning prompt"), \
+             patch("app.routes.chat.build_system_prompt_quick", return_value="fast prompt"), \
+             patch("app.routes.chat.AgentService") as mock_agent_cls, \
+             patch("app.routes.chat.KnowledgeGraph") as mock_graph_cls:
+
+            mock_graph_cls.return_value = AsyncMock()
+
+            mock_agent = AsyncMock()
+            mock_agent.generate_response = AsyncMock(return_value=lightning_miss_response)
+            mock_agent.generate_response_stream = MagicMock(return_value=_mock_stream_generator())
+            mock_agent_cls.return_value = mock_agent
+
+            response = await client.post(
+                "/api/chat/stream",
+                json={
+                    "patient_id": str(patient_in_db),
+                    "message": "a1c?",
+                },
+                headers=auth_headers,
+            )
+
+            assert response.status_code == 200
+            events = _parse_sse_events(response.text)
+            event_types = [e["event"] for e in events]
+
+            # Should have streamed Quick response events
+            assert "done" in event_types
+
+            # generate_response called once (Lightning), then stream for Quick
+            mock_agent.generate_response.assert_called_once()
+            mock_agent.generate_response_stream.assert_called_once()
+            stream_kwargs = mock_agent.generate_response_stream.call_args.kwargs
+            assert stream_kwargs["query_profile"] is QUICK_PROFILE
+
+    @pytest.mark.asyncio
+    async def test_streaming_non_lightning_tier_streams_normally(
+        self,
+        client: AsyncClient,
+        auth_headers: dict,
+        patient_in_db: uuid.UUID,
+        sample_compiled_summary: dict,
+    ):
+        """Streaming: Non-Lightning tier (DEEP) streams normally without buffering."""
+        with patch("app.routes.chat.get_compiled_summary", new_callable=AsyncMock, return_value=sample_compiled_summary), \
+             patch("app.routes.chat.classify_query", new_callable=AsyncMock, return_value=DEEP_PROFILE), \
+             patch("app.routes.chat.build_system_prompt_deep", return_value="standard prompt"), \
+             patch("app.routes.chat.AgentService") as mock_agent_cls, \
+             patch("app.routes.chat.KnowledgeGraph") as mock_graph_cls:
+
+            mock_graph_cls.return_value = AsyncMock()
+
+            mock_agent = AsyncMock()
+            mock_agent.generate_response_stream = MagicMock(return_value=_mock_stream_generator())
+            mock_agent_cls.return_value = mock_agent
+
+            response = await client.post(
+                "/api/chat/stream",
+                json={
+                    "patient_id": str(patient_in_db),
+                    "message": "Explain the HbA1c trend",
+                },
+                headers=auth_headers,
+            )
+
+            assert response.status_code == 200
+            events = _parse_sse_events(response.text)
+            event_types = [e["event"] for e in events]
+
+            assert "reasoning" in event_types
+            assert "narrative" in event_types
+            assert "done" in event_types
+
+            # generate_response should NOT have been called (no buffering for non-Lightning)
+            mock_agent.generate_response.assert_not_called()

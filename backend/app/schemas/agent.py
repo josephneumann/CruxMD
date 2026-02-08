@@ -173,6 +173,10 @@ class LightningResponse(BaseModel):
         default=None,
         description="2-3 suggested follow-up questions",
     )
+    needs_deeper_search: bool = Field(
+        default=False,
+        description="True if the requested data was not found in the patient summary",
+    )
 
 
 class AgentResponse(BaseModel):
@@ -210,4 +214,8 @@ class AgentResponse(BaseModel):
     follow_ups: list[FollowUp] | None = Field(
         default=None,
         description="Suggested follow-up questions",
+    )
+    needs_deeper_search: bool = Field(
+        default=False,
+        description="Internal flag: True if Lightning couldn't answer from summary",
     )
