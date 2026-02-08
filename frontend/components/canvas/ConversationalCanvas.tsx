@@ -123,6 +123,7 @@ export function ConversationalCanvas({ patient, sessionId, initialMessage }: Con
         onSubmit={handleSubmit}
         isLoading={isLoading}
         disabled={!patientId}
+        placeholder={messages.length > 0 ? "Reply..." : "What can I help you with today?"}
         model={model}
         onModelChange={setModel}
         reasoningEffort={reasoningEffort}

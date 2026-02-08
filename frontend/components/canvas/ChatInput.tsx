@@ -14,6 +14,7 @@ interface ChatInputProps {
   onSubmit: () => void;
   isLoading?: boolean;
   disabled?: boolean;
+  placeholder?: string;
   model: ModelId;
   onModelChange: (model: ModelId) => void;
   reasoningEffort: ReasoningEffort;
@@ -26,6 +27,7 @@ export function ChatInput({
   onSubmit,
   isLoading = false,
   disabled = false,
+  placeholder = "What can I help you with today?",
   model,
   onModelChange,
   reasoningEffort,
@@ -67,7 +69,7 @@ export function ChatInput({
               value={value}
               onChange={onChange}
               onSubmit={handleSubmit}
-              placeholder="What can I help you with today?"
+              placeholder={placeholder}
               disabled={disabled}
               autoFocus
             />
