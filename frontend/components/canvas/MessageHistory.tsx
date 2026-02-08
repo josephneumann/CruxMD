@@ -28,16 +28,43 @@ export function MessageHistory({
   const markSrc = resolvedTheme === "dark" ? "/brand/logos/mark-reversed.svg" : "/brand/logos/mark-primary.svg";
 
   const containerRef = useRef<HTMLDivElement>(null);
+  const userScrolledUpRef = useRef(false);
+  const prevMessageCountRef = useRef(messages.length);
 
-  const scrollToBottom = useCallback(() => {
-    const el = containerRef.current;
-    if (el) {
-      el.scrollTo({ top: el.scrollHeight, behavior: "smooth" });
-    }
+  const scrollToBottom = useCallback((behavior: ScrollBehavior = "smooth") => {
+    requestAnimationFrame(() => {
+      const el = containerRef.current;
+      if (el) {
+        el.scrollTo({ top: el.scrollHeight, behavior });
+      }
+    });
   }, []);
 
+  // Track user scroll intent — stop auto-scrolling if user scrolls up
   useEffect(() => {
-    scrollToBottom();
+    const el = containerRef.current;
+    if (!el) return;
+    const onScroll = () => {
+      const distanceFromBottom = el.scrollHeight - el.scrollTop - el.clientHeight;
+      userScrolledUpRef.current = distanceFromBottom > 100;
+    };
+    el.addEventListener("scroll", onScroll, { passive: true });
+    return () => el.removeEventListener("scroll", onScroll);
+  }, []);
+
+  // Auto-scroll on new messages or streaming updates
+  useEffect(() => {
+    const messageCountChanged = messages.length !== prevMessageCountRef.current;
+    prevMessageCountRef.current = messages.length;
+
+    if (messageCountChanged) {
+      // New message added — always scroll, reset scroll intent
+      userScrolledUpRef.current = false;
+      scrollToBottom("smooth");
+    } else if (!userScrolledUpRef.current) {
+      // Streaming content update — scroll instantly to keep up
+      scrollToBottom("instant");
+    }
   }, [messages, isLoading, scrollToBottom]);
 
   return (
@@ -51,7 +78,7 @@ export function MessageHistory({
               key={message.id}
               message={message}
               onFollowUpSelect={onFollowUpSelect}
-              onContentGrow={scrollToBottom}
+              onContentGrow={() => scrollToBottom("instant")}
               onRetry={() => {
                 // Find the preceding user message and resend it
                 for (let i = index - 1; i >= 0; i--) {
