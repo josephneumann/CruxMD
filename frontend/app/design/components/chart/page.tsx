@@ -282,6 +282,7 @@ export default function ChartPage() {
             </div>
             <div className="text-right">
               <p className="text-2xl font-semibold">178 mg/dL</p>
+              <p className="text-xs text-muted-foreground">↓ 10% over 6mo</p>
               <Badge variant="positive" size="sm">Improving</Badge>
             </div>
           </CardHeader>
@@ -339,19 +340,14 @@ export default function ChartPage() {
             </div>
             <div className="text-right">
               <p className="text-2xl font-semibold">5.2</p>
+              <p className="text-xs text-muted-foreground">↓ 28% over 6mo</p>
               <Badge variant="positive" size="sm">Normal</Badge>
             </div>
           </CardHeader>
           <CardContent>
             <div className="h-56">
               <ResponsiveContainer width="100%" height="100%">
-                <AreaChart data={rangeBandData} margin={CHART_MARGIN}>
-                  <defs>
-                    <linearGradient id="rangeBandGrad" x1="0" y1="0" x2="0" y2="1">
-                      <stop offset="5%" stopColor={c.chart1} stopOpacity={c.gradientFrom} />
-                      <stop offset="95%" stopColor={c.chart1} stopOpacity={c.gradientTo} />
-                    </linearGradient>
-                  </defs>
+                <LineChart data={rangeBandData} margin={CHART_MARGIN}>
                   <ReferenceArea y1={4} y2={5.5} fill={c.chart5} fillOpacity={c.bandSubtle} />
                   <ReferenceArea y1={5.5} y2={6.5} fill={c.warning} fillOpacity={c.bandMedium} />
                   <ReferenceArea y1={6.5} y2={8} fill={c.critical} fillOpacity={c.bandSubtle} />
@@ -365,16 +361,15 @@ export default function ChartPage() {
                     tick={{ fill: c.tick, fontSize: 12 }}
                   />
                   <Tooltip />
-                  <Area
+                  <Line
                     type="monotone"
                     dataKey="value"
                     stroke={c.chart1}
                     strokeWidth={2}
-                    fill="url(#rangeBandGrad)"
                     dot={{ fill: c.chart1, strokeWidth: 0, r: 4 }}
                     activeDot={{ fill: c.chart1, strokeWidth: 2, stroke: "#fff", r: 6 }}
                   />
-                </AreaChart>
+                </LineChart>
               </ResponsiveContainer>
             </div>
           </CardContent>
@@ -458,19 +453,14 @@ export default function ChartPage() {
             </div>
             <div className="text-right">
               <p className="text-2xl font-semibold">7.2%</p>
+              <p className="text-xs text-muted-foreground">↓ 21% over 12mo</p>
               <Badge variant="warning" size="sm">Above Target</Badge>
             </div>
           </CardHeader>
           <CardContent>
             <div className="h-64">
               <ResponsiveContainer width="100%" height="100%">
-                <AreaChart data={hba1cData} margin={CHART_MARGIN}>
-                  <defs>
-                    <linearGradient id="hba1cGrad" x1="0" y1="0" x2="0" y2="1">
-                      <stop offset="5%" stopColor={c.chart5} stopOpacity={c.gradientFrom} />
-                      <stop offset="95%" stopColor={c.chart5} stopOpacity={c.gradientTo} />
-                    </linearGradient>
-                  </defs>
+                <LineChart data={hba1cData} margin={CHART_MARGIN}>
                   {/* Clinical range bands: <7 on target, 7-8 above, 8-9 high, >9 very high */}
                   <ReferenceArea y1={5} y2={7} fill={c.chart5} fillOpacity={c.bandSubtle} />
                   <ReferenceArea y1={7} y2={8} fill={c.warning} fillOpacity={c.bandSubtle} />
@@ -492,17 +482,16 @@ export default function ChartPage() {
                     strokeDasharray="6 4"
                     label={{ value: "Target <7%", position: "insideTopRight", fill: c.chart5, fontSize: 11 }}
                   />
-                  <Area
+                  <Line
                     type="monotone"
                     dataKey="value"
                     name="HbA1c"
                     stroke={c.chart5}
                     strokeWidth={2}
-                    fill="url(#hba1cGrad)"
                     dot={{ fill: c.chart5, strokeWidth: 0, r: 4 }}
                     activeDot={{ fill: c.chart5, strokeWidth: 2, stroke: "#fff", r: 6 }}
                   />
-                </AreaChart>
+                </LineChart>
               </ResponsiveContainer>
             </div>
             <MedicationTimeline
@@ -530,6 +519,7 @@ export default function ChartPage() {
             </div>
             <div className="text-right">
               <p className="text-2xl font-semibold">38 mL/min</p>
+              <p className="text-xs text-muted-foreground">↓ 44% over 2yr</p>
               <Badge variant="warning" size="sm">Stage G3b</Badge>
             </div>
           </CardHeader>
@@ -588,6 +578,7 @@ export default function ChartPage() {
             </div>
             <div className="text-right">
               <p className="text-2xl font-semibold">122/76</p>
+              <p className="text-xs text-muted-foreground">↓ 20% over 5mo</p>
               <Badge variant="positive" size="sm">At Goal</Badge>
             </div>
           </CardHeader>
@@ -783,13 +774,15 @@ export default function ChartPage() {
         collapsible
         label="View Code — Reference Range Bands"
         code={`import {
-  AreaChart, Area, XAxis, YAxis,
+  LineChart, Line, XAxis, YAxis,
   CartesianGrid, Tooltip, ResponsiveContainer,
   ReferenceArea,
 } from "recharts";
 
+// When reference range bands are present, use LineChart (no area fill).
+// The bands provide the visual context — area fill would compete.
 <ResponsiveContainer width="100%" height={256}>
-  <AreaChart data={data}>
+  <LineChart data={data}>
     {/* Background range bands — render before data */}
     <ReferenceArea y1={0} y2={7} fill="#388E3C" fillOpacity={0.08} />
     <ReferenceArea y1={7} y2={8} fill="#D9A036" fillOpacity={0.1} />
@@ -799,13 +792,13 @@ export default function ChartPage() {
     <XAxis dataKey="date" axisLine={false} tickLine={false} />
     <YAxis axisLine={false} tickLine={false} />
     <Tooltip />
-    <Area
+    <Line
       type="monotone"
       dataKey="value"
       stroke="#388E3C"
       strokeWidth={2}
     />
-  </AreaChart>
+  </LineChart>
 </ResponsiveContainer>`}
       />
     </div>
