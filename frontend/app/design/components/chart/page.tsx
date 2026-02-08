@@ -280,10 +280,7 @@ export default function ChartPage() {
             </div>
             <div className="text-right">
               <p className="text-2xl font-semibold">178 mg/dL</p>
-              <div className="flex items-center justify-end gap-1.5 mt-0.5">
-                <Badge variant="positive" size="sm">Improving</Badge>
-                <span className="text-xs text-muted-foreground">↓ 10% over 6mo</span>
-              </div>
+              <Badge variant="positive" size="sm">↓ 10% · Improving</Badge>
             </div>
           </CardHeader>
           <CardContent>
@@ -338,10 +335,7 @@ export default function ChartPage() {
             </div>
             <div className="text-right">
               <p className="text-2xl font-semibold">5.2</p>
-              <div className="flex items-center justify-end gap-1.5 mt-0.5">
-                <Badge variant="positive" size="sm">Normal</Badge>
-                <span className="text-xs text-muted-foreground">↓ 28% over 6mo</span>
-              </div>
+              <Badge variant="positive" size="sm">↓ 28% · Normal</Badge>
             </div>
           </CardHeader>
           <CardContent>
@@ -453,10 +447,7 @@ export default function ChartPage() {
             </div>
             <div className="text-right">
               <p className="text-2xl font-semibold">7.2%</p>
-              <div className="flex items-center justify-end gap-1.5 mt-0.5">
-                <Badge variant="warning" size="sm">Above Target</Badge>
-                <span className="text-xs text-muted-foreground">↓ 21% over 12mo</span>
-              </div>
+              <Badge variant="warning" size="sm">↓ 21% · Above Target</Badge>
             </div>
           </CardHeader>
           <CardContent>
@@ -533,10 +524,7 @@ export default function ChartPage() {
             </div>
             <div className="text-right">
               <p className="text-2xl font-semibold">38 mL/min</p>
-              <div className="flex items-center justify-end gap-1.5 mt-0.5">
-                <Badge variant="warning" size="sm">Stage G3b</Badge>
-                <span className="text-xs text-muted-foreground">↓ 44% over 2yr</span>
-              </div>
+              <Badge variant="warning" size="sm">↓ 44% · Stage G3b</Badge>
             </div>
           </CardHeader>
           <CardContent>
@@ -594,10 +582,7 @@ export default function ChartPage() {
             </div>
             <div className="text-right">
               <p className="text-2xl font-semibold">122/76</p>
-              <div className="flex items-center justify-end gap-1.5 mt-0.5">
-                <Badge variant="positive" size="sm">At Goal</Badge>
-                <span className="text-xs text-muted-foreground">↓ 20% over 5mo</span>
-              </div>
+              <Badge variant="positive" size="sm">↓ 20% · At Goal</Badge>
             </div>
           </CardHeader>
           <CardContent>

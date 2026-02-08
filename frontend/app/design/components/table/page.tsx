@@ -1,15 +1,89 @@
 "use client";
 
+import { useTheme } from "next-themes";
 import { Badge } from "@/components/ui/badge";
 import { Card, CardHeader, CardTitle, CardContent } from "@/components/ui/card";
 import { CodeBlock } from "@/components/design-system/CodeBlock";
-import { TrendingUp, TrendingDown } from "lucide-react";
+import {
+  LineChart,
+  Line,
+  ResponsiveContainer,
+  ReferenceArea,
+  YAxis,
+} from "recharts";
 
-const labResults = [
-  { test: "White Blood Cells", value: "7.5", unit: "K/uL", range: "4.5-11.0", status: "normal", date: "01/25/2026" },
-  { test: "Hemoglobin", value: "15.2", unit: "g/dL", range: "13.5-17.5", status: "normal", date: "01/25/2026" },
-  { test: "Platelets", value: "425", unit: "K/uL", range: "150-400", status: "high", date: "01/25/2026", trend: "up" },
-  { test: "Potassium", value: "6.2", unit: "mEq/L", range: "3.5-5.0", status: "critical", date: "01/25/2026" },
+// -- Theme-aware colors (matches chart page) ----------------------------------
+
+function useTableColors() {
+  const { resolvedTheme } = useTheme();
+  const isDark = resolvedTheme === "dark";
+  return {
+    chart1: isDark ? "#4A9A88" : "#2F5E52",
+    chart5: isDark ? "#66BB6A" : "#388E3C",
+    warning: isDark ? "#EBC47C" : "#D9A036",
+    critical: isDark ? "#D46F65" : "#C24E42",
+    rangeBg: isDark ? "rgba(255,255,255,0.08)" : "rgba(0,0,0,0.06)",
+    rangeNormal: isDark ? "#66BB6A" : "#388E3C",
+    rangeWarning: isDark ? "#EBC47C" : "#D9A036",
+    rangeCritical: isDark ? "#D46F65" : "#C24E42",
+    bandSubtle: isDark ? 0.12 : 0.08,
+  };
+}
+
+// -- Data ---------------------------------------------------------------------
+
+interface LabResult {
+  test: string;
+  value: number;
+  unit: string;
+  rangeLow: number;
+  rangeHigh: number;
+  status: "normal" | "high" | "low" | "critical";
+  date: string;
+  history: number[];
+}
+
+const labResults: LabResult[] = [
+  {
+    test: "White Blood Cells",
+    value: 7.5,
+    unit: "K/uL",
+    rangeLow: 4.5,
+    rangeHigh: 11.0,
+    status: "normal",
+    date: "01/25/2026",
+    history: [6.8, 7.2, 7.0, 7.3, 7.1, 7.5],
+  },
+  {
+    test: "Hemoglobin",
+    value: 15.2,
+    unit: "g/dL",
+    rangeLow: 13.5,
+    rangeHigh: 17.5,
+    status: "normal",
+    date: "01/25/2026",
+    history: [14.8, 15.0, 14.9, 15.1, 15.0, 15.2],
+  },
+  {
+    test: "Platelets",
+    value: 425,
+    unit: "K/uL",
+    rangeLow: 150,
+    rangeHigh: 400,
+    status: "high",
+    date: "01/25/2026",
+    history: [380, 395, 400, 410, 418, 425],
+  },
+  {
+    test: "Potassium",
+    value: 6.2,
+    unit: "mEq/L",
+    rangeLow: 3.5,
+    rangeHigh: 5.0,
+    status: "critical",
+    date: "01/25/2026",
+    history: [4.2, 4.5, 4.8, 5.1, 5.8, 6.2],
+  },
 ];
 
 const medications = [
@@ -19,48 +93,140 @@ const medications = [
   { name: "Warfarin", dosage: "5 mg", frequency: "Once daily", route: "Oral", prescriber: "Dr. Anderson", startDate: "12/01/2024", status: "discontinued" },
 ];
 
-function StatusBadge({ status }: { status: string }) {
-  const variants: Record<string, "positive" | "warning" | "critical" | "neutral"> = {
-    normal: "positive",
-    high: "warning",
-    low: "warning",
-    critical: "critical",
+// -- Components ---------------------------------------------------------------
+
+function StatusFlag({ status }: { status: string }) {
+  if (status === "high") return <Badge variant="warning" size="sm" className="ml-2 text-[10px] px-1.5">H</Badge>;
+  if (status === "low") return <Badge variant="warning" size="sm" className="ml-2 text-[10px] px-1.5">L</Badge>;
+  if (status === "critical") return <Badge variant="critical" size="sm" className="ml-2 text-[10px] px-1.5">CRIT</Badge>;
+  return null;
+}
+
+function MedStatusBadge({ status }: { status: string }) {
+  const variants: Record<string, "positive" | "neutral"> = {
     active: "positive",
     discontinued: "neutral",
   };
   const labels: Record<string, string> = {
-    normal: "Normal",
-    high: "High",
-    low: "Low",
-    critical: "Critical",
     active: "Active",
     discontinued: "Discontinued",
   };
   return <Badge variant={variants[status]} size="sm">{labels[status]}</Badge>;
 }
 
-function TrendIcon({ trend }: { trend?: string }) {
-  if (trend === "up") return <TrendingUp className="size-4 text-[#D9A036]" />;
-  if (trend === "down") return <TrendingDown className="size-4 text-[#4A7A8C]" />;
-  return null;
-}
+/**
+ * Compact reference range interval bar.
+ * Shows the normal range as a highlighted zone within a track,
+ * with a dot marker showing where the current value sits.
+ */
+function RangeBar({ value, low, high, status }: {
+  value: number;
+  low: number;
+  high: number;
+  status: string;
+}) {
+  const c = useTableColors();
 
-function ValueCell({ value, unit, status }: { value: string; unit: string; status: string }) {
-  const isAbnormal = status === "high" || status === "low" || status === "critical";
+  // Extend display 30% beyond range on each side
+  const rangeSpan = high - low;
+  const padding = rangeSpan * 0.3;
+  const displayLow = low - padding;
+  const displayHigh = high + padding;
+  const displaySpan = displayHigh - displayLow;
+
+  // Position of current value as percentage
+  const position = Math.max(3, Math.min(97, ((value - displayLow) / displaySpan) * 100));
+
+  // Normal range zone position
+  const rangeStart = ((low - displayLow) / displaySpan) * 100;
+  const rangeWidth = ((high - low) / displaySpan) * 100;
+
+  const markerColor =
+    status === "critical" ? c.rangeCritical
+    : status === "high" || status === "low" ? c.rangeWarning
+    : c.rangeNormal;
+
   return (
-    <span className={isAbnormal ? "text-[#C24E42] font-medium" : ""}>
-      {value} <span className="text-muted-foreground">{unit}</span>
-      {status === "high" && <TrendingUp className="inline size-3 ml-1" />}
-      {status === "critical" && <span className="ml-1">!!!</span>}
-    </span>
+    <div className="flex items-center gap-2.5 min-w-[160px]">
+      <div className="relative flex-1 h-2">
+        {/* Track background */}
+        <div className="absolute inset-0 rounded-full" style={{ backgroundColor: c.rangeBg }} />
+        {/* Normal range zone */}
+        <div
+          className="absolute top-0 h-full rounded-full"
+          style={{
+            left: `${rangeStart}%`,
+            width: `${rangeWidth}%`,
+            backgroundColor: c.rangeNormal,
+            opacity: 0.2,
+          }}
+        />
+        {/* Position marker */}
+        <div
+          className="absolute top-1/2 size-2.5 rounded-full border-2 border-background"
+          style={{
+            left: `${position}%`,
+            transform: "translate(-50%, -50%)",
+            backgroundColor: markerColor,
+          }}
+        />
+      </div>
+      <span className="text-[11px] text-muted-foreground tabular-nums whitespace-nowrap">
+        {low}–{high}
+      </span>
+    </div>
   );
 }
 
-function FlagBadge({ status }: { status: string }) {
-  if (status === "high") return <Badge variant="warning" size="sm" className="ml-2 text-[10px] px-1.5">H</Badge>;
-  if (status === "critical") return <Badge variant="critical" size="sm" className="ml-2 text-[10px] px-1.5">CRITICAL</Badge>;
-  return null;
+/**
+ * Tiny inline sparkline showing last 6 readings.
+ * Color matches the status: green for normal, amber for high/low, red for critical.
+ * Subtle reference range band provides context.
+ */
+function Sparkline({ data, status, rangeLow, rangeHigh }: {
+  data: number[];
+  status: string;
+  rangeLow: number;
+  rangeHigh: number;
+}) {
+  const c = useTableColors();
+  const chartData = data.map((v) => ({ v }));
+
+  const min = Math.min(...data, rangeLow);
+  const max = Math.max(...data, rangeHigh);
+  const pad = (max - min) * 0.15 || 0.5;
+  const domain: [number, number] = [min - pad, max + pad];
+
+  const strokeColor =
+    status === "critical" ? c.critical
+    : status === "high" || status === "low" ? c.warning
+    : c.chart1;
+
+  return (
+    <div className="w-[72px] h-[28px]">
+      <ResponsiveContainer width="100%" height="100%">
+        <LineChart data={chartData} margin={{ top: 2, right: 2, bottom: 2, left: 2 }}>
+          <ReferenceArea y1={rangeLow} y2={rangeHigh} fill={c.chart5} fillOpacity={c.bandSubtle} />
+          <YAxis domain={domain} hide />
+          <Line
+            type="monotone"
+            dataKey="v"
+            stroke={strokeColor}
+            strokeWidth={1.5}
+            dot={false}
+            isAnimationActive={false}
+          />
+        </LineChart>
+      </ResponsiveContainer>
+    </div>
+  );
 }
+
+// -- Table header cell helper -------------------------------------------------
+
+const TH = "text-left p-4 text-xs font-medium text-muted-foreground uppercase tracking-wider";
+
+// -- Page ---------------------------------------------------------------------
 
 export default function TablePage() {
   return (
@@ -68,14 +234,19 @@ export default function TablePage() {
       <div className="space-y-4">
         <h1 className="text-4xl font-medium tracking-tight">Table</h1>
         <p className="text-lg text-muted-foreground max-w-2xl">
-          Tables display structured data with support for status badges, trend indicators,
-          and color-coded values. Wrap in Card for grouped presentation.
+          Tables display structured clinical data with inline sparklines, visual reference
+          range bars, and status-coded values. Wrap in Card for grouped presentation.
         </p>
       </div>
 
       {/* Laboratory Results */}
       <div className="space-y-6">
         <h2 className="text-2xl font-medium">Laboratory Results</h2>
+        <p className="text-muted-foreground max-w-2xl">
+          The lab results table consolidates status into a single flag badge next to the test
+          name. Inline sparklines show recent trend history, and reference range interval bars
+          give immediate visual context for where the current value sits.
+        </p>
         <Card>
           <CardHeader>
             <CardTitle>Complete Blood Count (CBC)</CardTitle>
@@ -84,30 +255,47 @@ export default function TablePage() {
             <table className="w-full">
               <thead>
                 <tr className="border-b bg-muted/30">
-                  <th className="text-left p-4 text-xs font-medium text-muted-foreground uppercase tracking-wider">Test</th>
-                  <th className="text-left p-4 text-xs font-medium text-muted-foreground uppercase tracking-wider">Value</th>
-                  <th className="text-left p-4 text-xs font-medium text-muted-foreground uppercase tracking-wider">Reference Range</th>
-                  <th className="text-left p-4 text-xs font-medium text-muted-foreground uppercase tracking-wider">Status</th>
-                  <th className="text-left p-4 text-xs font-medium text-muted-foreground uppercase tracking-wider">Date</th>
-                  <th className="text-left p-4 text-xs font-medium text-muted-foreground uppercase tracking-wider">Trend</th>
+                  <th className={TH}>Test</th>
+                  <th className={TH}>Result</th>
+                  <th className={TH}>Trend</th>
+                  <th className={TH}>Reference Range</th>
+                  <th className={TH}>Date</th>
                 </tr>
               </thead>
               <tbody className="divide-y">
-                {labResults.map((row) => (
-                  <tr key={row.test} className={row.status === "critical" ? "bg-[#C24E42]/5" : ""}>
-                    <td className="p-4 font-medium">
-                      {row.test}
-                      <FlagBadge status={row.status} />
-                    </td>
-                    <td className="p-4">
-                      <ValueCell value={row.value} unit={row.unit} status={row.status} />
-                    </td>
-                    <td className="p-4 text-muted-foreground">{row.range}</td>
-                    <td className="p-4"><StatusBadge status={row.status} /></td>
-                    <td className="p-4 text-muted-foreground">{row.date}</td>
-                    <td className="p-4"><TrendIcon trend={row.trend} /></td>
-                  </tr>
-                ))}
+                {labResults.map((row) => {
+                  const isAbnormal = row.status !== "normal";
+                  return (
+                    <tr key={row.test} className={row.status === "critical" ? "bg-[#C24E42]/5" : ""}>
+                      <td className="p-4 font-medium">
+                        {row.test}
+                        <StatusFlag status={row.status} />
+                      </td>
+                      <td className="p-4">
+                        <span className={isAbnormal ? "text-[#C24E42] font-medium tabular-nums" : "tabular-nums"}>
+                          {row.value} <span className="text-muted-foreground font-normal">{row.unit}</span>
+                        </span>
+                      </td>
+                      <td className="p-4">
+                        <Sparkline
+                          data={row.history}
+                          status={row.status}
+                          rangeLow={row.rangeLow}
+                          rangeHigh={row.rangeHigh}
+                        />
+                      </td>
+                      <td className="p-4">
+                        <RangeBar
+                          value={row.value}
+                          low={row.rangeLow}
+                          high={row.rangeHigh}
+                          status={row.status}
+                        />
+                      </td>
+                      <td className="p-4 text-muted-foreground">{row.date}</td>
+                    </tr>
+                  );
+                })}
               </tbody>
             </table>
             {/* Legend */}
@@ -117,16 +305,23 @@ export default function TablePage() {
                 Normal
               </span>
               <span className="flex items-center gap-1.5">
-                <TrendingUp className="size-3" />
+                <Badge variant="warning" size="sm" className="text-[10px] px-1.5">H</Badge>
                 Above Range
               </span>
               <span className="flex items-center gap-1.5">
-                <TrendingDown className="size-3" />
+                <Badge variant="warning" size="sm" className="text-[10px] px-1.5">L</Badge>
                 Below Range
               </span>
               <span className="flex items-center gap-1.5">
-                <span className="size-2 rounded-full bg-[#C24E42]" />
+                <Badge variant="critical" size="sm" className="text-[10px] px-1.5">CRIT</Badge>
                 Critical
+              </span>
+              <span className="flex items-center gap-1.5 ml-2 border-l pl-4">
+                <div className="w-8 h-1.5 rounded-full bg-muted relative">
+                  <div className="absolute left-1/4 w-1/2 h-full rounded-full bg-[#388E3C]/20" />
+                  <div className="absolute left-[60%] top-1/2 -translate-y-1/2 size-1.5 rounded-full bg-[#388E3C]" />
+                </div>
+                Value in Range
               </span>
             </div>
           </CardContent>
@@ -144,13 +339,13 @@ export default function TablePage() {
             <table className="w-full">
               <thead>
                 <tr className="border-b bg-muted/30">
-                  <th className="text-left p-4 text-xs font-medium text-muted-foreground uppercase tracking-wider">Medication</th>
-                  <th className="text-left p-4 text-xs font-medium text-muted-foreground uppercase tracking-wider">Dosage</th>
-                  <th className="text-left p-4 text-xs font-medium text-muted-foreground uppercase tracking-wider">Frequency</th>
-                  <th className="text-left p-4 text-xs font-medium text-muted-foreground uppercase tracking-wider">Route</th>
-                  <th className="text-left p-4 text-xs font-medium text-muted-foreground uppercase tracking-wider">Prescriber</th>
-                  <th className="text-left p-4 text-xs font-medium text-muted-foreground uppercase tracking-wider">Start Date</th>
-                  <th className="text-left p-4 text-xs font-medium text-muted-foreground uppercase tracking-wider">Status</th>
+                  <th className={TH}>Medication</th>
+                  <th className={TH}>Dosage</th>
+                  <th className={TH}>Frequency</th>
+                  <th className={TH}>Route</th>
+                  <th className={TH}>Prescriber</th>
+                  <th className={TH}>Start Date</th>
+                  <th className={TH}>Status</th>
                 </tr>
               </thead>
               <tbody className="divide-y">
@@ -162,7 +357,7 @@ export default function TablePage() {
                     <td className="p-4">{row.route}</td>
                     <td className="p-4">{row.prescriber}</td>
                     <td className="p-4 text-muted-foreground">{row.startDate}</td>
-                    <td className="p-4"><StatusBadge status={row.status} /></td>
+                    <td className="p-4"><MedStatusBadge status={row.status} /></td>
                   </tr>
                 ))}
               </tbody>
@@ -206,34 +401,39 @@ export default function TablePage() {
       <CodeBlock
         collapsible
         label="View Code"
-        code={`// Table with Card wrapper
-<Card>
-  <CardHeader>
-    <CardTitle>Table Title</CardTitle>
-  </CardHeader>
-  <CardContent className="p-0">
-    <table className="w-full">
-      <thead>
-        <tr className="border-b bg-muted/30">
-          <th className="text-left p-4 text-xs font-medium
-              text-muted-foreground uppercase tracking-wider">
-            Column
-          </th>
-        </tr>
-      </thead>
-      <tbody className="divide-y">
-        <tr>
-          <td className="p-4">Value</td>
-        </tr>
-      </tbody>
-    </table>
-  </CardContent>
-</Card>
+        code={`// Lab results with sparklines and range bars
+interface LabResult {
+  test: string;
+  value: number;
+  unit: string;
+  rangeLow: number;
+  rangeHigh: number;
+  status: "normal" | "high" | "low" | "critical";
+  date: string;
+  history: number[];  // last 6 readings
+}
 
-// Status badges in tables
-<Badge variant="positive" size="sm">Normal</Badge>
-<Badge variant="warning" size="sm">High</Badge>
-<Badge variant="critical" size="sm">Critical</Badge>`}
+// Status flag inline with test name
+<td className="p-4 font-medium">
+  {row.test}
+  <StatusFlag status={row.status} />
+</td>
+
+// Inline sparkline with reference range band
+<Sparkline
+  data={row.history}
+  status={row.status}
+  rangeLow={row.rangeLow}
+  rangeHigh={row.rangeHigh}
+/>
+
+// Visual reference range interval bar
+<RangeBar
+  value={row.value}
+  low={row.rangeLow}
+  high={row.rangeHigh}
+  status={row.status}
+/>`}
       />
     </div>
   );
