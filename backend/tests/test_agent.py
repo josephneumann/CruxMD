@@ -327,21 +327,21 @@ class TestAgentServiceGenerateResponse:
             await service.generate_response(system_prompt=system_prompt, patient_id=patient_id, message="   ")
 
     @pytest.mark.asyncio
-    async def test_generate_response_reasoning_effort_override(self, system_prompt: str, patient_id: str):
-        """Test overriding reasoning effort for a single call."""
+    async def test_generate_response_reasoning_boost(self, system_prompt: str, patient_id: str):
+        """Test reasoning_boost bumps effort one level (low -> medium)."""
         mock_client = create_mock_openai_client()
         service = AgentService(client=mock_client, reasoning_effort="low")
 
         await service.generate_response(
             system_prompt=system_prompt, patient_id=patient_id,
             message="Complex question",
-            reasoning_effort="high",
+            reasoning_boost=True,
         )
 
         call_args = mock_client.responses.parse.call_args
         reasoning = call_args.kwargs["reasoning"]
         effort = getattr(reasoning, "effort", None) or reasoning.get("effort")
-        assert effort == "high"
+        assert effort == "medium"
 
     @pytest.mark.asyncio
     async def test_generate_response_uses_correct_model(self, system_prompt: str, patient_id: str):
@@ -2185,26 +2185,26 @@ class TestGenerateResponseWithQueryProfile:
         assert "tools" not in call_args.kwargs
 
     @pytest.mark.asyncio
-    async def test_reasoning_effort_override_trumps_profile(
+    async def test_reasoning_boost_bumps_quick_profile(
         self, system_prompt: str, patient_id: str
     ):
-        """Explicit reasoning_effort param overrides query_profile effort level."""
+        """reasoning_boost bumps QUICK profile effort from low to medium."""
         mock_client = create_mock_openai_client()
         service = AgentService(client=mock_client)
 
-        # Use QUICK_PROFILE (reasoning=True, effort=low) and override to high
+        # QUICK_PROFILE has reasoning_effort="low"; boost should bump to "medium"
         await service.generate_response(
             system_prompt=system_prompt,
             patient_id=patient_id,
             message="What medications?",
-            reasoning_effort="high",
+            reasoning_boost=True,
             query_profile=QUICK_PROFILE,
         )
 
         call_args = mock_client.responses.parse.call_args
         reasoning = call_args.kwargs["reasoning"]
         effort = getattr(reasoning, "effort", None) or reasoning.get("effort")
-        assert effort == "high"
+        assert effort == "medium"
 
     @pytest.mark.asyncio
     async def test_deep_profile_preserves_defaults(

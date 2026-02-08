@@ -94,9 +94,9 @@ class ChatRequest(BaseModel):
         default=None,
         description="Model to use for generation. Defaults to server-side default.",
     )
-    reasoning_effort: Literal["low", "medium", "high"] | None = Field(
-        default=None,
-        description="Reasoning effort level. Defaults to server-side default.",
+    reasoning_boost: bool = Field(
+        default=False,
+        description="If true, bump reasoning effort one level above the tier default.",
     )
 
 
@@ -304,7 +304,7 @@ async def chat(
             patient_id=chat_ctx.patient_id,
             message=request.message,
             history=chat_ctx.history,
-            reasoning_effort=request.reasoning_effort,
+            reasoning_boost=request.reasoning_boost,
             graph=chat_ctx.graph,
             db=db,
             query_profile=chat_ctx.query_profile,
@@ -322,7 +322,7 @@ async def chat(
                 patient_id=chat_ctx.patient_id,
                 message=request.message,
                 history=chat_ctx.history,
-                reasoning_effort=request.reasoning_effort,
+                reasoning_boost=request.reasoning_boost,
                 graph=chat_ctx.graph,
                 db=db,
                 query_profile=QUICK_PROFILE,
@@ -446,7 +446,7 @@ async def chat_stream(
                     patient_id=chat_ctx.patient_id,
                     message=request.message,
                     history=chat_ctx.history,
-                    reasoning_effort=request.reasoning_effort,
+                    reasoning_boost=request.reasoning_boost,
                     graph=chat_ctx.graph,
                     db=db,
                     query_profile=chat_ctx.query_profile,

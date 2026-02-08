@@ -588,7 +588,7 @@ class TestQueryProfileValues:
 
     def test_quick_profile_values(self):
         assert QUICK_PROFILE.tier == QueryTier.QUICK
-        assert QUICK_PROFILE.model == "gpt-5-mini"
+        assert QUICK_PROFILE.model is None  # defers to user-selected model
         assert QUICK_PROFILE.reasoning is True
         assert QUICK_PROFILE.reasoning_effort == "low"
         assert QUICK_PROFILE.include_tools is True
@@ -598,7 +598,7 @@ class TestQueryProfileValues:
 
     def test_deep_profile_values(self):
         assert DEEP_PROFILE.tier == QueryTier.DEEP
-        assert DEEP_PROFILE.model == "gpt-5-mini"
+        assert DEEP_PROFILE.model is None  # defers to user-selected model
         assert DEEP_PROFILE.reasoning is True
         assert DEEP_PROFILE.reasoning_effort == "medium"
         assert DEEP_PROFILE.include_tools is True

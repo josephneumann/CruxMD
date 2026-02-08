@@ -22,7 +22,7 @@ import { ChatInput } from "@/components/canvas/ChatInput";
 import { FollowUpSuggestions } from "@/components/canvas/FollowUpSuggestions";
 import { InsightCard } from "@/components/clinical/InsightCard";
 import type { DisplayMessage } from "@/hooks";
-import type { ModelId, ReasoningEffort, ActionType } from "@/lib/types";
+import type { ModelId, ActionType } from "@/lib/types";
 
 // ---------------------------------------------------------------------------
 // Heart Failure Scenario Mock Data
@@ -223,7 +223,7 @@ export default function ChatDesignPage() {
   // ChatInput demo state
   const [inputValue, setInputValue] = useState("");
   const [model, setModel] = useState<ModelId>("gpt-5-mini");
-  const [reasoningEffort, setReasoningEffort] = useState<ReasoningEffort>("medium");
+  const [reasoningBoost, setReasoningBoost] = useState(false);
   const [selectedActions, setSelectedActions] = useState<Set<string>>(new Set(["Prescribe carvedilol 3.125 mg BID", "Uptitrate lisinopril to 20 mg"]));
 
   const toggleAction = (label: string) => {
@@ -485,8 +485,8 @@ export default function ChatDesignPage() {
             onSubmit={() => setInputValue("")}
             model={model}
             onModelChange={setModel}
-            reasoningEffort={reasoningEffort}
-            onReasoningEffortChange={setReasoningEffort}
+            reasoningBoost={reasoningBoost}
+            onReasoningBoostChange={setReasoningBoost}
           />
         </div>
         <div className="grid grid-cols-2 md:grid-cols-4 gap-4 text-sm">

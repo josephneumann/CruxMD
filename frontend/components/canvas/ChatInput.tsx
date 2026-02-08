@@ -6,7 +6,7 @@ import { Button } from "@/components/ui/button";
 import { Tooltip, TooltipTrigger, TooltipContent } from "@/components/ui/tooltip";
 import { AutoResizeTextarea } from "@/components/chat/AutoResizeTextarea";
 import { MODEL_OPTIONS } from "@/lib/types";
-import type { ModelId, ReasoningEffort } from "@/lib/types";
+import type { ModelId } from "@/lib/types";
 
 interface ChatInputProps {
   value: string;
@@ -17,8 +17,8 @@ interface ChatInputProps {
   placeholder?: string;
   model: ModelId;
   onModelChange: (model: ModelId) => void;
-  reasoningEffort: ReasoningEffort;
-  onReasoningEffortChange: (effort: ReasoningEffort) => void;
+  reasoningBoost: boolean;
+  onReasoningBoostChange: (boost: boolean) => void;
 }
 
 export function ChatInput({
@@ -30,8 +30,8 @@ export function ChatInput({
   placeholder = "What can I help you with today?",
   model,
   onModelChange,
-  reasoningEffort,
-  onReasoningEffortChange,
+  reasoningBoost,
+  onReasoningBoostChange,
 }: ChatInputProps) {
   const [showModelMenu, setShowModelMenu] = useState(false);
   const menuRef = useRef<HTMLDivElement>(null);
@@ -88,9 +88,9 @@ export function ChatInput({
                 <TooltipTrigger asChild>
                   <button
                     className="p-2 rounded-lg text-muted-foreground hover:text-foreground hover:bg-muted transition-colors cursor-pointer"
-                    onClick={() => onReasoningEffortChange(reasoningEffort === "high" ? "medium" : "high")}
+                    onClick={() => onReasoningBoostChange(!reasoningBoost)}
                   >
-                    <Clock className={`h-5 w-5 ${reasoningEffort === "high" ? "text-primary" : ""}`} />
+                    <Clock className={`h-5 w-5 ${reasoningBoost ? "text-primary" : ""}`} />
                   </button>
                 </TooltipTrigger>
                 <TooltipContent side="top">Extended thinking</TooltipContent>

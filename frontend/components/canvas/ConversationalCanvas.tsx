@@ -23,7 +23,7 @@ interface ConversationalCanvasProps {
 
 export function ConversationalCanvas({ patient, sessionId, initialMessage }: ConversationalCanvasProps) {
   const patientId = patient?.id ?? null;
-  const { messages, sendMessage, isLoading, error, clearError, retry, model, setModel, reasoningEffort, setReasoningEffort } = useChat(patientId, sessionId);
+  const { messages, sendMessage, isLoading, error, clearError, retry, model, setModel, reasoningBoost, setReasoningBoost } = useChat(patientId, sessionId);
   const [inputValue, setInputValue] = useState("");
   const [lottieLight, setLottieLight] = useState<object | null>(null);
   const [lottieDark, setLottieDark] = useState<object | null>(null);
@@ -126,8 +126,8 @@ export function ConversationalCanvas({ patient, sessionId, initialMessage }: Con
         placeholder={messages.length > 0 ? "Reply..." : "What can I help you with today?"}
         model={model}
         onModelChange={setModel}
-        reasoningEffort={reasoningEffort}
-        onReasoningEffortChange={setReasoningEffort}
+        reasoningBoost={reasoningBoost}
+        onReasoningBoostChange={setReasoningBoost}
       />
     </div>
   );
