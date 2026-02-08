@@ -20,6 +20,7 @@ from app.services.agent import (
     TIER_DEEP,
     TIER_QUICK,
     TIER_LIGHTNING,
+    _PERSONA,
     build_system_prompt_quick,
     build_system_prompt_lightning,
     build_system_prompt_deep,
@@ -1382,11 +1383,12 @@ def full_compiled_summary() -> dict:
 class TestBuildSystemPromptDeep:
     """Tests for build_system_prompt_deep function."""
 
-    def test_minimal_summary_includes_role(self, minimal_compiled_summary: dict):
-        """Test that v2 prompt includes role/PCP persona."""
+    def test_minimal_summary_includes_persona(self, minimal_compiled_summary: dict):
+        """Test that v2 prompt includes shared Crux persona."""
         prompt = build_system_prompt_deep(minimal_compiled_summary)
-        assert "clinical reasoning assistant" in prompt
+        assert "Crux" in prompt
         assert "primary care physician" in prompt
+        assert "chart review partner" in prompt
 
     def test_minimal_summary_includes_patient_orientation(self, minimal_compiled_summary: dict):
         """Test that v2 prompt includes patient orientation."""
@@ -2072,9 +2074,12 @@ class TestBuildSafetySectionLightning:
         assert "Safety Constraints" in result
         assert "ALLERGY: Penicillin" in result
 
-    def test_includes_fabrication_guard(self, minimal_compiled_summary: dict):
+    def test_fabrication_guard_in_persona_not_safety(self, minimal_compiled_summary: dict):
+        """Fabrication guard moved to _PERSONA; lightning safety section no longer duplicates it."""
         result = _build_safety_section_lightning(minimal_compiled_summary)
-        assert "Never fabricate clinical data" in result
+        assert "Never fabricate" not in result
+        # But it IS in the persona
+        assert "Never fabricate" in _PERSONA
 
     def test_excludes_boilerplate_rules(self, full_compiled_summary: dict):
         result = _build_safety_section_lightning(full_compiled_summary)
@@ -2083,9 +2088,9 @@ class TestBuildSafetySectionLightning:
         assert "recommend starting, stopping, or changing medications" not in result
         assert "state the uncertainty rather than guessing" not in result
 
-    def test_no_allergies_still_has_fabrication_guard(self, minimal_compiled_summary: dict):
+    def test_no_allergies_still_has_safety_header(self, minimal_compiled_summary: dict):
+        """Lightning safety section has header even with no allergies."""
         result = _build_safety_section_lightning(minimal_compiled_summary)
-        assert "Never fabricate clinical data" in result
         assert "Safety Constraints" in result
 
 
@@ -2138,11 +2143,11 @@ class TestBuildSystemPromptQuick:
         )
         assert "Active retired teacher" in prompt
 
-    def test_has_concise_role(self, minimal_compiled_summary: dict):
-        """Quick prompt has a concise role statement."""
+    def test_has_persona_and_tier_instructions(self, minimal_compiled_summary: dict):
+        """Quick prompt has shared Crux persona and concise tier instructions."""
         prompt = build_system_prompt_quick(minimal_compiled_summary)
-        assert "chart assistant" in prompt
-        assert "Answer directly" in prompt
+        assert "Crux" in prompt
+        assert "answer directly" in prompt.lower()
 
 
 # =============================================================================
@@ -2268,10 +2273,11 @@ class TestBuildSystemPromptLightning:
         assert "Metformin 500 MG" in prompt
 
     def test_includes_minimal_safety(self, full_compiled_summary: dict):
-        """Lightning prompt includes allergy alerts and fabrication guard only."""
+        """Lightning prompt includes allergy alerts; fabrication guard is in persona."""
         prompt = build_system_prompt_lightning(full_compiled_summary)
         assert "Safety Constraints" in prompt
         assert "ALLERGY: Penicillin" in prompt
+        # Fabrication guard comes from _PERSONA, not safety section
         assert "Never fabricate clinical data" in prompt
 
     def test_excludes_full_safety_rules(self, full_compiled_summary: dict):
@@ -2294,11 +2300,11 @@ class TestBuildSystemPromptLightning:
         assert "Reasoning Directives" not in prompt
         assert "Cross-condition reasoning" not in prompt
 
-    def test_has_concise_role(self, minimal_compiled_summary: dict):
-        """Lightning prompt has a concise chart assistant role."""
+    def test_has_persona_and_tier_instructions(self, minimal_compiled_summary: dict):
+        """Lightning prompt has shared Crux persona and concise tier instructions."""
         prompt = build_system_prompt_lightning(minimal_compiled_summary)
-        assert "clinical chart assistant" in prompt
-        assert "Extract and present" in prompt
+        assert "Crux" in prompt
+        assert "extract and present" in prompt.lower()
 
     def test_has_simple_format_section(self, minimal_compiled_summary: dict):
         """Lightning prompt format section mentions narrative, follow_ups, and needs_deeper_search."""
@@ -2423,6 +2429,47 @@ class TestBuildSystemPromptQuickFhirIds:
         prompt = build_system_prompt_quick(full_compiled_summary)
         assert "cond-diabetes" not in prompt
         assert "cond-hypertension" not in prompt
+
+
+# =============================================================================
+# Shared Persona Tests
+# =============================================================================
+
+
+class TestSharedPersona:
+    """Tests that _PERSONA is shared identically across all three tiers."""
+
+    def test_persona_present_in_all_tiers(self, minimal_compiled_summary: dict):
+        """All three builders include the shared _PERSONA text."""
+        lightning = build_system_prompt_lightning(minimal_compiled_summary)
+        quick = build_system_prompt_quick(minimal_compiled_summary)
+        deep = build_system_prompt_deep(minimal_compiled_summary)
+        for prompt in [lightning, quick, deep]:
+            assert _PERSONA in prompt
+
+    def test_persona_contains_crux_identity(self):
+        """_PERSONA defines the Crux identity."""
+        assert "Crux" in _PERSONA
+        assert "primary care physician" in _PERSONA
+
+    def test_persona_contains_core_principles(self):
+        """_PERSONA contains all five core principles."""
+        assert "Cite specific data points" in _PERSONA
+        assert "Never fabricate clinical data" in _PERSONA
+        assert "transparent about completeness" in _PERSONA
+        assert "not found in the chart summary" in _PERSONA
+        assert "Never reveal internal implementation details" in _PERSONA
+
+    def test_persona_prohibits_fhir_leakage(self):
+        """_PERSONA prohibits exposing FHIR internals."""
+        assert "FHIR" in _PERSONA
+        assert "resource IDs" in _PERSONA
+        assert "LOINC/SNOMED" in _PERSONA
+
+    def test_persona_prohibits_patient_summary_phrase(self):
+        """_PERSONA prohibits the phrase 'patient summary'."""
+        assert "patient summary" in _PERSONA
+        assert "the patient's record" in _PERSONA
 
 
 # =============================================================================
