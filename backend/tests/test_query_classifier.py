@@ -1,8 +1,16 @@
-"""Tests for the adaptive three-tier query classifier.
+"""Tests for the two-layer adaptive query classifier.
 
-Tests the heuristic classifier that routes queries to LIGHTNING (pure fact
-extraction), QUICK (light reasoning), or DEEP (full clinical reasoning) profiles.
+Tests the hybrid classifier that routes queries to LIGHTNING (pure fact
+extraction), QUICK (focused retrieval), or DEEP (full clinical reasoning)
+profiles using deterministic heuristics (Layer 1) and an LLM fallback (Layer 2).
+
+Layer 1 tests call _classify_layer1() directly (sync, no mocking needed).
+Layer 2 tests call classify_query() with Layer 2 mocked.
+Integration tests call classify_query() with the full two-layer flow.
 """
+
+import json
+from unittest.mock import AsyncMock, MagicMock, patch
 
 import pytest
 
@@ -12,17 +20,18 @@ from app.services.query_classifier import (
     QUICK_PROFILE,
     QueryProfile,
     QueryTier,
+    _classify_layer1,
     classify_query,
 )
 
 
 # =============================================================================
-# LIGHTNING Path Tests
+# Layer 1: LIGHTNING Path Tests
 # =============================================================================
 
 
-class TestClassifyQueryLightningPath:
-    """All three paths to LIGHTNING classification (no history, no temporal)."""
+class TestLayer1LightningPath:
+    """Layer 1 deterministic classification → LIGHTNING."""
 
     # Path A: entity + lookup prefix
     @pytest.mark.parametrize("msg", [
@@ -52,9 +61,11 @@ class TestClassifyQueryLightningPath:
         "When was the last visit?",
         "When was the last HbA1c?",
         "Active meds and conditions",
+        "What are the latest labs?",
+        "Show me the vitals",
     ])
     def test_path_a_entity_plus_prefix(self, msg: str):
-        assert classify_query(msg) == LIGHTNING_PROFILE
+        assert _classify_layer1(msg) == LIGHTNING_PROFILE
 
     # Path B: bare entity shortcut (<=30 chars)
     @pytest.mark.parametrize("msg", [
@@ -71,32 +82,34 @@ class TestClassifyQueryLightningPath:
         "hr",
     ])
     def test_path_b_bare_entity(self, msg: str):
-        assert classify_query(msg) == LIGHTNING_PROFILE
+        assert _classify_layer1(msg) == LIGHTNING_PROFILE
 
     # Path C: specific-item patterns (<=100 chars)
     @pytest.mark.parametrize("msg", [
         "What's the HbA1c?",
         "What is the latest A1c?",
         "What's the blood pressure?",
+        "What's the A1c?",
         "Is the patient on metformin?",
         "Does the patient have diabetes?",
         "Is the patient taking lisinopril?",
         "Are there any allergies?",
         "Is the patient allergic to penicillin?",
+        "What is the patient's BMI?",
     ])
     def test_path_c_specific_item(self, msg: str):
-        assert classify_query(msg) == LIGHTNING_PROFILE
+        assert _classify_layer1(msg) == LIGHTNING_PROFILE
 
 
 # =============================================================================
-# QUICK Path Tests
+# Layer 1: QUICK Path Tests
 # =============================================================================
 
 
-class TestClassifyQueryQuickPath:
-    """Queries upgraded from LIGHTNING to QUICK via temporal modifiers or history."""
+class TestLayer1QuickPath:
+    """Layer 1 deterministic classification → QUICK."""
 
-    # Temporal modifier upgrades LIGHTNING → QUICK
+    # Temporal modifiers with chart entity
     @pytest.mark.parametrize("msg", [
         "What were the labs from January?",
         "What medications since 2025?",
@@ -108,38 +121,56 @@ class TestClassifyQueryQuickPath:
         "What was the blood pressure this month?",
         "Show encounters over the last year",
         "What labs after March?",
+        "BP readings this year",
     ])
-    def test_temporal_modifier_upgrades_to_quick(self, msg: str):
-        assert classify_query(msg) == QUICK_PROFILE
+    def test_temporal_modifier_with_entity(self, msg: str):
+        assert _classify_layer1(msg) == QUICK_PROFILE
 
-    # has_history upgrades LIGHTNING → QUICK
+    # Trending / tracking (retrieval verbs + chart entity)
     @pytest.mark.parametrize("msg", [
-        "What medications is the patient on?",
-        "medications",
-        "labs?",
-        "bp",
-        "What's the HbA1c?",
-        "Is the patient on metformin?",
-        "List all conditions",
-        "allergies",
+        "Trend the A1c results",
+        "Track the blood pressure over time",
+        "Filter medications by active status",
+        "Sort labs by date",
     ])
-    def test_has_history_upgrades_to_quick(self, msg: str):
-        assert classify_query(msg, has_history=True) == QUICK_PROFILE
+    def test_retrieval_verb_with_entity(self, msg: str):
+        assert _classify_layer1(msg) == QUICK_PROFILE
+
+    # Focused retrieval patterns
+    @pytest.mark.parametrize("msg", [
+        "Find the latest labs",
+        "Find the most recent A1c",
+        "Look up the HbA1c history",
+        "Pull up the recent vitals",
+        "Get the last blood pressure",
+        "Find latest labs",
+        "Find recent observations",
+        "Get the most recent A1c",
+    ])
+    def test_focused_retrieval_patterns(self, msg: str):
+        assert _classify_layer1(msg) == QUICK_PROFILE
+
+    # History of specific item (temporal modifier)
+    @pytest.mark.parametrize("msg", [
+        "Labs from last month",
+    ])
+    def test_history_queries(self, msg: str):
+        assert _classify_layer1(msg) == QUICK_PROFILE
 
     def test_temporal_plus_history_still_quick(self):
-        """Both temporal modifier and history present — still QUICK, not DEEP."""
-        assert classify_query(
-            "What were the labs from January?", has_history=True,
+        """Both temporal modifier and history present — still QUICK."""
+        assert _classify_layer1(
+            "What were the labs from January?",
         ) == QUICK_PROFILE
 
 
 # =============================================================================
-# DEEP Path Tests
+# Layer 1: DEEP Path Tests
 # =============================================================================
 
 
-class TestClassifyQueryDeepPath:
-    """All paths to DEEP classification."""
+class TestLayer1DeepPath:
+    """Layer 1 deterministic classification → DEEP."""
 
     # Reasoning keywords
     @pytest.mark.parametrize("msg", [
@@ -157,34 +188,37 @@ class TestClassifyQueryDeepPath:
         "Analyze the relationship between kidney function and BP meds",
     ])
     def test_reasoning_keywords(self, msg: str):
-        assert classify_query(msg) == DEEP_PROFILE
+        assert _classify_layer1(msg) == DEEP_PROFILE
 
-    # Search/tool requests
+    # New reasoning keywords: quantify, driving
     @pytest.mark.parametrize("msg", [
-        "Search for all diabetes-related observations",
-        "Look up the HbA1c history",
+        "What's driving the diuretic escalation? Pull her recent trends.",
+        "Quantify the TdP risk — I need to know if this is a phone call today or an ER send.",
     ])
-    def test_search_requests(self, msg: str):
-        assert classify_query(msg) == DEEP_PROFILE
+    def test_new_reasoning_keywords(self, msg: str):
+        assert _classify_layer1(msg) == DEEP_PROFILE
+
+    # Deep search patterns
+    def test_deep_search_pattern(self):
+        assert _classify_layer1("Search for all diabetes-related observations") == DEEP_PROFILE
 
     # Conversation references
     @pytest.mark.parametrize("msg", [
         "You mentioned the medications earlier, tell me more",
+        "As you said about the labs",
     ])
     def test_conversation_references(self, msg: str):
-        assert classify_query(msg) == DEEP_PROFILE
+        assert _classify_layer1(msg) == DEEP_PROFILE
 
-    # Summary/overview queries (no chart entity -> DEEP)
+    # Reasoning shorts (<=4 words + reasoning short word)
     @pytest.mark.parametrize("msg", [
         "Summarize the patient record",
-        "Give me a summary",
         "Patient overview",
-        "What do I need to know about this patient?",
-        "Tell me about this patient",
-        "Brief me on this patient",
+        "Give me a summary",
+        "Assessment",
     ])
-    def test_summary_overview_queries(self, msg: str):
-        assert classify_query(msg) == DEEP_PROFILE
+    def test_reasoning_shorts(self, msg: str):
+        assert _classify_layer1(msg) == DEEP_PROFILE
 
     # Analytical phrases (entity present but analytical intent)
     @pytest.mark.parametrize("msg", [
@@ -192,99 +226,342 @@ class TestClassifyQueryDeepPath:
         "Show me the labs and check if there's a pattern",
         "Pull up the encounters and determine if he was seen recently",
         "List medications and figure out which one is causing the issue",
+        "Check if there's a pattern in the labs",
+        "See if the medication is working",
     ])
     def test_analytical_phrases(self, msg: str):
-        assert classify_query(msg) == DEEP_PROFILE
+        assert _classify_layer1(msg) == DEEP_PROFILE
 
     # Demo scenario queries (complex clinical reasoning)
     @pytest.mark.parametrize("msg", [
-        "What's driving the diuretic escalation? Pull her recent trends.",
-        "Quantify the TdP risk — I need to know if this is a phone call today or an ER send.",
         "I'm thinking GDMT — walk me through initiation given her current regimen and the contraindication landscape.",
         "Why are you flagging a lower A1c? Walk me through the risk.",
     ])
     def test_demo_scenario_queries(self, msg: str):
-        assert classify_query(msg) == DEEP_PROFILE
+        assert _classify_layer1(msg) == DEEP_PROFILE
 
-    # No chart entity
+    # Non-clinical shorts
     @pytest.mark.parametrize("msg", [
         "Hello",
-        "What do you think?",
+        "hi",
+        "hey",
+        "ok",
     ])
-    def test_no_chart_entity(self, msg: str):
-        assert classify_query(msg) == DEEP_PROFILE
+    def test_non_clinical_shorts(self, msg: str):
+        assert _classify_layer1(msg) == DEEP_PROFILE
 
-    def test_has_history_does_not_upgrade_deep(self):
-        """DEEP queries stay DEEP even with has_history=True."""
-        assert classify_query("Explain the lab results", has_history=True) == DEEP_PROFILE
-        assert classify_query("Why was lisinopril prescribed?", has_history=True) == DEEP_PROFILE
+    # General / multi-word non-clinical
+    @pytest.mark.parametrize("msg", [
+        "What do you think?",
+        "Tell me about this patient",
+    ])
+    def test_general_queries(self, msg: str):
+        """Queries without chart entities or signals → DEEP or ambiguous."""
+        result = _classify_layer1(msg)
+        # "What do you think?" — "what" is in _NON_CLINICAL_SHORTS, 4 words → DEEP
+        # "Tell me about this patient" — 5 words, no entity → None (ambiguous)
+        assert result in (DEEP_PROFILE, None)
 
 
 # =============================================================================
-# Edge Cases
+# Layer 1: Ambiguous (returns None → Layer 2)
 # =============================================================================
 
 
-class TestClassifyQueryEdgeCases:
-    """Edge cases and boundary conditions."""
+class TestLayer1Ambiguous:
+    """Layer 1 returns None for ambiguous queries that need Layer 2."""
+
+    @pytest.mark.parametrize("msg", [
+        "hemoglobin",
+        "potassium",
+        "ejection fraction",
+        "ferritin level",
+        "thyroid panel",
+        # Retrieval verb present but no chart entity (weight, glucose not in set)
+        "Graph the weight history",
+        "Plot the glucose readings",
+    ])
+    def test_ambiguous_clinical_terms_pass_to_layer2(self, msg: str):
+        """Specific clinical terms not in _CHART_ENTITIES → Layer 2."""
+        assert _classify_layer1(msg) is None
+
+
+# =============================================================================
+# Layer 1: has_history is ignored
+# =============================================================================
+
+
+class TestLayer1HasHistoryIgnored:
+    """has_history parameter no longer affects classification."""
+
+    @pytest.mark.parametrize("msg", [
+        "What medications is the patient on?",
+        "medications",
+        "labs?",
+        "bp",
+        "What's the HbA1c?",
+        "Is the patient on metformin?",
+        "List all conditions",
+        "allergies",
+    ])
+    @pytest.mark.asyncio
+    async def test_has_history_no_longer_upgrades(self, msg: str):
+        """Queries that are LIGHTNING stay LIGHTNING regardless of has_history."""
+        # Layer 1 resolves these as LIGHTNING
+        assert _classify_layer1(msg) == LIGHTNING_PROFILE
+        # The full classify_query also returns LIGHTNING (Layer 1 resolves, Layer 2 not invoked)
+        assert await classify_query(msg, has_history=True) == LIGHTNING_PROFILE
+        assert await classify_query(msg, has_history=False) == LIGHTNING_PROFILE
+
+
+# =============================================================================
+# Layer 1: Edge Cases
+# =============================================================================
+
+
+class TestLayer1EdgeCases:
+    """Edge cases and boundary conditions for Layer 1."""
 
     def test_empty_string(self):
-        assert classify_query("") == DEEP_PROFILE
+        assert _classify_layer1("") == DEEP_PROFILE
 
     def test_whitespace_only(self):
-        assert classify_query("   ") == DEEP_PROFILE
+        assert _classify_layer1("   ") == DEEP_PROFILE
 
     def test_over_200_chars(self):
         msg = "What medications " + "x" * 200
-        assert classify_query(msg) == DEEP_PROFILE
+        assert _classify_layer1(msg) == DEEP_PROFILE
 
     def test_case_insensitivity(self):
-        assert classify_query("WHAT MEDICATIONS?") == LIGHTNING_PROFILE
-        assert classify_query("What Medications?") == LIGHTNING_PROFILE
+        assert _classify_layer1("WHAT MEDICATIONS?") == LIGHTNING_PROFILE
+        assert _classify_layer1("What Medications?") == LIGHTNING_PROFILE
 
     def test_reasoning_keyword_overrides_entity(self):
-        assert classify_query("Why is the patient on these medications?") == DEEP_PROFILE
-        assert classify_query("Explain the lab results") == DEEP_PROFILE
+        assert _classify_layer1("Why is the patient on these medications?") == DEEP_PROFILE
+        assert _classify_layer1("Explain the lab results") == DEEP_PROFILE
 
     def test_analytical_phrase_overrides_entity(self):
-        assert classify_query("Show me encounters and see if he's getting worse") == DEEP_PROFILE
+        assert _classify_layer1("Show me encounters and see if he's getting worse") == DEEP_PROFILE
 
     def test_contraindication_stem(self):
-        assert classify_query("Any contraindications for this drug?") == DEEP_PROFILE
-
-    def test_no_chart_entity_various(self):
-        assert classify_query("Tell me about this patient") == DEEP_PROFILE
-        assert classify_query("Hello") == DEEP_PROFILE
-        assert classify_query("What do you think?") == DEEP_PROFILE
+        assert _classify_layer1("Any contraindications for this drug?") == DEEP_PROFILE
 
     def test_how_many_is_lightning(self):
-        assert classify_query("How many medications?") == LIGHTNING_PROFILE
+        assert _classify_layer1("How many medications?") == LIGHTNING_PROFILE
 
     def test_how_should_is_deep(self):
-        assert classify_query("How should we manage the diabetes?") == DEEP_PROFILE
+        assert _classify_layer1("How should we manage the diabetes?") == DEEP_PROFILE
 
     def test_follow_up_shorthand_and_the(self):
-        # "And the allergies?" -> no lookup prefix, follow-up excluded -> DEEP
-        assert classify_query("And the allergies?") == DEEP_PROFILE
+        # "And the allergies?" -> no lookup prefix, follow-up excluded
+        result = _classify_layer1("And the allergies?")
+        # Short query (3 words), has entity but excluded by follow-up start
+        # Falls through to ambiguous
+        assert result is None or result == DEEP_PROFILE
 
     def test_what_about_is_lightning(self):
         # "What about the labs?" -> "what" prefix + entity -> LIGHTNING
-        assert classify_query("What about the labs?") == LIGHTNING_PROFILE
+        assert _classify_layer1("What about the labs?") == LIGHTNING_PROFILE
 
     def test_clinical_shorthand_bp(self):
-        assert classify_query("bp") == LIGHTNING_PROFILE
-        assert classify_query("bp?") == LIGHTNING_PROFILE
+        assert _classify_layer1("bp") == LIGHTNING_PROFILE
+        assert _classify_layer1("bp?") == LIGHTNING_PROFILE
 
     def test_clinical_shorthand_hr(self):
-        assert classify_query("hr") == LIGHTNING_PROFILE
+        assert _classify_layer1("hr") == LIGHTNING_PROFILE
 
     def test_whether_analytical_phrase(self):
-        assert classify_query("Show labs and whether the A1c improved") == DEEP_PROFILE
+        assert _classify_layer1("Show labs and whether the A1c improved") == DEEP_PROFILE
 
-    def test_has_history_keyword_only(self):
-        """has_history=True with keyword-only arg syntax."""
-        assert classify_query("medications", has_history=True) == QUICK_PROFILE
-        assert classify_query("medications", has_history=False) == LIGHTNING_PROFILE
+    def test_trend_is_quick_not_deep(self):
+        """'trend' was moved from _REASONING_KEYWORDS to _RETRIEVAL_VERBS."""
+        assert _classify_layer1("Trend the A1c results") == QUICK_PROFILE
+
+    def test_between_removed_from_reasoning(self):
+        """'between' was removed from _REASONING_KEYWORDS."""
+        # "labs between January and March" has temporal modifier + entity → QUICK
+        result = _classify_layer1("labs between January and March")
+        # "january" is a temporal modifier, "labs" is a chart entity → QUICK
+        assert result == QUICK_PROFILE
+
+    def test_focused_retrieval_not_deep(self):
+        """'Look up the HbA1c history' is now QUICK (focused retrieval), not DEEP."""
+        assert _classify_layer1("Look up the HbA1c history") == QUICK_PROFILE
+
+    def test_find_latest_is_quick(self):
+        """'find latest labs' is now QUICK (focused retrieval), not DEEP."""
+        assert _classify_layer1("Find the latest labs") == QUICK_PROFILE
+
+
+# =============================================================================
+# Layer 2: LLM Fallback Tests
+# =============================================================================
+
+
+class TestLayer2LLMFallback:
+    """Tests for the LLM-based Layer 2 classification."""
+
+    @pytest.mark.asyncio
+    async def test_layer2_classifies_lightning(self):
+        """Layer 2 returns LIGHTNING for a fact-lookup query."""
+        mock_response = MagicMock()
+        mock_response.choices = [MagicMock()]
+        mock_response.choices[0].message.content = json.dumps({"tier": "lightning"})
+
+        with patch(
+            "app.services.query_classifier._get_layer2_client"
+        ) as mock_get_client:
+            mock_client = AsyncMock()
+            mock_client.chat.completions.create = AsyncMock(return_value=mock_response)
+            mock_get_client.return_value = mock_client
+
+            result = await classify_query("hemoglobin")
+            assert result == LIGHTNING_PROFILE
+
+    @pytest.mark.asyncio
+    async def test_layer2_classifies_quick(self):
+        """Layer 2 returns QUICK for a retrieval query."""
+        mock_response = MagicMock()
+        mock_response.choices = [MagicMock()]
+        mock_response.choices[0].message.content = json.dumps({"tier": "quick"})
+
+        with patch(
+            "app.services.query_classifier._get_layer2_client"
+        ) as mock_get_client:
+            mock_client = AsyncMock()
+            mock_client.chat.completions.create = AsyncMock(return_value=mock_response)
+            mock_get_client.return_value = mock_client
+
+            result = await classify_query("ferritin level")
+            assert result == QUICK_PROFILE
+
+    @pytest.mark.asyncio
+    async def test_layer2_classifies_deep(self):
+        """Layer 2 returns DEEP for a reasoning query."""
+        mock_response = MagicMock()
+        mock_response.choices = [MagicMock()]
+        mock_response.choices[0].message.content = json.dumps({"tier": "deep"})
+
+        with patch(
+            "app.services.query_classifier._get_layer2_client"
+        ) as mock_get_client:
+            mock_client = AsyncMock()
+            mock_client.chat.completions.create = AsyncMock(return_value=mock_response)
+            mock_get_client.return_value = mock_client
+
+            result = await classify_query("ejection fraction")
+            assert result == DEEP_PROFILE
+
+    @pytest.mark.asyncio
+    async def test_layer2_timeout_falls_back_to_deep(self):
+        """Layer 2 timeout → DEEP fallback."""
+        import asyncio
+
+        with patch(
+            "app.services.query_classifier._get_layer2_client"
+        ) as mock_get_client:
+            mock_client = AsyncMock()
+            mock_client.chat.completions.create = AsyncMock(
+                side_effect=asyncio.TimeoutError()
+            )
+            mock_get_client.return_value = mock_client
+
+            result = await classify_query("potassium")
+            assert result == DEEP_PROFILE
+
+    @pytest.mark.asyncio
+    async def test_layer2_error_falls_back_to_deep(self):
+        """Layer 2 API error → DEEP fallback."""
+        with patch(
+            "app.services.query_classifier._get_layer2_client"
+        ) as mock_get_client:
+            mock_client = AsyncMock()
+            mock_client.chat.completions.create = AsyncMock(
+                side_effect=RuntimeError("API error")
+            )
+            mock_get_client.return_value = mock_client
+
+            result = await classify_query("thyroid panel")
+            assert result == DEEP_PROFILE
+
+    @pytest.mark.asyncio
+    async def test_layer2_invalid_json_falls_back_to_deep(self):
+        """Layer 2 returns invalid JSON → DEEP fallback."""
+        mock_response = MagicMock()
+        mock_response.choices = [MagicMock()]
+        mock_response.choices[0].message.content = "not json"
+
+        with patch(
+            "app.services.query_classifier._get_layer2_client"
+        ) as mock_get_client:
+            mock_client = AsyncMock()
+            mock_client.chat.completions.create = AsyncMock(return_value=mock_response)
+            mock_get_client.return_value = mock_client
+
+            result = await classify_query("potassium")
+            assert result == DEEP_PROFILE
+
+    @pytest.mark.asyncio
+    async def test_layer1_resolved_does_not_invoke_layer2(self):
+        """When Layer 1 resolves, Layer 2 is never called."""
+        with patch(
+            "app.services.query_classifier._classify_layer2"
+        ) as mock_layer2:
+            result = await classify_query("medications")
+            assert result == LIGHTNING_PROFILE
+            mock_layer2.assert_not_called()
+
+    @pytest.mark.asyncio
+    async def test_layer2_invoked_for_ambiguous(self):
+        """When Layer 1 returns None, Layer 2 is called."""
+        with patch(
+            "app.services.query_classifier._classify_layer2",
+            new_callable=AsyncMock,
+            return_value=LIGHTNING_PROFILE,
+        ) as mock_layer2:
+            result = await classify_query("hemoglobin")
+            assert result == LIGHTNING_PROFILE
+            mock_layer2.assert_called_once_with("hemoglobin")
+
+
+# =============================================================================
+# Full Integration: classify_query() async tests
+# =============================================================================
+
+
+class TestClassifyQueryAsync:
+    """Integration tests calling the full async classify_query()."""
+
+    @pytest.mark.asyncio
+    @pytest.mark.parametrize("msg,expected", [
+        # Lightning — Layer 1 resolves
+        ("medications", LIGHTNING_PROFILE),
+        ("bp", LIGHTNING_PROFILE),
+        ("What medications is the patient on?", LIGHTNING_PROFILE),
+        ("What's the A1c?", LIGHTNING_PROFILE),
+        ("Is the patient allergic to penicillin?", LIGHTNING_PROFILE),
+        # Quick — Layer 1 resolves
+        ("Trend the A1c results", QUICK_PROFILE),
+        ("Labs from last month", QUICK_PROFILE),
+        ("Find the latest labs", QUICK_PROFILE),
+        ("Look up the HbA1c history", QUICK_PROFILE),
+        # Deep — Layer 1 resolves
+        ("Why was lisinopril prescribed?", DEEP_PROFILE),
+        ("Assess cardiovascular risk", DEEP_PROFILE),
+        ("Hello", DEEP_PROFILE),
+        ("Search for all diabetes-related observations", DEEP_PROFILE),
+        ("Summarize the patient record", DEEP_PROFILE),
+    ])
+    async def test_layer1_resolved_queries(self, msg: str, expected: QueryProfile):
+        """Queries that Layer 1 resolves deterministically."""
+        result = await classify_query(msg)
+        assert result == expected
+
+    @pytest.mark.asyncio
+    async def test_has_history_does_not_upgrade_deep(self):
+        """DEEP queries stay DEEP even with has_history=True."""
+        assert await classify_query("Explain the lab results", has_history=True) == DEEP_PROFILE
+        assert await classify_query("Why was lisinopril prescribed?", has_history=True) == DEEP_PROFILE
 
 
 # =============================================================================

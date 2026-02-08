@@ -180,19 +180,35 @@ Fields prefixed with `_` are synthetic enrichments added by the compiler, not pa
 
 ### Purpose
 
-Pure heuristic classifier (no LLM call, zero I/O) that routes user messages into one of three tiers with different resource profiles.
+Two-layer hybrid classifier that routes user messages into one of three tiers. Layer 1 is a deterministic heuristic (0ms, no I/O). Layer 2 is an LLM fallback (~200ms, gpt-4o-mini) for ambiguous queries that Layer 1 can't resolve.
 
 ### `classify_query(message, has_history=False) -> QueryProfile`
 
-Normalizes the message to lowercase, then applies rules in order:
+Now an **async** function. `has_history` is kept for backward compatibility but ignored internally.
 
-1. **DEEP immediately if:** empty, >200 chars, contains conversation references ("you mentioned", "earlier"), search requests ("search for", "look up"), reasoning keywords ("why", "should", "compare", "explain", "trend", "risk"), or analytical phrases ("see if", "check if").
-2. **LIGHTNING candidates** (three paths):
-   - **Path A:** Chart entity + lookup prefix. E.g. "what medications is the patient on?"
-   - **Path B:** Bare entity shortcut (<=30 chars, contains chart entity). E.g. "medications" or "latest labs"
-   - **Path C:** Specific-item pattern (<=100 chars, starts with "what's the...", "when was the last...", etc.)
-3. **Upgrade guards:** If a LIGHTNING candidate has temporal modifiers ("from", "since", "last month") or `has_history=True`, it becomes QUICK instead.
-4. **Default:** DEEP.
+### Layer 1: Deterministic Classification
+
+Returns a definitive tier for clear-cut queries, or `None` for ambiguous cases (passes to Layer 2).
+
+**Decision flow** (applied in order):
+
+1. **DEEP guard rails:** Empty, >200 chars, conversation references ("you mentioned", "earlier"), deep search patterns ("search for") → DEEP
+2. **DEEP deny-list:** Reasoning keywords ("why", "should", "compare", "explain", "assess", "risk", "quantify", "driving", etc.), analytical phrases ("see if", "check if", "determine if") → DEEP
+3. **DEEP reasoning shorts:** Short queries (≤4 words) with summary/overview/assessment intent → DEEP
+4. **Non-clinical shorts:** Short queries (≤4 words) composed entirely of non-clinical words ("hello", "help", "what") → DEEP
+5. **QUICK signals:** Focused retrieval patterns ("find latest", "pull up the", "get the last"), temporal modifiers ("from", "since", "last month") with chart entity, retrieval verbs ("trend", "track", "graph", "filter") with chart entity → QUICK
+6. **LIGHTNING signals:** Chart entity + lookup prefix ("what medications", "list conditions"), bare entity shortcut (≤30 chars, "medications", "bp"), specific-item patterns ("what's the A1c?", "is the patient on metformin?") → LIGHTNING
+7. **Ambiguous:** Short queries (≤4 words) with no clear signals → `None` (pass to Layer 2)
+8. **Default:** `None` (pass to Layer 2)
+
+### Layer 2: LLM Fallback
+
+Called only when Layer 1 returns `None`. Uses gpt-4o-mini with structured output to classify into one of the three tiers.
+
+- **Model:** gpt-4o-mini (fast, cheap)
+- **Timeout:** 2 seconds (falls back to DEEP on timeout/error)
+- **Output:** JSON `{"tier": "lightning" | "quick" | "deep"}`
+- **Latency:** ~200ms typical
 
 ### Query Profiles
 
@@ -201,6 +217,14 @@ Normalizes the message to lowercase, then applies rules in order:
 | `LIGHTNING` | gpt-4o-mini | Off | Off | 2048 | lightning | LightningResponse |
 | `QUICK` | gpt-5-mini | On (low) | On | 4096 | fast | AgentResponse |
 | `DEEP` | gpt-5-mini | On (medium) | On | 16384 | standard | AgentResponse |
+
+### Tier Definitions
+
+| Tier | When to use | Example |
+|------|-------------|---------|
+| **Lightning** | Answer exists in pre-compiled patient summary. No retrieval, no reasoning. | "BMI?", "medications", "allergies", "what's the A1c?" |
+| **Quick** | Focused data retrieval: filter by date, trend a value, search history. Tools needed but minimal reasoning. | "trend a1c results", "labs from last month", "find latest bp readings" |
+| **Deep** | Clinical interpretation, reasoning across entities, recommendations. | "why was lisinopril prescribed?", "assess cardiovascular risk" |
 
 ### QueryProfile Dataclass
 

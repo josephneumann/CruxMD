@@ -1,25 +1,33 @@
-"""Adaptive query classifier for three-tier query routing.
+"""Two-layer adaptive query classifier for three-tier query routing.
 
-Classifies user messages into LIGHTNING (pure fact extraction), QUICK (light
-reasoning with tools), or DEEP (full clinical reasoning) tiers using a pure
-heuristic approach — no LLM call, zero I/O.
+Layer 1 (deterministic, sync): Pattern-matching heuristics classify clear-cut
+queries with zero I/O. Ambiguous queries return None and fall through to Layer 2.
 
-LIGHTNING queries (meds, allergies, labs, conditions, vitals) are answerable
-directly from the pre-compiled patient summary with a non-reasoning model.
+Layer 2 (LLM, async): A fast gpt-4o-mini call with structured output classifies
+queries that the heuristics can't confidently bucket. Timeout of 2 s with a
+DEEP fallback ensures latency stays bounded.
 
-QUICK queries need light reasoning or tool access — date-filtered lookups,
-conversation follow-ups with chart entities.
-
-DEEP queries (interactions, trends, interpretations) require full clinical
-reasoning with tools and higher token limits.
+Tiers:
+  LIGHTNING — Pure fact extraction from pre-compiled patient summary.
+  QUICK     — Focused data retrieval (date filters, trending, history search).
+  DEEP      — Full clinical reasoning, interpretation, recommendations.
 """
 
 from __future__ import annotations
 
+import asyncio
+import json
+import logging
 import re
 from dataclasses import dataclass
 from enum import Enum
 from typing import Literal
+
+from openai import AsyncOpenAI
+
+from app.config import settings
+
+logger = logging.getLogger(__name__)
 
 
 class QueryTier(str, Enum):
@@ -85,9 +93,15 @@ _REASONING_KEYWORDS = frozenset({
     "analyze", "assess", "evaluate", "recommend", "suggest",
     "appropriate", "contraindic", "interact",
     "risk", "signific",
-    "trend", "worsen", "improv",
+    "worsen", "improv",
     "differential", "prognosis", "cause", "correlat",
-    "between", "versus", "relationship",
+    "versus", "relationship",
+    "quantify", "driving",
+})
+
+_REASONING_SHORTS = frozenset({
+    "summary", "summarize", "overview", "assessment",
+    "plan", "impression", "brief",
 })
 
 _ANALYTICAL_PHRASES = (
@@ -147,10 +161,26 @@ _CONVERSATION_REFS = (
     "as you said", "like you said",
 )
 
-# Search/tool request patterns
-_SEARCH_PATTERNS = (
-    "search for", "search ", "look up", "look for", "find ",
+_DEEP_SEARCH_PATTERNS = (
+    "search for",
 )
+
+_FOCUSED_RETRIEVAL_PATTERNS = (
+    "find latest", "find recent", "find the latest", "find the most recent",
+    "look up the", "look up his", "look up her", "look up their",
+    "pull up the", "pull up his", "pull up her",
+    "get the latest", "get the most recent", "get the last",
+)
+
+_RETRIEVAL_VERBS = frozenset({
+    "trend", "track", "graph", "chart", "plot",
+    "filter", "sort", "rank",
+})
+
+_NON_CLINICAL_SHORTS = frozenset({
+    "hello", "hi", "hey", "thanks", "thank",
+    "help", "what", "how", "ok", "okay", "yes", "no",
+})
 
 # Temporal modifiers that upgrade LIGHTNING → QUICK
 _TEMPORAL_MODIFIERS = (
@@ -166,6 +196,8 @@ _TEMPORAL_MODIFIERS = (
 # Word boundary pattern for matching chart entities
 _WORD_BOUNDARY = re.compile(r"\b\w+\b")
 
+
+# ── Helper predicates ────────────────────────────────────────────────────────
 
 def _has_chart_entity(msg: str, words: set[str]) -> bool:
     """Check if message contains a chart entity (word-boundary or bigram)."""
@@ -209,9 +241,17 @@ def _has_conversation_ref(msg: str) -> bool:
     return False
 
 
-def _has_search_pattern(msg: str) -> bool:
-    """Check if message requests a search/tool action."""
-    for pattern in _SEARCH_PATTERNS:
+def _has_deep_search_pattern(msg: str) -> bool:
+    """Check if message contains a deep-search pattern (broad search requests)."""
+    for pattern in _DEEP_SEARCH_PATTERNS:
+        if pattern in msg:
+            return True
+    return False
+
+
+def _has_focused_retrieval_pattern(msg: str) -> bool:
+    """Check if message contains a focused retrieval pattern."""
+    for pattern in _FOCUSED_RETRIEVAL_PATTERNS:
         if pattern in msg:
             return True
     return False
@@ -225,70 +265,242 @@ def _has_temporal_modifier(msg: str) -> bool:
     return False
 
 
-def classify_query(message: str, *, has_history: bool = False) -> QueryProfile:
-    """Classify a user message into LIGHTNING, QUICK, or DEEP query profile.
+def _has_reasoning_short(msg: str, words: set[str]) -> bool:
+    """Check if query is short (<=4 words) and contains a reasoning short word."""
+    if len(words) > 4:
+        return False
+    for word in words:
+        if word in _REASONING_SHORTS:
+            return True
+    return False
 
-    Pure function, zero I/O. Three independent paths to LIGHTNING;
-    temporal modifiers and conversation history upgrade to QUICK;
-    default is always DEEP.
 
-    Args:
-        message: The user's chat message.
-        has_history: Whether conversation history is present. When True,
-            queries that would be LIGHTNING are upgraded to QUICK because
-            a non-reasoning model can't handle conversational context.
+def _has_retrieval_verb_with_entity(msg: str, words: set[str]) -> bool:
+    """Check if query contains both a retrieval verb AND a chart entity."""
+    has_verb = bool(words & _RETRIEVAL_VERBS)
+    if not has_verb:
+        return False
+    return _has_chart_entity(msg, words)
 
-    Returns:
-        QueryProfile (LIGHTNING_PROFILE, QUICK_PROFILE, or DEEP_PROFILE).
-    """
+
+def _has_non_clinical_short(words: set[str]) -> bool:
+    """Check if query is <=4 words and ALL words are non-clinical."""
+    if len(words) > 4 or len(words) == 0:
+        return False
+    return words <= _NON_CLINICAL_SHORTS
+
+
+# ── Layer 1: deterministic classification ────────────────────────────────────
+
+def _classify_layer1(message: str) -> QueryProfile | None:
+    """Deterministic classification. Returns None for ambiguous queries."""
+
     # 1. Normalize
     msg = message.strip().lower()
 
-    # 2. DEEP if empty, >200 chars, conversation refs, search requests
+    # 2. DEEP guard rails — empty, >200 chars, conversation refs
     if not msg:
         return DEEP_PROFILE
     if len(msg) > 200:
         return DEEP_PROFILE
     if _has_conversation_ref(msg):
         return DEEP_PROFILE
-    if _has_search_pattern(msg):
+
+    # 3. DEEP deny-list
+    # 3a. Deep search patterns first
+    if _has_deep_search_pattern(msg):
         return DEEP_PROFILE
 
-    # 3. DEEP if reasoning keyword present
+    # 3b. Reasoning keywords (substring match)
     if _has_reasoning_keyword(msg):
         return DEEP_PROFILE
 
-    # 3b. DEEP if analytical phrase present
+    # 3c. Analytical phrases
     if _has_analytical_phrase(msg):
         return DEEP_PROFILE
 
-    # Extract words for entity matching
+    # Extract words for entity/short-query matching
     words = set(_WORD_BOUNDARY.findall(msg))
 
-    # 4A. Chart entity + lookup prefix → LIGHTNING (or QUICK with guards)
+    # 3d. Reasoning shorts (<=4 words + reasoning short word)
+    if _has_reasoning_short(msg, words):
+        return DEEP_PROFILE
+
+    # 4. Non-clinical shorts — <=4 words, all words are non-clinical → DEEP
+    if _has_non_clinical_short(words):
+        return DEEP_PROFILE
+
+    # 5. QUICK signals
+    # 5a. Focused retrieval patterns
+    if _has_focused_retrieval_pattern(msg):
+        return QUICK_PROFILE
+
+    # 5b. Temporal modifiers + entity
+    if _has_temporal_modifier(msg) and _has_chart_entity(msg, words):
+        return QUICK_PROFILE
+
+    # 5c. Retrieval verbs + entity
+    if _has_retrieval_verb_with_entity(msg, words):
+        return QUICK_PROFILE
+
+    # 6. LIGHTNING signals
+    # 6a. Chart entity + lookup prefix
     if _has_chart_entity(msg, words) and _has_lookup_prefix(msg):
-        if _has_temporal_modifier(msg) or has_history:
-            return QUICK_PROFILE
         return LIGHTNING_PROFILE
 
-    # 4B. Bare entity shortcut (≤30 chars after stripping punctuation)
-    # Excludes follow-up shorthand ("and the ...", "also ...", "how about ...")
+    # 6b. Bare entity shortcut (<=30 chars after stripping punctuation)
     bare = re.sub(r"[^\w\s]", "", msg).strip()
     _follow_up_starts = ("and ", "also ", "how about ", "plus ")
     if len(bare) <= 30 and _has_chart_entity(msg, words) and not any(
         bare.startswith(s) for s in _follow_up_starts
     ):
-        if _has_temporal_modifier(msg) or has_history:
-            return QUICK_PROFILE
         return LIGHTNING_PROFILE
 
-    # 4C. Specific-item patterns (≤100 chars)
+    # 6c. Specific-item patterns (<=100 chars)
     if len(msg) <= 100:
         for starter in _SPECIFIC_ITEM_STARTERS:
             if msg.startswith(starter):
-                if _has_temporal_modifier(msg) or has_history:
-                    return QUICK_PROFILE
                 return LIGHTNING_PROFILE
 
-    # 5. Default → DEEP
-    return DEEP_PROFILE
+    # 7. Short-query default — <=4 words with no reasoning signals → ambiguous
+    if len(words) <= 4:
+        return None
+
+    # 8. Fallback — ambiguous, pass to Layer 2
+    return None
+
+
+# ── Layer 2: LLM-based classification ────────────────────────────────────────
+
+_LAYER2_PROMPT = """Classify this patient chart query into exactly one tier:
+
+LIGHTNING — The answer is a fact directly readable from a patient summary
+  (e.g., current meds, latest vitals, active conditions, allergy list)
+QUICK — Requires focused data retrieval: filtering by date, trending a value,
+  searching history (equivalent to a simple database query)
+DEEP — Requires clinical reasoning, interpretation, comparison, risk assessment,
+  recommendations, or combining information across multiple clinical domains
+
+Query: "{message}"
+
+Return: {{"tier": "lightning" | "quick" | "deep"}}"""
+
+_LAYER2_SCHEMA = {
+    "type": "json_schema",
+    "json_schema": {
+        "name": "tier_classification",
+        "strict": True,
+        "schema": {
+            "type": "object",
+            "properties": {
+                "tier": {
+                    "type": "string",
+                    "enum": ["lightning", "quick", "deep"],
+                },
+            },
+            "required": ["tier"],
+            "additionalProperties": False,
+        },
+    },
+}
+
+_TIER_TO_PROFILE = {
+    "lightning": LIGHTNING_PROFILE,
+    "quick": QUICK_PROFILE,
+    "deep": DEEP_PROFILE,
+}
+
+_layer2_client: AsyncOpenAI | None = None
+
+
+def _get_layer2_client() -> AsyncOpenAI:
+    global _layer2_client
+    if _layer2_client is None:
+        _layer2_client = AsyncOpenAI(api_key=settings.openai_api_key)
+    return _layer2_client
+
+
+async def _classify_layer2(message: str) -> QueryProfile:
+    """LLM-based classification for ambiguous queries."""
+    import time
+
+    client = _get_layer2_client()
+    start = time.monotonic()
+
+    try:
+        response = await asyncio.wait_for(
+            client.chat.completions.create(
+                model="gpt-4o-mini",
+                messages=[
+                    {
+                        "role": "user",
+                        "content": _LAYER2_PROMPT.format(message=message),
+                    },
+                ],
+                response_format=_LAYER2_SCHEMA,
+                temperature=0,
+                max_tokens=20,
+            ),
+            timeout=2.0,
+        )
+        elapsed_ms = (time.monotonic() - start) * 1000
+        raw = response.choices[0].message.content
+        result = json.loads(raw)
+        tier = result.get("tier", "deep")
+        profile = _TIER_TO_PROFILE.get(tier, DEEP_PROFILE)
+        logger.info(
+            "Layer 2 classified %r → %s (%.0f ms)",
+            message[:80],
+            profile.tier.value,
+            elapsed_ms,
+        )
+        return profile
+    except asyncio.TimeoutError:
+        elapsed_ms = (time.monotonic() - start) * 1000
+        logger.warning(
+            "Layer 2 timed out for %r (%.0f ms), falling back to DEEP",
+            message[:80],
+            elapsed_ms,
+        )
+        return DEEP_PROFILE
+    except Exception:
+        elapsed_ms = (time.monotonic() - start) * 1000
+        logger.exception(
+            "Layer 2 error for %r (%.0f ms), falling back to DEEP",
+            message[:80],
+            elapsed_ms,
+        )
+        return DEEP_PROFILE
+
+
+# ── Public API ───────────────────────────────────────────────────────────────
+
+async def classify_query(
+    message: str,
+    *,
+    has_history: bool = False,  # kept for API compat, ignored internally
+) -> QueryProfile:
+    """Classify a user message into LIGHTNING, QUICK, or DEEP query profile.
+
+    Two-layer architecture:
+      Layer 1 — Deterministic pattern matching (sync, zero I/O).
+      Layer 2 — LLM call via gpt-4o-mini for ambiguous queries (async, ≤2 s).
+
+    Args:
+        message: The user's chat message.
+        has_history: Retained for API compatibility; ignored internally.
+
+    Returns:
+        QueryProfile (LIGHTNING_PROFILE, QUICK_PROFILE, or DEEP_PROFILE).
+    """
+    result = _classify_layer1(message)
+    if result is not None:
+        logger.debug(
+            "Layer 1 classified %r → %s",
+            message[:80],
+            result.tier.value,
+        )
+        return result
+
+    logger.info("Layer 1 ambiguous for %r, invoking Layer 2", message[:80])
+    return await _classify_layer2(message)

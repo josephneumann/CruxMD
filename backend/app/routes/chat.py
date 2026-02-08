@@ -180,7 +180,7 @@ async def _prepare_chat_context(
 
     # Classify query and choose prompt mode
     has_history = bool(request.conversation_history)
-    query_profile = classify_query(request.message, has_history=has_history)
+    query_profile = await classify_query(request.message, has_history=has_history)
 
     if query_profile.system_prompt_mode == "lightning":
         system_prompt = build_system_prompt_lightning(compiled_summary, patient_profile=profile_summary)

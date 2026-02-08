@@ -67,6 +67,8 @@ def _get_display_name(resource: dict[str, Any], code_field: str = "code") -> str
         Display name string or None if not found
     """
     code = resource.get(code_field, {})
+    if isinstance(code, str):
+        return code
     codings = code.get("coding", [])
     if codings:
         return codings[0].get("display")
