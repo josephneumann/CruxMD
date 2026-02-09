@@ -14,6 +14,8 @@ from app.services.fhir_loader import (
     load_bundle,
     load_bundle_with_profile,
     _add_profile_extension,
+    _enrich_observations,
+    _extract_patient_sex,
     _generate_embeddings,
     PROFILE_EXTENSION_URL,
 )
@@ -263,6 +265,147 @@ class TestFhirLoaderHelpers:
         assert "id" in sample_observation
         assert "code" in sample_observation
         assert "valueQuantity" in sample_observation
+
+
+class TestObservationEnrichment:
+    """Tests for Observation reference range and interpretation enrichment."""
+
+    def _make_bundle_entries(self, patient_gender: str, observations: list[dict]):
+        """Build bundle entries list with a Patient + Observations."""
+        patient = {
+            "resource": {
+                "resourceType": "Patient",
+                "id": "patient-1",
+                "gender": patient_gender,
+            }
+        }
+        entries = [patient]
+        for obs in observations:
+            entries.append({"resource": obs})
+        return entries
+
+    def test_extract_patient_sex(self):
+        entries = [
+            {"resource": {"resourceType": "Patient", "gender": "male"}},
+        ]
+        assert _extract_patient_sex(entries) == "male"
+
+    def test_extract_patient_sex_missing(self):
+        entries = [{"resource": {"resourceType": "Condition"}}]
+        assert _extract_patient_sex(entries) is None
+
+    def test_enriches_observation_with_known_loinc(self):
+        obs = {
+            "resourceType": "Observation",
+            "code": {"coding": [{"code": "718-7", "display": "Hemoglobin"}]},
+            "valueQuantity": {"value": 14.5, "unit": "g/dL"},
+        }
+        entries = self._make_bundle_entries("male", [obs])
+        resources = [e["resource"] for e in entries]
+        _enrich_observations(entries, resources)
+
+        assert "interpretation" in obs
+        assert obs["interpretation"][0]["coding"][0]["code"] == "N"
+        assert "referenceRange" in obs
+        assert obs["referenceRange"][0]["low"]["value"] == 13.5  # Male range
+        assert obs["referenceRange"][0]["low"]["unit"] == "g/dL"
+
+    def test_enriches_with_sex_specific_range(self):
+        obs = {
+            "resourceType": "Observation",
+            "code": {"coding": [{"code": "718-7", "display": "Hemoglobin"}]},
+            "valueQuantity": {"value": 11.5, "unit": "g/dL"},
+        }
+        entries = self._make_bundle_entries("female", [obs])
+        resources = [e["resource"] for e in entries]
+        _enrich_observations(entries, resources)
+
+        # 11.5 is below female low (12.0) -> L
+        assert obs["interpretation"][0]["coding"][0]["code"] == "L"
+        assert obs["referenceRange"][0]["low"]["value"] == 12.0  # Female range
+
+    def test_skips_unknown_loinc(self):
+        obs = {
+            "resourceType": "Observation",
+            "code": {"coding": [{"code": "99999-9"}]},
+            "valueQuantity": {"value": 5.0},
+        }
+        entries = self._make_bundle_entries("male", [obs])
+        resources = [e["resource"] for e in entries]
+        _enrich_observations(entries, resources)
+
+        assert "interpretation" not in obs
+        assert "referenceRange" not in obs
+
+    def test_skips_qualitative_observation(self):
+        obs = {
+            "resourceType": "Observation",
+            "code": {"coding": [{"code": "72166-2"}]},
+            "valueCodeableConcept": {"coding": [{"display": "Never smoker"}]},
+        }
+        entries = self._make_bundle_entries("male", [obs])
+        resources = [e["resource"] for e in entries]
+        _enrich_observations(entries, resources)
+
+        assert "interpretation" not in obs
+        assert "referenceRange" not in obs
+
+    def test_skips_non_observation_resources(self):
+        condition = {
+            "resourceType": "Condition",
+            "code": {"coding": [{"code": "718-7"}]},
+        }
+        entries = self._make_bundle_entries("male", [])
+        resources = [entries[0]["resource"], condition]
+        _enrich_observations(entries, resources)
+
+        assert "interpretation" not in condition
+
+    def test_high_interpretation(self):
+        obs = {
+            "resourceType": "Observation",
+            "code": {"coding": [{"code": "8480-6", "display": "Systolic BP"}]},
+            "valueQuantity": {"value": 145, "unit": "mmHg"},
+        }
+        entries = self._make_bundle_entries("male", [obs])
+        resources = [e["resource"] for e in entries]
+        _enrich_observations(entries, resources)
+
+        assert obs["interpretation"][0]["coding"][0]["code"] == "H"
+
+    def test_fhir_conformant_interpretation_structure(self):
+        obs = {
+            "resourceType": "Observation",
+            "code": {"coding": [{"code": "718-7"}]},
+            "valueQuantity": {"value": 14.5, "unit": "g/dL"},
+        }
+        entries = self._make_bundle_entries("male", [obs])
+        resources = [e["resource"] for e in entries]
+        _enrich_observations(entries, resources)
+
+        interp = obs["interpretation"]
+        assert isinstance(interp, list)
+        assert len(interp) == 1
+        coding = interp[0]["coding"][0]
+        assert "system" in coding
+        assert "code" in coding
+        assert "display" in coding
+
+    def test_fhir_conformant_reference_range_structure(self):
+        obs = {
+            "resourceType": "Observation",
+            "code": {"coding": [{"code": "718-7"}]},
+            "valueQuantity": {"value": 14.5, "unit": "g/dL"},
+        }
+        entries = self._make_bundle_entries("male", [obs])
+        resources = [e["resource"] for e in entries]
+        _enrich_observations(entries, resources)
+
+        ref = obs["referenceRange"]
+        assert isinstance(ref, list)
+        assert len(ref) == 1
+        assert "low" in ref[0] and "high" in ref[0]
+        assert "value" in ref[0]["low"]
 
 
 class TestPatientProfile:

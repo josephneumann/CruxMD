@@ -15,6 +15,11 @@ from app.models import FhirResource
 from app.services.compiler import compile_and_store
 from app.services.embeddings import EmbeddingService, resource_to_text
 from app.services.graph import KnowledgeGraph
+from app.services.reference_ranges import (
+    build_fhir_interpretation,
+    build_fhir_reference_range,
+    interpret_observation,
+)
 
 logger = logging.getLogger(__name__)
 
@@ -53,6 +58,45 @@ def _clean_patient_names(resource: dict[str, Any]) -> dict[str, Any]:
     return resource
 
 
+def _extract_patient_sex(entries: list[dict[str, Any]]) -> str | None:
+    """Extract patient gender from the Patient resource in a bundle."""
+    for entry in entries:
+        resource = entry.get("resource", {})
+        if resource.get("resourceType") == "Patient":
+            return resource.get("gender")
+    return None
+
+
+def _enrich_observations(
+    entries: list[dict[str, Any]],
+    resources: list[dict[str, Any]],
+) -> None:
+    """Add referenceRange and interpretation to Observations in-place.
+
+    Looks up LOINC-based reference ranges and computes HL7 interpretation
+    codes (N/H/L/HH/LL) for each Observation with a numeric value.
+    """
+    patient_sex = _extract_patient_sex(entries)
+
+    for resource in resources:
+        if resource.get("resourceType") != "Observation":
+            continue
+
+        interp_code, ref_range = interpret_observation(resource, patient_sex)
+        if interp_code is None:
+            continue
+
+        # Add FHIR-conformant interpretation
+        resource["interpretation"] = build_fhir_interpretation(interp_code)
+
+        # Add FHIR-conformant referenceRange
+        unit = None
+        vq = resource.get("valueQuantity")
+        if vq and isinstance(vq, dict):
+            unit = vq.get("unit") or vq.get("code")
+        resource["referenceRange"] = build_fhir_reference_range(ref_range, unit)
+
+
 async def load_bundle(
     db: AsyncSession,
     graph: KnowledgeGraph,
@@ -86,6 +130,9 @@ async def load_bundle(
 
     if not resources_data:
         raise ValueError("Bundle contains no valid resources")
+
+    # Enrich Observations with reference ranges and interpretation codes
+    _enrich_observations(entries, resources_data)
 
     # Find Patient resource and determine canonical ID
     patient_fhir_id: str | None = None
