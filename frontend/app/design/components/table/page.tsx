@@ -30,7 +30,10 @@ function useTableColors() {
   };
 }
 
-// -- Data ---------------------------------------------------------------------
+// -- HL7 FHIR Observation Interpretation Codes --------------------------------
+// N = Normal, H = High, L = Low, HH = Critically High, LL = Critically Low
+
+type HL7Interpretation = "N" | "H" | "L" | "HH" | "LL";
 
 interface LabResult {
   test: string;
@@ -38,9 +41,10 @@ interface LabResult {
   unit: string;
   rangeLow: number;
   rangeHigh: number;
-  status: "normal" | "high" | "low" | "critical";
+  interpretation: HL7Interpretation;
   date: string;
   history: number[];
+  historyStart: string; // earliest reading date for "since" annotation
 }
 
 const labResults: LabResult[] = [
@@ -50,9 +54,10 @@ const labResults: LabResult[] = [
     unit: "K/uL",
     rangeLow: 4.5,
     rangeHigh: 11.0,
-    status: "normal",
+    interpretation: "N",
     date: "01/25/2026",
     history: [6.8, 7.2, 7.0, 7.3, 7.1, 7.5],
+    historyStart: "Aug '25",
   },
   {
     test: "Hemoglobin",
@@ -60,9 +65,10 @@ const labResults: LabResult[] = [
     unit: "g/dL",
     rangeLow: 13.5,
     rangeHigh: 17.5,
-    status: "normal",
+    interpretation: "N",
     date: "01/25/2026",
     history: [14.8, 15.0, 14.9, 15.1, 15.0, 15.2],
+    historyStart: "Aug '25",
   },
   {
     test: "Platelets",
@@ -70,9 +76,10 @@ const labResults: LabResult[] = [
     unit: "K/uL",
     rangeLow: 150,
     rangeHigh: 400,
-    status: "high",
+    interpretation: "H",
     date: "01/25/2026",
     history: [380, 395, 400, 410, 418, 425],
+    historyStart: "Aug '25",
   },
   {
     test: "Potassium",
@@ -80,9 +87,10 @@ const labResults: LabResult[] = [
     unit: "mEq/L",
     rangeLow: 3.5,
     rangeHigh: 5.0,
-    status: "critical",
+    interpretation: "HH",
     date: "01/25/2026",
     history: [4.2, 4.5, 4.8, 5.1, 5.8, 6.2],
+    historyStart: "Aug '25",
   },
 ];
 
@@ -95,10 +103,12 @@ const medications = [
 
 // -- Components ---------------------------------------------------------------
 
-function StatusFlag({ status }: { status: string }) {
-  if (status === "high") return <Badge variant="warning" size="sm" className="ml-2 text-[10px] px-1.5">H</Badge>;
-  if (status === "low") return <Badge variant="warning" size="sm" className="ml-2 text-[10px] px-1.5">L</Badge>;
-  if (status === "critical") return <Badge variant="critical" size="sm" className="ml-2 text-[10px] px-1.5">CRIT</Badge>;
+function InterpretationFlag({ code }: { code: HL7Interpretation }) {
+  if (code === "N") return <span className="ml-2 inline-block size-2 rounded-full bg-[#388E3C] align-middle" />;
+  if (code === "H") return <Badge variant="warning" size="sm" className="ml-2 text-[10px] px-1.5">H</Badge>;
+  if (code === "L") return <Badge variant="warning" size="sm" className="ml-2 text-[10px] px-1.5">L</Badge>;
+  if (code === "HH") return <Badge variant="critical" size="sm" className="ml-2 text-[10px] px-1.5">HH</Badge>;
+  if (code === "LL") return <Badge variant="critical" size="sm" className="ml-2 text-[10px] px-1.5">LL</Badge>;
   return null;
 }
 
@@ -119,11 +129,11 @@ function MedStatusBadge({ status }: { status: string }) {
  * Shows the normal range as a highlighted zone within a track,
  * with a dot marker showing where the current value sits.
  */
-function RangeBar({ value, low, high, status }: {
+function RangeBar({ value, low, high, interpretation }: {
   value: number;
   low: number;
   high: number;
-  status: string;
+  interpretation: HL7Interpretation;
 }) {
   const c = useTableColors();
 
@@ -141,10 +151,9 @@ function RangeBar({ value, low, high, status }: {
   const rangeStart = ((low - displayLow) / displaySpan) * 100;
   const rangeWidth = ((high - low) / displaySpan) * 100;
 
-  const markerColor =
-    status === "critical" ? c.rangeCritical
-    : status === "high" || status === "low" ? c.rangeWarning
-    : c.rangeNormal;
+  const isCritical = interpretation === "HH" || interpretation === "LL";
+  const isAbnormal = interpretation === "H" || interpretation === "L";
+  const markerColor = isCritical ? c.rangeCritical : isAbnormal ? c.rangeWarning : c.rangeNormal;
 
   return (
     <div className="flex items-center gap-2.5 min-w-[160px]">
@@ -179,15 +188,15 @@ function RangeBar({ value, low, high, status }: {
 }
 
 /**
- * Tiny inline sparkline showing last 6 readings.
- * Color matches the status: green for normal, amber for high/low, red for critical.
- * Subtle reference range band provides context.
+ * Inline sparkline with % change annotation and "since" date.
+ * Color matches interpretation: green for N, amber for H/L, red for HH/LL.
  */
-function Sparkline({ data, status, rangeLow, rangeHigh }: {
+function SparklineWithDelta({ data, interpretation, rangeLow, rangeHigh, sinceDate }: {
   data: number[];
-  status: string;
+  interpretation: HL7Interpretation;
   rangeLow: number;
   rangeHigh: number;
+  sinceDate: string;
 }) {
   const c = useTableColors();
   const chartData = data.map((v) => ({ v }));
@@ -197,27 +206,40 @@ function Sparkline({ data, status, rangeLow, rangeHigh }: {
   const pad = (max - min) * 0.15 || 0.5;
   const domain: [number, number] = [min - pad, max + pad];
 
-  const strokeColor =
-    status === "critical" ? c.critical
-    : status === "high" || status === "low" ? c.warning
-    : c.chart1;
+  const isCritical = interpretation === "HH" || interpretation === "LL";
+  const isAbnormal = interpretation === "H" || interpretation === "L";
+  const strokeColor = isCritical ? c.critical : isAbnormal ? c.warning : c.chart1;
+
+  // Calculate % change from first to last reading
+  const first = data[0];
+  const last = data[data.length - 1];
+  const pctChange = first !== 0 ? Math.round(((last - first) / first) * 100) : 0;
+  const arrow = pctChange > 0 ? "↑" : pctChange < 0 ? "↓" : "→";
+  const deltaColor = isCritical ? "text-[#C24E42]" : isAbnormal ? "text-[#D9A036]" : "text-muted-foreground";
 
   return (
-    <div className="w-[72px] h-[28px]">
-      <ResponsiveContainer width="100%" height="100%">
-        <LineChart data={chartData} margin={{ top: 2, right: 2, bottom: 2, left: 2 }}>
-          <ReferenceArea y1={rangeLow} y2={rangeHigh} fill={c.chart5} fillOpacity={c.bandSubtle} />
-          <YAxis domain={domain} hide />
-          <Line
-            type="monotone"
-            dataKey="v"
-            stroke={strokeColor}
-            strokeWidth={1.5}
-            dot={false}
-            isAnimationActive={false}
-          />
-        </LineChart>
-      </ResponsiveContainer>
+    <div className="flex items-center gap-2">
+      <div className="w-[72px] h-[28px] shrink-0">
+        <ResponsiveContainer width="100%" height="100%">
+          <LineChart data={chartData} margin={{ top: 2, right: 2, bottom: 2, left: 2 }}>
+            <ReferenceArea y1={rangeLow} y2={rangeHigh} fill={c.chart5} fillOpacity={c.bandSubtle} />
+            <YAxis domain={domain} hide />
+            <Line
+              type="monotone"
+              dataKey="v"
+              stroke={strokeColor}
+              strokeWidth={1.5}
+              dot={false}
+              isAnimationActive={false}
+            />
+          </LineChart>
+        </ResponsiveContainer>
+      </div>
+      <div className="text-[11px] leading-tight whitespace-nowrap">
+        <span className={`font-medium ${deltaColor}`}>{arrow} {Math.abs(pctChange)}%</span>
+        <br />
+        <span className="text-muted-foreground">since {sinceDate}</span>
+      </div>
     </div>
   );
 }
@@ -264,12 +286,13 @@ export default function TablePage() {
               </thead>
               <tbody className="divide-y">
                 {labResults.map((row) => {
-                  const isAbnormal = row.status !== "normal";
+                  const isCritical = row.interpretation === "HH" || row.interpretation === "LL";
+                  const isAbnormal = row.interpretation !== "N";
                   return (
-                    <tr key={row.test} className={row.status === "critical" ? "bg-[#C24E42]/5" : ""}>
+                    <tr key={row.test} className={isCritical ? "bg-[#C24E42]/5" : ""}>
                       <td className="p-4 font-medium">
                         {row.test}
-                        <StatusFlag status={row.status} />
+                        <InterpretationFlag code={row.interpretation} />
                       </td>
                       <td className="p-4">
                         <span className={isAbnormal ? "text-[#C24E42] font-medium tabular-nums" : "tabular-nums"}>
@@ -277,11 +300,12 @@ export default function TablePage() {
                         </span>
                       </td>
                       <td className="p-4">
-                        <Sparkline
+                        <SparklineWithDelta
                           data={row.history}
-                          status={row.status}
+                          interpretation={row.interpretation}
                           rangeLow={row.rangeLow}
                           rangeHigh={row.rangeHigh}
+                          sinceDate={row.historyStart}
                         />
                       </td>
                       <td className="p-4">
@@ -289,7 +313,7 @@ export default function TablePage() {
                           value={row.value}
                           low={row.rangeLow}
                           high={row.rangeHigh}
-                          status={row.status}
+                          interpretation={row.interpretation}
                         />
                       </td>
                       <td className="p-4 text-muted-foreground">{row.date}</td>
@@ -298,30 +322,34 @@ export default function TablePage() {
                 })}
               </tbody>
             </table>
-            {/* Legend */}
-            <div className="flex items-center gap-6 px-4 py-3 border-t text-xs text-muted-foreground">
+            {/* Legend — HL7 FHIR Interpretation Codes */}
+            <div className="flex items-center gap-5 px-4 py-3 border-t text-xs text-muted-foreground">
               <span className="flex items-center gap-1.5">
                 <span className="size-2 rounded-full bg-[#388E3C]" />
-                Normal
+                N · Normal
               </span>
               <span className="flex items-center gap-1.5">
                 <Badge variant="warning" size="sm" className="text-[10px] px-1.5">H</Badge>
-                Above Range
+                High
               </span>
               <span className="flex items-center gap-1.5">
                 <Badge variant="warning" size="sm" className="text-[10px] px-1.5">L</Badge>
-                Below Range
+                Low
               </span>
               <span className="flex items-center gap-1.5">
-                <Badge variant="critical" size="sm" className="text-[10px] px-1.5">CRIT</Badge>
-                Critical
+                <Badge variant="critical" size="sm" className="text-[10px] px-1.5">HH</Badge>
+                Critically High
               </span>
-              <span className="flex items-center gap-1.5 ml-2 border-l pl-4">
+              <span className="flex items-center gap-1.5">
+                <Badge variant="critical" size="sm" className="text-[10px] px-1.5">LL</Badge>
+                Critically Low
+              </span>
+              <span className="flex items-center gap-1.5 ml-1 border-l pl-4">
                 <div className="w-8 h-1.5 rounded-full bg-muted relative">
                   <div className="absolute left-1/4 w-1/2 h-full rounded-full bg-[#388E3C]/20" />
                   <div className="absolute left-[60%] top-1/2 -translate-y-1/2 size-1.5 rounded-full bg-[#388E3C]" />
                 </div>
-                Value in Range
+                Range
               </span>
             </div>
           </CardContent>
@@ -401,30 +429,36 @@ export default function TablePage() {
       <CodeBlock
         collapsible
         label="View Code"
-        code={`// Lab results with sparklines and range bars
+        code={`// HL7 FHIR Observation Interpretation Codes
+// N = Normal, H = High, L = Low, HH = Critically High, LL = Critically Low
+type HL7Interpretation = "N" | "H" | "L" | "HH" | "LL";
+
 interface LabResult {
   test: string;
   value: number;
   unit: string;
   rangeLow: number;
   rangeHigh: number;
-  status: "normal" | "high" | "low" | "critical";
+  interpretation: HL7Interpretation;
   date: string;
-  history: number[];  // last 6 readings
+  history: number[];     // last 6 readings
+  historyStart: string;  // earliest reading date
 }
 
-// Status flag inline with test name
+// Interpretation flag inline with test name
+// N = green dot, H/L = amber badge, HH/LL = red badge
 <td className="p-4 font-medium">
   {row.test}
-  <StatusFlag status={row.status} />
+  <InterpretationFlag code={row.interpretation} />
 </td>
 
-// Inline sparkline with reference range band
-<Sparkline
+// Sparkline with % change annotation
+<SparklineWithDelta
   data={row.history}
-  status={row.status}
+  interpretation={row.interpretation}
   rangeLow={row.rangeLow}
   rangeHigh={row.rangeHigh}
+  sinceDate={row.historyStart}
 />
 
 // Visual reference range interval bar
@@ -432,7 +466,7 @@ interface LabResult {
   value={row.value}
   low={row.rangeLow}
   high={row.rangeHigh}
-  status={row.status}
+  interpretation={row.interpretation}
 />`}
       />
     </div>
