@@ -783,26 +783,138 @@ export default function ChartPage() {
       <div className="space-y-6">
         <h2 className="text-2xl font-medium">Chart Colors</h2>
         <p className="text-muted-foreground">
-          Single-series charts use the primary foreground color (white in dark mode, black in
-          light mode). Palette colors are reserved for multi-series charts and reference
-          range bands.
+          All chart colors are managed by <code className="text-xs bg-muted px-1 py-0.5 rounded">useChartColors()</code> which
+          returns theme-aware hex values. Single-series charts use the primary foreground
+          color. Palette colors are reserved for multi-series data lines and reference range bands.
         </p>
-        <div className="grid grid-cols-5 gap-4">
-          {[
-            { name: "Chart 1", color: "#2F5E52", use: "Series 1 (multi)" },
-            { name: "Chart 2", color: "#D9A036", use: "Warning/threshold" },
-            { name: "Chart 3", color: "#C24E42", use: "Critical/alert" },
-            { name: "Chart 4", color: "#4A7A8C", use: "Series 2 (multi)" },
-            { name: "Chart 5", color: "#388E3C", use: "Positive/target" },
-          ].map((item) => (
-            <div key={item.name} className="flex items-center gap-3 rounded-lg border p-3">
-              <span className="size-4 rounded-full shrink-0" style={{ backgroundColor: item.color }} />
+
+        {/* Single-series color */}
+        <div className="space-y-3">
+          <h3 className="text-lg font-medium">Data Line Color</h3>
+          <p className="text-sm text-muted-foreground">
+            A chart with one data series uses the primary foreground — the same color as body text.
+            This keeps the line visually neutral so reference range bands carry the semantic
+            color. When a chart has multiple series, each line gets a distinct palette color
+            for differentiation.
+          </p>
+          <div className="grid grid-cols-2 gap-3">
+            <div className="flex items-center gap-3 rounded-lg border p-3">
+              <span className="size-4 rounded-full shrink-0 border" style={{ backgroundColor: c.line }} />
               <div className="min-w-0">
-                <p className="text-sm font-medium truncate">{item.name}</p>
-                <p className="text-xs text-muted-foreground truncate">{item.use}</p>
+                <p className="text-sm font-medium">c.line</p>
+                <p className="text-xs text-muted-foreground">Single-series data line, dots, area fill</p>
               </div>
             </div>
-          ))}
+            <div className="rounded-lg border bg-muted/30 p-3">
+              <p className="text-xs text-muted-foreground">
+                Dark: <code className="font-mono">#E8E8E3</code> · Light: <code className="font-mono">#1A1A18</code>
+              </p>
+            </div>
+          </div>
+        </div>
+
+        {/* Multi-series palette */}
+        <div className="space-y-3">
+          <h3 className="text-lg font-medium">Multi-Series Palette</h3>
+          <p className="text-sm text-muted-foreground">
+            When a chart displays two or more data series (e.g. systolic + diastolic), assign
+            each series a distinct palette color. The tooltip automatically shows colored dots
+            next to each series name.
+          </p>
+          <div className="grid grid-cols-2 gap-3">
+            {[
+              { token: "c.chart1", light: "#2F5E52", dark: "#4A9A88", use: "Series 1 — primary data" },
+              { token: "c.chart4", light: "#4A7A8C", dark: "#749BB0", use: "Series 2 — secondary data" },
+            ].map((item) => (
+              <div key={item.token} className="flex items-center gap-3 rounded-lg border p-3">
+                <span className="size-4 rounded-full shrink-0" style={{ backgroundColor: item.light }} />
+                <div className="min-w-0">
+                  <p className="text-sm font-medium font-mono">{item.token}</p>
+                  <p className="text-xs text-muted-foreground">{item.use}</p>
+                  <p className="text-xs text-muted-foreground">
+                    Light: <code className="font-mono">{item.light}</code> · Dark: <code className="font-mono">{item.dark}</code>
+                  </p>
+                </div>
+              </div>
+            ))}
+          </div>
+        </div>
+
+        {/* Reference range band colors */}
+        <div className="space-y-3">
+          <h3 className="text-lg font-medium">Reference Range Bands</h3>
+          <p className="text-sm text-muted-foreground">
+            Background color zones encode clinical meaning independently of the data line color.
+            These are used in both single-series and multi-series charts. Opacity is controlled
+            by <code className="text-xs bg-muted px-1 py-0.5 rounded">bandSubtle</code> and <code className="text-xs bg-muted px-1 py-0.5 rounded">bandMedium</code> tokens.
+          </p>
+          <div className="grid grid-cols-3 gap-3">
+            {[
+              { token: "c.chart5", label: "Normal / target zone", light: "#388E3C", dark: "#66BB6A" },
+              { token: "c.warning", label: "Borderline / above target", light: "#D9A036", dark: "#EBC47C" },
+              { token: "c.critical", label: "Abnormal / critical", light: "#C24E42", dark: "#D46F65" },
+            ].map((item) => (
+              <div key={item.token} className="flex items-center gap-3 rounded-lg border p-3">
+                <span className="size-4 rounded-full shrink-0" style={{ backgroundColor: item.light }} />
+                <div className="min-w-0">
+                  <p className="text-sm font-medium font-mono">{item.token}</p>
+                  <p className="text-xs text-muted-foreground">{item.label}</p>
+                  <p className="text-xs text-muted-foreground">
+                    Light: <code className="font-mono">{item.light}</code> · Dark: <code className="font-mono">{item.dark}</code>
+                  </p>
+                </div>
+              </div>
+            ))}
+          </div>
+        </div>
+
+        {/* Chrome colors */}
+        <div className="space-y-3">
+          <h3 className="text-lg font-medium">Chrome & Axes</h3>
+          <p className="text-sm text-muted-foreground">
+            Gridlines and tick labels use muted tones that recede behind the data.
+          </p>
+          <div className="grid grid-cols-2 gap-3">
+            {[
+              { token: "c.grid", label: "Gridlines", light: "#E5E4DF", dark: "#4A4A48" },
+              { token: "c.tick", label: "Axis tick labels", light: "#666663", dark: "#BFBFBA" },
+            ].map((item) => (
+              <div key={item.token} className="flex items-center gap-3 rounded-lg border p-3">
+                <span className="size-4 rounded-full shrink-0 border" style={{ backgroundColor: item.light }} />
+                <div className="min-w-0">
+                  <p className="text-sm font-medium font-mono">{item.token}</p>
+                  <p className="text-xs text-muted-foreground">{item.label}</p>
+                  <p className="text-xs text-muted-foreground">
+                    Light: <code className="font-mono">{item.light}</code> · Dark: <code className="font-mono">{item.dark}</code>
+                  </p>
+                </div>
+              </div>
+            ))}
+          </div>
+        </div>
+
+        {/* Opacity tokens */}
+        <div className="rounded-lg border bg-muted/50 p-4">
+          <h3 className="font-medium text-sm mb-2">Opacity Tokens</h3>
+          <div className="grid grid-cols-2 md:grid-cols-4 gap-4 text-sm">
+            <div>
+              <span className="text-muted-foreground">bandSubtle:</span>
+              <span className="ml-2 font-mono">0.08 / 0.12</span>
+            </div>
+            <div>
+              <span className="text-muted-foreground">bandMedium:</span>
+              <span className="ml-2 font-mono">0.12 / 0.18</span>
+            </div>
+            <div>
+              <span className="text-muted-foreground">gradientFrom:</span>
+              <span className="ml-2 font-mono">0.3 / 0.45</span>
+            </div>
+            <div>
+              <span className="text-muted-foreground">gradientTo:</span>
+              <span className="ml-2 font-mono">0 / 0.05</span>
+            </div>
+          </div>
+          <p className="text-xs text-muted-foreground mt-2">Values shown as light / dark.</p>
         </div>
       </div>
 
