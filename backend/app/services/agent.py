@@ -806,33 +806,10 @@ def build_system_prompt_lightning(
     format_section = (
         "## Response Format\n"
         "Respond with a JSON object containing:\n"
-        "- narrative: Brief summary in markdown (1-2 sentences max — the table carries the detail)\n"
-        "- tables: Clinical data tables when presenting structured data (see Table Types below)\n"
+        "- narrative: Direct answer in markdown format\n"
         "- follow_ups: 2-3 short follow-up questions (under 80 chars each)\n"
         "- needs_deeper_search: Set to true ONLY if the requested data is not present "
-        "in the patient record above. If you found the answer, set to false.\n"
-        "\n"
-        "## Table Types\n"
-        "When the user asks about a category of clinical data, ALWAYS include a typed table "
-        "instead of listing items in the narrative. Keep the narrative to a brief summary.\n"
-        "Each table has type, title, and rows. IMPORTANT: rows is a JSON-encoded STRING "
-        "(not a native array). Example: {\"type\": \"medications\", \"title\": \"Active Medications\", "
-        "\"rows\": \"[{\\\"medication\\\": \\\"Lisinopril 10 MG\\\", ...}]\"}\n"
-        "Use the row keys exactly as specified:\n"
-        "\n"
-        "medications: medication (full RxNorm string e.g. \"Lisinopril 10 MG Oral Tablet\"), "
-        "frequency (e.g. \"1x daily\" or null), reason, status (active/completed), authoredOn, requester\n"
-        "lab_results: test, value (number), unit, rangeLow (number), rangeHigh (number), "
-        "interpretation (N/H/L/HH/LL), date, history (array of {value, date} with last 6 readings). "
-        "Optional: panel (group name).\n"
-        "vitals: vital, value (display string), numericValue (number), unit, loinc, date\n"
-        "conditions: condition, clinicalStatus (active/resolved), onsetDate, abatementDate (null for active)\n"
-        "allergies: allergen, category (medication/food/environment), criticality (high/low), "
-        "clinicalStatus (active/inactive), onsetDate\n"
-        "immunizations: vaccine (CVX display), date, location\n"
-        "procedures: procedure (SNOMED display), date, location, reason (null if unknown)\n"
-        "encounters: type (SNOMED display), encounterClass (AMB/EMER/IMP), date, provider, "
-        "location, reason (null if unknown)"
+        "in the patient record above. If you found the answer, set to false."
     )
 
     return "\n\n".join([
@@ -1413,7 +1390,6 @@ class AgentService:
         if isinstance(parsed_response, LightningResponse):
             agent_response = AgentResponse(
                 narrative=parsed_response.narrative,
-                tables=parsed_response.tables,
                 follow_ups=parsed_response.follow_ups,
                 needs_deeper_search=parsed_response.needs_deeper_search,
             )
@@ -1559,7 +1535,6 @@ class AgentService:
                 if isinstance(parsed_response, LightningResponse):
                     agent_response = AgentResponse(
                         narrative=parsed_response.narrative,
-                        tables=parsed_response.tables,
                         follow_ups=parsed_response.follow_ups,
                     )
                 else:
@@ -1657,7 +1632,6 @@ class AgentService:
         if isinstance(parsed_response, LightningResponse):
             agent_response = AgentResponse(
                 narrative=parsed_response.narrative,
-                tables=parsed_response.tables,
                 follow_ups=parsed_response.follow_ups,
                 needs_deeper_search=parsed_response.needs_deeper_search,
             )

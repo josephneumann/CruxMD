@@ -26,14 +26,14 @@ from app.services.query_classifier import (
 
 
 # =============================================================================
-# Layer 1: LIGHTNING Path Tests
+# Layer 1: Category Lookups → QUICK (for structured table rendering)
 # =============================================================================
 
 
-class TestLayer1LightningPath:
-    """Layer 1 deterministic classification → LIGHTNING."""
+class TestLayer1CategoryLookups:
+    """Layer 1 deterministic classification → QUICK for category data lookups."""
 
-    # Path A: entity + lookup prefix
+    # Path A: entity + lookup prefix → QUICK (needs structured tables)
     @pytest.mark.parametrize("msg", [
         "What medications is the patient on?",
         "What meds is this patient taking?",
@@ -59,15 +59,16 @@ class TestLayer1LightningPath:
         "What conditions were resolved?",
         "What medications were stopped?",
         "When was the last visit?",
-        "When was the last HbA1c?",
         "Active meds and conditions",
         "What are the latest labs?",
         "Show me the vitals",
+        "What's the blood pressure?",
+        "Are there any allergies?",
     ])
     def test_path_a_entity_plus_prefix(self, msg: str):
-        assert _classify_layer1(msg) == LIGHTNING_PROFILE
+        assert _classify_layer1(msg) == QUICK_PROFILE
 
-    # Path B: bare entity shortcut (<=30 chars)
+    # Path B: bare entity shortcut (<=30 chars) → QUICK (needs structured tables)
     @pytest.mark.parametrize("msg", [
         "medications",
         "labs?",
@@ -82,18 +83,28 @@ class TestLayer1LightningPath:
         "hr",
     ])
     def test_path_b_bare_entity(self, msg: str):
-        assert _classify_layer1(msg) == LIGHTNING_PROFILE
+        assert _classify_layer1(msg) == QUICK_PROFILE
 
-    # Path C: specific-item patterns (<=100 chars)
+
+# =============================================================================
+# Layer 1: LIGHTNING Path Tests (specific-item lookups, no tables needed)
+# =============================================================================
+
+
+class TestLayer1LightningPath:
+    """Layer 1 deterministic classification → LIGHTNING."""
+
+    # Path C: specific-item patterns (<=100 chars) → LIGHTNING (single-value answer)
+    # Note: queries with chart entities (e.g., "blood pressure", "allergies") hit
+    # Path A first → QUICK. Only queries without chart entities land here.
     @pytest.mark.parametrize("msg", [
         "What's the HbA1c?",
         "What is the latest A1c?",
-        "What's the blood pressure?",
         "What's the A1c?",
+        "When was the last HbA1c?",
         "Is the patient on metformin?",
         "Does the patient have diabetes?",
         "Is the patient taking lisinopril?",
-        "Are there any allergies?",
         "Is the patient allergic to penicillin?",
         "What is the patient's BMI?",
     ])
@@ -298,24 +309,24 @@ class TestLayer1Ambiguous:
 class TestLayer1HasHistoryIgnored:
     """has_history parameter no longer affects classification."""
 
-    @pytest.mark.parametrize("msg", [
-        "What medications is the patient on?",
-        "medications",
-        "labs?",
-        "bp",
-        "What's the HbA1c?",
-        "Is the patient on metformin?",
-        "List all conditions",
-        "allergies",
+    @pytest.mark.parametrize("msg,expected", [
+        # Category lookups → QUICK (need tables)
+        ("What medications is the patient on?", QUICK_PROFILE),
+        ("medications", QUICK_PROFILE),
+        ("labs?", QUICK_PROFILE),
+        ("bp", QUICK_PROFILE),
+        ("List all conditions", QUICK_PROFILE),
+        ("allergies", QUICK_PROFILE),
+        # Specific-item lookups → LIGHTNING
+        ("What's the HbA1c?", LIGHTNING_PROFILE),
+        ("Is the patient on metformin?", LIGHTNING_PROFILE),
     ])
     @pytest.mark.asyncio
-    async def test_has_history_no_longer_upgrades(self, msg: str):
-        """Queries that are LIGHTNING stay LIGHTNING regardless of has_history."""
-        # Layer 1 resolves these as LIGHTNING
-        assert _classify_layer1(msg) == LIGHTNING_PROFILE
-        # The full classify_query also returns LIGHTNING (Layer 1 resolves, Layer 2 not invoked)
-        assert await classify_query(msg, has_history=True) == LIGHTNING_PROFILE
-        assert await classify_query(msg, has_history=False) == LIGHTNING_PROFILE
+    async def test_has_history_no_longer_upgrades(self, msg: str, expected: QueryProfile):
+        """Classification is stable regardless of has_history."""
+        assert _classify_layer1(msg) == expected
+        assert await classify_query(msg, has_history=True) == expected
+        assert await classify_query(msg, has_history=False) == expected
 
 
 # =============================================================================
@@ -337,8 +348,8 @@ class TestLayer1EdgeCases:
         assert _classify_layer1(msg) == DEEP_PROFILE
 
     def test_case_insensitivity(self):
-        assert _classify_layer1("WHAT MEDICATIONS?") == LIGHTNING_PROFILE
-        assert _classify_layer1("What Medications?") == LIGHTNING_PROFILE
+        assert _classify_layer1("WHAT MEDICATIONS?") == QUICK_PROFILE
+        assert _classify_layer1("What Medications?") == QUICK_PROFILE
 
     def test_reasoning_keyword_overrides_entity(self):
         assert _classify_layer1("Why is the patient on these medications?") == DEEP_PROFILE
@@ -350,8 +361,8 @@ class TestLayer1EdgeCases:
     def test_contraindication_stem(self):
         assert _classify_layer1("Any contraindications for this drug?") == DEEP_PROFILE
 
-    def test_how_many_is_lightning(self):
-        assert _classify_layer1("How many medications?") == LIGHTNING_PROFILE
+    def test_how_many_is_quick(self):
+        assert _classify_layer1("How many medications?") == QUICK_PROFILE
 
     def test_how_should_is_deep(self):
         assert _classify_layer1("How should we manage the diabetes?") == DEEP_PROFILE
@@ -363,16 +374,16 @@ class TestLayer1EdgeCases:
         # Falls through to ambiguous
         assert result is None or result == DEEP_PROFILE
 
-    def test_what_about_is_lightning(self):
-        # "What about the labs?" -> "what" prefix + entity -> LIGHTNING
-        assert _classify_layer1("What about the labs?") == LIGHTNING_PROFILE
+    def test_what_about_is_quick(self):
+        # "What about the labs?" -> "what" prefix + entity -> QUICK (tables)
+        assert _classify_layer1("What about the labs?") == QUICK_PROFILE
 
     def test_clinical_shorthand_bp(self):
-        assert _classify_layer1("bp") == LIGHTNING_PROFILE
-        assert _classify_layer1("bp?") == LIGHTNING_PROFILE
+        assert _classify_layer1("bp") == QUICK_PROFILE
+        assert _classify_layer1("bp?") == QUICK_PROFILE
 
     def test_clinical_shorthand_hr(self):
-        assert _classify_layer1("hr") == LIGHTNING_PROFILE
+        assert _classify_layer1("hr") == QUICK_PROFILE
 
     def test_whether_analytical_phrase(self):
         assert _classify_layer1("Show labs and whether the A1c improved") == DEEP_PROFILE
@@ -512,7 +523,7 @@ class TestLayer2LLMFallback:
             "app.services.query_classifier._classify_layer2"
         ) as mock_layer2:
             result = await classify_query("medications")
-            assert result == LIGHTNING_PROFILE
+            assert result == QUICK_PROFILE
             mock_layer2.assert_not_called()
 
     @pytest.mark.asyncio
@@ -538,10 +549,11 @@ class TestClassifyQueryAsync:
 
     @pytest.mark.asyncio
     @pytest.mark.parametrize("msg,expected", [
-        # Lightning — Layer 1 resolves
-        ("medications", LIGHTNING_PROFILE),
-        ("bp", LIGHTNING_PROFILE),
-        ("What medications is the patient on?", LIGHTNING_PROFILE),
+        # Category lookups → Quick (structured tables)
+        ("medications", QUICK_PROFILE),
+        ("bp", QUICK_PROFILE),
+        ("What medications is the patient on?", QUICK_PROFILE),
+        # Specific-item lookups → Lightning (narrative only)
         ("What's the A1c?", LIGHTNING_PROFILE),
         ("Is the patient allergic to penicillin?", LIGHTNING_PROFILE),
         # Quick — Layer 1 resolves

@@ -343,10 +343,10 @@ def _classify_layer1(message: str) -> QueryProfile | None:
     if _has_retrieval_verb_with_entity(msg, words):
         return QUICK_PROFILE
 
-    # 6. LIGHTNING signals
-    # 6a. Chart entity + lookup prefix
+    # 6. Category data lookups → QUICK (need structured tables)
+    # 6a. Chart entity + lookup prefix → QUICK for table rendering
     if _has_chart_entity(msg, words) and _has_lookup_prefix(msg):
-        return LIGHTNING_PROFILE
+        return QUICK_PROFILE
 
     # 6b. Bare entity shortcut (<=30 chars after stripping punctuation)
     bare = re.sub(r"[^\w\s]", "", msg).strip()
@@ -354,9 +354,9 @@ def _classify_layer1(message: str) -> QueryProfile | None:
     if len(bare) <= 30 and _has_chart_entity(msg, words) and not any(
         bare.startswith(s) for s in _follow_up_starts
     ):
-        return LIGHTNING_PROFILE
+        return QUICK_PROFILE
 
-    # 6c. Specific-item patterns (<=100 chars)
+    # 6c. Specific-item patterns (<=100 chars) → LIGHTNING (single-value lookups)
     if len(msg) <= 100:
         for starter in _SPECIFIC_ITEM_STARTERS:
             if msg.startswith(starter):
