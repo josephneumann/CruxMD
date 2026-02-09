@@ -407,6 +407,53 @@ class TestObservationEnrichment:
         assert "low" in ref[0] and "high" in ref[0]
         assert "value" in ref[0]["low"]
 
+    def test_enriches_bp_components(self):
+        """Blood pressure (component-based) should get per-component interpretation."""
+        obs = {
+            "resourceType": "Observation",
+            "code": {"coding": [{"code": "85354-9", "display": "Blood pressure panel"}]},
+            "component": [
+                {
+                    "code": {"coding": [{"code": "8462-4", "display": "Diastolic BP"}]},
+                    "valueQuantity": {"value": 70, "unit": "mm[Hg]"},
+                },
+                {
+                    "code": {"coding": [{"code": "8480-6", "display": "Systolic BP"}]},
+                    "valueQuantity": {"value": 145, "unit": "mm[Hg]"},
+                },
+            ],
+        }
+        entries = self._make_bundle_entries("male", [obs])
+        resources = [e["resource"] for e in entries]
+        _enrich_observations(entries, resources)
+
+        # Top-level should NOT have interpretation (it's component-based)
+        assert "interpretation" not in obs
+        # Each component should have its own interpretation
+        diastolic = obs["component"][0]
+        assert diastolic["interpretation"][0]["coding"][0]["code"] == "N"
+        systolic = obs["component"][1]
+        assert systolic["interpretation"][0]["coding"][0]["code"] == "H"
+        # Components should have referenceRange
+        assert "referenceRange" in diastolic
+        assert "referenceRange" in systolic
+
+    def test_enriches_bmi(self):
+        """BMI observation should get interpretation."""
+        obs = {
+            "resourceType": "Observation",
+            "code": {"coding": [{"code": "39156-5", "display": "BMI"}]},
+            "valueQuantity": {"value": 31.7, "unit": "kg/m2"},
+        }
+        entries = self._make_bundle_entries("male", [obs])
+        resources = [e["resource"] for e in entries]
+        _enrich_observations(entries, resources)
+
+        assert "interpretation" in obs
+        assert obs["interpretation"][0]["coding"][0]["code"] == "H"
+        assert obs["referenceRange"][0]["low"]["value"] == 18.5
+        assert obs["referenceRange"][0]["high"]["value"] == 24.9
+
 
 class TestPatientProfile:
     """Tests for patient profile functions."""

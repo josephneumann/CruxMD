@@ -823,6 +823,12 @@ REFERENCE_RANGES: dict[str, dict] = {
             "default": {"low": 95.0, "high": 100.0, "critical_low": 85.0, "critical_high": 100.0},
         },
     },
+    "39156-5": {  # Body mass index (BMI) [kg/m2]
+        "panel": "Vital Signs",
+        "ranges": {
+            "default": {"low": 18.5, "high": 24.9, "critical_low": 15.0, "critical_high": 40.0},
+        },
+    },
     # -----------------------------------------------------------------------
     # Miscellaneous
     # -----------------------------------------------------------------------
@@ -957,6 +963,63 @@ def interpret_observation(
     # Compute interpretation
     interpretation = compute_interpretation(float(value), ref_range)
     return interpretation, ref_range
+
+
+def interpret_component_observation(
+    observation: dict,
+    patient_sex: str | None = None,
+) -> bool:
+    """Add interpretation to each component of a component-based Observation.
+
+    For observations like Blood Pressure (85354-9) that use `component`
+    instead of `valueQuantity`, this interprets each component individually
+    using its own LOINC code (e.g. 8480-6 systolic, 8462-4 diastolic).
+
+    Modifies the observation in-place, adding `interpretation` and
+    `referenceRange` to each component that can be interpreted.
+
+    Args:
+        observation: FHIR Observation resource dict with `component` array.
+        patient_sex: "male", "female", or None.
+
+    Returns:
+        True if at least one component was interpreted, False otherwise.
+    """
+    components = observation.get("component")
+    if not components or not isinstance(components, list):
+        return False
+
+    any_interpreted = False
+    for comp in components:
+        # Extract LOINC code from component
+        coding = comp.get("code", {}).get("coding", [])
+        if not coding:
+            continue
+        loinc_code = coding[0].get("code")
+        if not loinc_code:
+            continue
+
+        # Extract numeric value from component
+        vq = comp.get("valueQuantity")
+        if not vq or not isinstance(vq, dict):
+            continue
+        value = vq.get("value")
+        if value is None or not isinstance(value, (int, float)):
+            continue
+
+        # Look up reference range
+        ref_range = get_reference_range(loinc_code, patient_sex)
+        if ref_range is None:
+            continue
+
+        # Add interpretation and referenceRange to the component
+        interp_code = compute_interpretation(float(value), ref_range)
+        comp["interpretation"] = build_fhir_interpretation(interp_code)
+        unit = vq.get("unit") or vq.get("code")
+        comp["referenceRange"] = build_fhir_reference_range(ref_range, unit)
+        any_interpreted = True
+
+    return any_interpreted
 
 
 def build_fhir_interpretation(code: HL7Interpretation) -> list[dict]:

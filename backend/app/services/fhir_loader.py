@@ -18,6 +18,7 @@ from app.services.graph import KnowledgeGraph
 from app.services.reference_ranges import (
     build_fhir_interpretation,
     build_fhir_reference_range,
+    interpret_component_observation,
     interpret_observation,
 )
 
@@ -75,6 +76,8 @@ def _enrich_observations(
 
     Looks up LOINC-based reference ranges and computes HL7 interpretation
     codes (N/H/L/HH/LL) for each Observation with a numeric value.
+    Also handles component-based observations (e.g. Blood Pressure) by
+    adding interpretation to each component individually.
     """
     patient_sex = _extract_patient_sex(entries)
 
@@ -82,19 +85,19 @@ def _enrich_observations(
         if resource.get("resourceType") != "Observation":
             continue
 
+        # Try valueQuantity-based interpretation first
         interp_code, ref_range = interpret_observation(resource, patient_sex)
-        if interp_code is None:
+        if interp_code is not None:
+            resource["interpretation"] = build_fhir_interpretation(interp_code)
+            unit = None
+            vq = resource.get("valueQuantity")
+            if vq and isinstance(vq, dict):
+                unit = vq.get("unit") or vq.get("code")
+            resource["referenceRange"] = build_fhir_reference_range(ref_range, unit)
             continue
 
-        # Add FHIR-conformant interpretation
-        resource["interpretation"] = build_fhir_interpretation(interp_code)
-
-        # Add FHIR-conformant referenceRange
-        unit = None
-        vq = resource.get("valueQuantity")
-        if vq and isinstance(vq, dict):
-            unit = vq.get("unit") or vq.get("code")
-        resource["referenceRange"] = build_fhir_reference_range(ref_range, unit)
+        # Try component-based interpretation (e.g. Blood Pressure)
+        interpret_component_observation(resource, patient_sex)
 
 
 async def load_bundle(

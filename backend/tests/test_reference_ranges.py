@@ -11,6 +11,7 @@ from app.services.reference_ranges import (
     compute_interpretation,
     get_panel,
     get_reference_range,
+    interpret_component_observation,
     interpret_observation,
 )
 
@@ -48,6 +49,7 @@ VITAL_SIGN_LOINCS = frozenset(
         "8310-5",  # Body temperature
         "8480-6",  # Systolic BP
         "8462-4",  # Diastolic BP
+        "39156-5",  # BMI
     ]
 )
 
@@ -377,3 +379,121 @@ class TestBuildFhirReferenceRange:
         result = build_fhir_reference_range(ref)
         assert "unit" not in result[0]["low"]
         assert "unit" not in result[0]["high"]
+
+
+class TestInterpretComponentObservation:
+    """Test component-based observation interpretation (e.g. Blood Pressure)."""
+
+    def _make_bp(self, systolic: float, diastolic: float) -> dict:
+        """Create a BP observation with component array."""
+        return {
+            "code": {"coding": [{"code": "85354-9", "display": "Blood pressure panel"}]},
+            "component": [
+                {
+                    "code": {"coding": [{"code": "8462-4", "display": "Diastolic Blood Pressure"}]},
+                    "valueQuantity": {"value": diastolic, "unit": "mm[Hg]"},
+                },
+                {
+                    "code": {"coding": [{"code": "8480-6", "display": "Systolic Blood Pressure"}]},
+                    "valueQuantity": {"value": systolic, "unit": "mm[Hg]"},
+                },
+            ],
+        }
+
+    def test_normal_bp(self):
+        obs = self._make_bp(110, 70)
+        result = interpret_component_observation(obs)
+        assert result is True
+        # Both components should have interpretation
+        for comp in obs["component"]:
+            assert "interpretation" in comp
+            assert comp["interpretation"][0]["coding"][0]["code"] == "N"
+            assert "referenceRange" in comp
+
+    def test_high_systolic(self):
+        obs = self._make_bp(145, 70)
+        result = interpret_component_observation(obs)
+        assert result is True
+        # Systolic (index 1) should be High
+        systolic = obs["component"][1]
+        assert systolic["interpretation"][0]["coding"][0]["code"] == "H"
+        # Diastolic (index 0) should be Normal
+        diastolic = obs["component"][0]
+        assert diastolic["interpretation"][0]["coding"][0]["code"] == "N"
+
+    def test_low_diastolic(self):
+        obs = self._make_bp(110, 55)
+        result = interpret_component_observation(obs)
+        assert result is True
+        diastolic = obs["component"][0]
+        assert diastolic["interpretation"][0]["coding"][0]["code"] == "L"
+
+    def test_critical_high_systolic(self):
+        obs = self._make_bp(185, 70)
+        result = interpret_component_observation(obs)
+        assert result is True
+        systolic = obs["component"][1]
+        assert systolic["interpretation"][0]["coding"][0]["code"] == "HH"
+
+    def test_reference_range_includes_unit(self):
+        obs = self._make_bp(110, 70)
+        interpret_component_observation(obs)
+        systolic = obs["component"][1]
+        assert systolic["referenceRange"][0]["low"]["unit"] == "mm[Hg]"
+
+    def test_no_component_returns_false(self):
+        obs = {"code": {"coding": [{"code": "718-7"}]}, "valueQuantity": {"value": 14.5}}
+        assert interpret_component_observation(obs) is False
+
+    def test_empty_component_returns_false(self):
+        obs = {"code": {"coding": [{"code": "85354-9"}]}, "component": []}
+        assert interpret_component_observation(obs) is False
+
+    def test_unknown_component_loinc(self):
+        obs = {
+            "code": {"coding": [{"code": "85354-9"}]},
+            "component": [
+                {
+                    "code": {"coding": [{"code": "99999-9"}]},
+                    "valueQuantity": {"value": 100, "unit": "mm[Hg]"},
+                },
+            ],
+        }
+        assert interpret_component_observation(obs) is False
+
+    def test_modifies_in_place(self):
+        obs = self._make_bp(110, 70)
+        interpret_component_observation(obs)
+        # Verify the original dict was modified
+        assert "interpretation" in obs["component"][0]
+
+
+class TestBmiRange:
+    """Test BMI reference range."""
+
+    def test_bmi_present(self):
+        assert "39156-5" in REFERENCE_RANGES
+
+    def test_bmi_normal(self):
+        obs = {
+            "code": {"coding": [{"code": "39156-5"}]},
+            "valueQuantity": {"value": 22.0, "unit": "kg/m2"},
+        }
+        interp, ref = interpret_observation(obs)
+        assert interp == "N"
+
+    def test_bmi_high(self):
+        obs = {
+            "code": {"coding": [{"code": "39156-5"}]},
+            "valueQuantity": {"value": 31.7, "unit": "kg/m2"},
+        }
+        interp, ref = interpret_observation(obs)
+        assert interp == "H"
+
+    def test_bmi_low(self):
+        obs = {
+            "code": {"coding": [{"code": "39156-5"}]},
+            "valueQuantity": {"value": 17.0, "unit": "kg/m2"},
+        }
+        interp, ref = interpret_observation(obs)
+        assert interp == "L"

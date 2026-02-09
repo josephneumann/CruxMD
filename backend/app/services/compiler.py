@@ -27,6 +27,7 @@ from app.services.graph import KnowledgeGraph
 from app.services.reference_ranges import (
     build_fhir_interpretation,
     build_fhir_reference_range,
+    interpret_component_observation,
     interpret_observation,
 )
 
@@ -262,6 +263,9 @@ async def compute_observation_trends(
                 obs_copy["referenceRange"] = build_fhir_reference_range(
                     ref_range, unit
                 )
+            else:
+                # Try component-based interpretation (e.g. Blood Pressure)
+                interpret_component_observation(obs_copy, patient_sex)
 
         if i not in candidate_lookup:
             result.append(obs_copy)
