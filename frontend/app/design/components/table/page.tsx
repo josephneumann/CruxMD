@@ -8,7 +8,6 @@ import {
   LineChart,
   Line,
   ResponsiveContainer,
-  ReferenceArea,
   YAxis,
 } from "recharts";
 
@@ -19,14 +18,12 @@ function useTableColors() {
   const isDark = resolvedTheme === "dark";
   return {
     chart1: isDark ? "#4A9A88" : "#2F5E52",
-    chart5: isDark ? "#66BB6A" : "#388E3C",
     warning: isDark ? "#EBC47C" : "#D9A036",
     critical: isDark ? "#D46F65" : "#C24E42",
     rangeBg: isDark ? "rgba(255,255,255,0.08)" : "rgba(0,0,0,0.06)",
     rangeNormal: isDark ? "#66BB6A" : "#388E3C",
     rangeWarning: isDark ? "#EBC47C" : "#D9A036",
     rangeCritical: isDark ? "#D46F65" : "#C24E42",
-    bandSubtle: isDark ? 0.12 : 0.08,
   };
 }
 
@@ -102,15 +99,6 @@ const medications = [
 ];
 
 // -- Components ---------------------------------------------------------------
-
-function InterpretationFlag({ code }: { code: HL7Interpretation }) {
-  if (code === "N") return <span className="ml-2 inline-block size-2 rounded-full bg-[#388E3C] align-middle" />;
-  if (code === "H") return <Badge variant="warning" size="sm" className="ml-2 text-[10px] px-1.5">H</Badge>;
-  if (code === "L") return <Badge variant="warning" size="sm" className="ml-2 text-[10px] px-1.5">L</Badge>;
-  if (code === "HH") return <Badge variant="critical" size="sm" className="ml-2 text-[10px] px-1.5">HH</Badge>;
-  if (code === "LL") return <Badge variant="critical" size="sm" className="ml-2 text-[10px] px-1.5">LL</Badge>;
-  return null;
-}
 
 function MedStatusBadge({ status }: { status: string }) {
   const variants: Record<string, "positive" | "neutral"> = {
@@ -191,18 +179,16 @@ function RangeBar({ value, low, high, interpretation }: {
  * Inline sparkline with % change annotation and "since" date.
  * Color matches interpretation: green for N, amber for H/L, red for HH/LL.
  */
-function SparklineWithDelta({ data, interpretation, rangeLow, rangeHigh, sinceDate }: {
+function SparklineWithDelta({ data, interpretation, sinceDate }: {
   data: number[];
   interpretation: HL7Interpretation;
-  rangeLow: number;
-  rangeHigh: number;
   sinceDate: string;
 }) {
   const c = useTableColors();
   const chartData = data.map((v) => ({ v }));
 
-  const min = Math.min(...data, rangeLow);
-  const max = Math.max(...data, rangeHigh);
+  const min = Math.min(...data);
+  const max = Math.max(...data);
   const pad = (max - min) * 0.15 || 0.5;
   const domain: [number, number] = [min - pad, max + pad];
 
@@ -222,7 +208,6 @@ function SparklineWithDelta({ data, interpretation, rangeLow, rangeHigh, sinceDa
       <div className="w-[72px] h-[28px] shrink-0">
         <ResponsiveContainer width="100%" height="100%">
           <LineChart data={chartData} margin={{ top: 2, right: 2, bottom: 2, left: 2 }}>
-            <ReferenceArea y1={rangeLow} y2={rangeHigh} fill={c.chart5} fillOpacity={c.bandSubtle} />
             <YAxis domain={domain} hide />
             <Line
               type="monotone"
@@ -265,9 +250,10 @@ export default function TablePage() {
       <div className="space-y-6">
         <h2 className="text-2xl font-medium">Laboratory Results</h2>
         <p className="text-muted-foreground max-w-2xl">
-          The lab results table consolidates status into a single flag badge next to the test
-          name. Inline sparklines show recent trend history, and reference range interval bars
-          give immediate visual context for where the current value sits.
+          Columns follow clinical reading order: identify the test, read the value, check if
+          it&apos;s in range (via the range bar marker color), then assess the trend. The range bar
+          encodes interpretation through marker color — green for normal, amber for high/low,
+          red for critical — eliminating the need for separate status badges.
         </p>
         <Card>
           <CardHeader>
@@ -279,8 +265,8 @@ export default function TablePage() {
                 <tr className="border-b bg-muted/30">
                   <th className={TH}>Test</th>
                   <th className={TH}>Result</th>
-                  <th className={TH}>Trend</th>
                   <th className={TH}>Reference Range</th>
+                  <th className={TH}>Trend</th>
                   <th className={TH}>Date</th>
                 </tr>
               </thead>
@@ -290,23 +276,11 @@ export default function TablePage() {
                   const isAbnormal = row.interpretation !== "N";
                   return (
                     <tr key={row.test} className={isCritical ? "bg-[#C24E42]/5" : ""}>
-                      <td className="p-4 font-medium">
-                        {row.test}
-                        <InterpretationFlag code={row.interpretation} />
-                      </td>
+                      <td className="p-4 font-medium">{row.test}</td>
                       <td className="p-4">
                         <span className={isAbnormal ? "text-[#C24E42] font-medium tabular-nums" : "tabular-nums"}>
                           {row.value} <span className="text-muted-foreground font-normal">{row.unit}</span>
                         </span>
-                      </td>
-                      <td className="p-4">
-                        <SparklineWithDelta
-                          data={row.history}
-                          interpretation={row.interpretation}
-                          rangeLow={row.rangeLow}
-                          rangeHigh={row.rangeHigh}
-                          sinceDate={row.historyStart}
-                        />
                       </td>
                       <td className="p-4">
                         <RangeBar
@@ -316,42 +290,19 @@ export default function TablePage() {
                           interpretation={row.interpretation}
                         />
                       </td>
+                      <td className="p-4">
+                        <SparklineWithDelta
+                          data={row.history}
+                          interpretation={row.interpretation}
+                          sinceDate={row.historyStart}
+                        />
+                      </td>
                       <td className="p-4 text-muted-foreground">{row.date}</td>
                     </tr>
                   );
                 })}
               </tbody>
             </table>
-            {/* Legend — HL7 FHIR Interpretation Codes */}
-            <div className="flex items-center gap-5 px-4 py-3 border-t text-xs text-muted-foreground">
-              <span className="flex items-center gap-1.5">
-                <span className="size-2 rounded-full bg-[#388E3C]" />
-                N · Normal
-              </span>
-              <span className="flex items-center gap-1.5">
-                <Badge variant="warning" size="sm" className="text-[10px] px-1.5">H</Badge>
-                High
-              </span>
-              <span className="flex items-center gap-1.5">
-                <Badge variant="warning" size="sm" className="text-[10px] px-1.5">L</Badge>
-                Low
-              </span>
-              <span className="flex items-center gap-1.5">
-                <Badge variant="critical" size="sm" className="text-[10px] px-1.5">HH</Badge>
-                Critically High
-              </span>
-              <span className="flex items-center gap-1.5">
-                <Badge variant="critical" size="sm" className="text-[10px] px-1.5">LL</Badge>
-                Critically Low
-              </span>
-              <span className="flex items-center gap-1.5 ml-1 border-l pl-4">
-                <div className="w-8 h-1.5 rounded-full bg-muted relative">
-                  <div className="absolute left-1/4 w-1/2 h-full rounded-full bg-[#388E3C]/20" />
-                  <div className="absolute left-[60%] top-1/2 -translate-y-1/2 size-1.5 rounded-full bg-[#388E3C]" />
-                </div>
-                Range
-              </span>
-            </div>
           </CardContent>
         </Card>
       </div>
@@ -445,28 +396,24 @@ interface LabResult {
   historyStart: string;  // earliest reading date
 }
 
-// Interpretation flag inline with test name
-// N = green dot, H/L = amber badge, HH/LL = red badge
-<td className="p-4 font-medium">
-  {row.test}
-  <InterpretationFlag code={row.interpretation} />
-</td>
+// Column order follows clinical reading flow:
+// Test → Result → Range Bar → Trend → Date
+//
+// The range bar marker color encodes interpretation:
+//   green = N (normal), amber = H/L, red = HH/LL
+// No separate status badge needed — color does the work.
 
-// Sparkline with % change annotation
-<SparklineWithDelta
-  data={row.history}
-  interpretation={row.interpretation}
-  rangeLow={row.rangeLow}
-  rangeHigh={row.rangeHigh}
-  sinceDate={row.historyStart}
-/>
-
-// Visual reference range interval bar
 <RangeBar
   value={row.value}
   low={row.rangeLow}
   high={row.rangeHigh}
   interpretation={row.interpretation}
+/>
+
+<SparklineWithDelta
+  data={row.history}
+  interpretation={row.interpretation}
+  sinceDate={row.historyStart}
 />`}
       />
     </div>
