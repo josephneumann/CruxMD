@@ -24,6 +24,11 @@ from sqlalchemy.ext.asyncio import AsyncSession
 from app.models import FhirResource
 from app.services.agent import _prune_fhir_resource
 from app.services.graph import KnowledgeGraph
+from app.services.reference_ranges import (
+    build_fhir_interpretation,
+    build_fhir_reference_range,
+    interpret_observation,
+)
 
 logger = logging.getLogger(__name__)
 
@@ -196,16 +201,22 @@ async def compute_observation_trends(
     db: AsyncSession,
     patient_id: uuid.UUID | str,
     observations: list[dict[str, Any]],
+    patient_sex: str | None = None,
 ) -> list[dict[str, Any]]:
     """Compute trend metadata for each observation that has historical data.
 
     For each observation, looks up the previous value of the same LOINC code
     and computes a _trend object with direction, delta, and timespan.
 
+    Also adds runtime interpretation (referenceRange + interpretation) for
+    any Observation that lacks a stored interpretation field — this handles
+    data loaded before seed-time enrichment was implemented.
+
     Args:
         db: Async SQLAlchemy session.
         patient_id: The canonical patient UUID.
         observations: List of FHIR Observation dicts (typically the latest ones).
+        patient_sex: Patient gender for sex-aware reference ranges.
 
     Returns:
         The same observations list, with _trend added to numeric observations
@@ -233,11 +244,24 @@ async def compute_observation_trends(
             db, patient_id, [(loinc, date_str) for _, loinc, date_str in trend_candidates]
         )
 
-    # Build result with trends
+    # Build result with trends and runtime interpretation
     result = []
     candidate_lookup = {i: (loinc, date_str) for i, loinc, date_str in trend_candidates}
     for i, obs in enumerate(observations):
         obs_copy = copy.deepcopy(obs)
+
+        # Runtime interpretation fallback: add interpretation if missing
+        if "interpretation" not in obs_copy:
+            interp_code, ref_range = interpret_observation(obs_copy, patient_sex)
+            if interp_code and ref_range:
+                obs_copy["interpretation"] = build_fhir_interpretation(interp_code)
+                unit = None
+                vq = obs_copy.get("valueQuantity")
+                if vq and isinstance(vq, dict):
+                    unit = vq.get("unit") or vq.get("code")
+                obs_copy["referenceRange"] = build_fhir_reference_range(
+                    ref_range, unit
+                )
 
         if i not in candidate_lookup:
             result.append(obs_copy)
@@ -1311,7 +1335,10 @@ async def compile_patient_summary(
     for obs_list in tier3_raw.values():
         all_tier3_obs.extend(obs_list)
 
-    enriched_obs = await compute_observation_trends(db, patient_id, all_tier3_obs)
+    enriched_obs = await compute_observation_trends(
+        db, patient_id, all_tier3_obs,
+        patient_sex=patient_data.get("gender"),
+    )
 
     # Rebuild tier3 with trends by category
     enriched_obs_by_id: dict[str, dict[str, Any]] = {}

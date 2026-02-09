@@ -16,7 +16,7 @@ from starlette.middleware.base import BaseHTTPMiddleware
 
 from app.config import settings
 from app.projections.extractors.task import register_task_projection
-from app.routes import chat, data, fhir, patients, sessions, tasks
+from app.routes import chat, data, fhir, labs, patients, sessions, tasks
 from app.services.graph import KnowledgeGraph
 
 logger = logging.getLogger(__name__)
@@ -88,6 +88,7 @@ app.add_middleware(
 # Include API routers
 app.include_router(chat.router, prefix="/api")
 app.include_router(patients.router, prefix="/api")
+app.include_router(labs.router, prefix="/api")
 app.include_router(fhir.router, prefix="/api")
 app.include_router(data.router, prefix="/api")
 app.include_router(sessions.router, prefix="/api")

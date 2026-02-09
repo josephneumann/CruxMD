@@ -2,7 +2,7 @@
 
 import React, { useState } from "react";
 import { useTheme } from "next-themes";
-import { FlaskConical, Pill, ChevronDown, ChevronRight, ArrowUpDown, ArrowUp, ArrowDown } from "lucide-react";
+import { FlaskConical, Pill, Syringe, HeartPulse, ShieldAlert, Stethoscope, CalendarDays, ChevronDown, ChevronRight, ArrowUpDown, ArrowUp, ArrowDown } from "lucide-react";
 import { Badge } from "@/components/ui/badge";
 import { Card, CardHeader, CardTitle, CardContent } from "@/components/ui/card";
 import { CodeBlock } from "@/components/design-system/CodeBlock";
@@ -186,6 +186,130 @@ const medications: MedicationRow[] = [
   { medication: "Atorvastatin 20 MG Oral Tablet", frequency: "1x daily", reason: "Hyperlipidemia", status: "active", authoredOn: "06/10/2024", requester: "Dr. Maia Williams" },
   { medication: "Warfarin Sodium 5 MG Oral Tablet", frequency: "1x daily", reason: "Atrial fibrillation", status: "completed", authoredOn: "12/01/2024", requester: "Dr. Terri Gutmann" },
   { medication: "Ibuprofen 200 MG Oral Tablet", frequency: "As needed", reason: "Osteoarthritis of knee", status: "active", authoredOn: "09/14/2025", requester: "Dr. Maia Williams" },
+];
+
+// Mirrors FHIR Immunization structure:
+// - vaccine: from vaccineCode.text (CVX display string)
+// - date: from occurrenceDateTime
+// - location: from location.display
+// - status: always "completed" in Synthea fixtures
+
+interface ImmunizationRow {
+  vaccine: string;
+  date: string;
+  location: string;
+  status: "completed";
+}
+
+const immunizations: ImmunizationRow[] = [
+  { vaccine: "Influenza, seasonal, injectable, preservative free", date: "10/15/2025", location: "River's Edge Primary Care LLC", status: "completed" },
+  { vaccine: "Influenza, seasonal, injectable, preservative free", date: "10/22/2024", location: "River's Edge Primary Care LLC", status: "completed" },
+  { vaccine: "COVID-19, mRNA, LNP-S, PF, 100 mcg/0.5mL dose", date: "06/02/2024", location: "University of MA Med Ctr", status: "completed" },
+  { vaccine: "COVID-19, mRNA, LNP-S, PF, 30 mcg/0.3 mL dose", date: "01/15/2024", location: "University of MA Med Ctr", status: "completed" },
+  { vaccine: "Td (adult), 5 Lf tetanus toxoid, preservative free, adsorbed", date: "08/09/2023", location: "River's Edge Primary Care LLC", status: "completed" },
+  { vaccine: "Zoster vaccine, live", date: "03/14/2023", location: "River's Edge Primary Care LLC", status: "completed" },
+  { vaccine: "Hep B, adult", date: "11/20/2022", location: "University of MA Med Ctr", status: "completed" },
+];
+
+// Mirrors FHIR Observation (vital-signs category) structure:
+// - vital: from code.text (LOINC display string)
+// - value: from valueQuantity.value (or component[] for BP)
+// - unit: from valueQuantity.unit
+// - loinc: from code.coding[0].code
+// - date: from effectiveDateTime
+
+interface VitalSignRow {
+  vital: string;
+  value: string;
+  unit: string;
+  loinc: string;
+  date: string;
+}
+
+const vitalSigns: VitalSignRow[] = [
+  { vital: "Blood Pressure", value: "128/82", unit: "mmHg", loinc: "85354-9", date: "01/25/2026" },
+  { vital: "Heart Rate", value: "72", unit: "/min", loinc: "8867-4", date: "01/25/2026" },
+  { vital: "Respiratory Rate", value: "16", unit: "/min", loinc: "9279-1", date: "01/25/2026" },
+  { vital: "Body Temperature", value: "37.1", unit: "°C", loinc: "8310-5", date: "01/25/2026" },
+  { vital: "Body Weight", value: "91.8", unit: "kg", loinc: "29463-7", date: "01/25/2026" },
+  { vital: "Body Height", value: "170.2", unit: "cm", loinc: "8302-2", date: "01/25/2026" },
+  { vital: "BMI", value: "31.7", unit: "kg/m²", loinc: "39156-5", date: "01/25/2026" },
+  { vital: "Pain Severity", value: "3", unit: "/10", loinc: "72514-3", date: "01/25/2026" },
+];
+
+// Mirrors FHIR AllergyIntolerance structure:
+// - allergen: from code.coding[0].display (SNOMED)
+// - category: from category[0] ("medication" | "food" | "environment")
+// - criticality: from criticality ("high" | "low")
+// - clinicalStatus: from clinicalStatus.coding[0].code
+// - onsetDate: from onsetDateTime
+// NOTE: 0 AllergyIntolerance resources exist in Synthea fixtures.
+// Mock data shown for design reference.
+
+interface AllergyRow {
+  allergen: string;
+  category: "medication" | "food" | "environment";
+  criticality: "high" | "low";
+  clinicalStatus: "active" | "inactive";
+  onsetDate: string;
+}
+
+const allergies: AllergyRow[] = [
+  { allergen: "Penicillin", category: "medication", criticality: "high", clinicalStatus: "active", onsetDate: "03/15/2018" },
+  { allergen: "Shellfish", category: "food", criticality: "high", clinicalStatus: "active", onsetDate: "06/20/2010" },
+  { allergen: "Latex", category: "environment", criticality: "low", clinicalStatus: "active", onsetDate: "11/08/2020" },
+  { allergen: "Sulfonamide", category: "medication", criticality: "low", clinicalStatus: "active", onsetDate: "09/03/2022" },
+];
+
+// Mirrors FHIR Procedure structure:
+// - procedure: from code.text (SNOMED display)
+// - date: from performedPeriod.start
+// - location: from location.display
+// - reason: from reasonReference[].display or reasonCode[].coding[0].display
+// - status: always "completed" in Synthea (omitted from display)
+
+interface ProcedureRow {
+  procedure: string;
+  date: string;
+  location: string;
+  reason: string | null;
+}
+
+const procedures: ProcedureRow[] = [
+  { procedure: "Depression screening", date: "01/25/2026", location: "River's Edge Primary Care LLC", reason: null },
+  { procedure: "Medication reconciliation", date: "01/15/2026", location: "River's Edge Primary Care LLC", reason: null },
+  { procedure: "Spirometry", date: "08/15/2025", location: "River's Edge Primary Care LLC", reason: "Pulmonary emphysema" },
+  { procedure: "Colonoscopy", date: "06/20/2024", location: "University of MA Med Ctr", reason: "Screening for occult blood" },
+  { procedure: "Percutaneous coronary intervention", date: "03/30/2024", location: "Fitchburg Outpatient Clinic", reason: "Ischemic heart disease" },
+  { procedure: "Physical therapy procedure", date: "11/05/2023", location: "River's Edge Primary Care LLC", reason: "Osteoarthritis of knee" },
+  { procedure: "Dental care", date: "08/23/2023", location: "Shriners Hospital for Children", reason: "Patient referral for dental care" },
+];
+
+// Mirrors FHIR Encounter structure:
+// - type: from type[0].coding[0].display (SNOMED)
+// - encounterClass: from class.code (v3-ActCode: AMB, EMER, IMP)
+// - date: from period.start
+// - provider: from participant[0].individual.display
+// - location: from location[0].location.display
+// - reason: from reasonCode[0].coding[0].display (56% populated)
+
+interface EncounterRow {
+  type: string;
+  encounterClass: "AMB" | "EMER" | "IMP";
+  date: string;
+  provider: string;
+  location: string;
+  reason: string | null;
+}
+
+const encounters: EncounterRow[] = [
+  { type: "General examination of patient", encounterClass: "AMB", date: "01/25/2026", provider: "Dr. Quentin Fritsch", location: "River's Edge Primary Care LLC", reason: null },
+  { type: "Encounter for problem", encounterClass: "AMB", date: "11/15/2025", provider: "Dr. Terri Gutmann", location: "River's Edge Primary Care LLC", reason: "Hypertension" },
+  { type: "Emergency room admission", encounterClass: "EMER", date: "07/14/2025", provider: "Dr. Olympia Ward", location: "Nurse on Call", reason: "Asthma" },
+  { type: "Prenatal visit", encounterClass: "AMB", date: "05/10/2025", provider: "Dr. Terri Gutmann", location: "River's Edge Primary Care LLC", reason: null },
+  { type: "Hospital admission", encounterClass: "IMP", date: "11/22/2024", provider: "Dr. Shayne Gutmann", location: "Windsor Nursing & Retirement Home", reason: "Patient transfer to SNF" },
+  { type: "Urgent care clinic", encounterClass: "EMER", date: "09/03/2024", provider: "Dr. Maia Williams", location: "Fitchburg Outpatient Clinic", reason: "Acute bronchitis" },
+  { type: "Well child visit", encounterClass: "AMB", date: "04/07/2024", provider: "Dr. Quentin Fritsch", location: "River's Edge Primary Care LLC", reason: null },
 ];
 
 // -- Table header cell helper -------------------------------------------------
@@ -542,6 +666,271 @@ function BasicPropsTable() {
   );
 }
 
+// -- Immunizations table with sort ---------------------------------------------
+
+type ImmSortKey = "vaccine" | "date" | "location";
+
+function ImmunizationsTable() {
+  const { sortKey, sortDir, toggle } = useSortState<ImmSortKey>();
+  const sorted = sortRows(immunizations, sortKey, sortDir, (row, key) => row[key as keyof ImmunizationRow]);
+
+  const cols: { key: ImmSortKey; label: string }[] = [
+    { key: "vaccine", label: "Vaccine" },
+    { key: "date", label: "Date" },
+    { key: "location", label: "Location" },
+  ];
+
+  return (
+    <CardContent className="p-0">
+      <table className="w-full">
+        <thead>
+          <tr className="border-b bg-muted/30">
+            {cols.map((col) => (
+              <SortHeader
+                key={col.key}
+                label={col.label}
+                active={sortKey === col.key}
+                direction={sortKey === col.key ? sortDir : null}
+                onClick={() => toggle(col.key)}
+              />
+            ))}
+          </tr>
+        </thead>
+        <tbody className="divide-y">
+          {sorted.map((row, i) => (
+            <tr key={`${row.vaccine}-${row.date}-${i}`}>
+              <td className="px-4 py-2 text-sm font-medium">{row.vaccine}</td>
+              <td className="px-4 py-2 text-sm text-muted-foreground">{row.date}</td>
+              <td className="px-4 py-2 text-sm text-muted-foreground">{row.location}</td>
+            </tr>
+          ))}
+        </tbody>
+      </table>
+    </CardContent>
+  );
+}
+
+// -- Vitals table with sort ---------------------------------------------------
+
+type VitalSortKey = "vital" | "value" | "date";
+
+function VitalsTable() {
+  const { sortKey, sortDir, toggle } = useSortState<VitalSortKey>();
+  const sorted = sortRows(vitalSigns, sortKey, sortDir, (row, key) => {
+    if (key === "value") return parseFloat(row.value) || 0;
+    return row[key as keyof VitalSignRow];
+  });
+
+  const cols: { key: VitalSortKey; label: string }[] = [
+    { key: "vital", label: "Vital Sign" },
+    { key: "value", label: "Value" },
+    { key: "date", label: "Date" },
+  ];
+
+  return (
+    <CardContent className="p-0">
+      <table className="w-full">
+        <thead>
+          <tr className="border-b bg-muted/30">
+            {cols.map((col) => (
+              <SortHeader
+                key={col.key}
+                label={col.label}
+                active={sortKey === col.key}
+                direction={sortKey === col.key ? sortDir : null}
+                onClick={() => toggle(col.key)}
+              />
+            ))}
+          </tr>
+        </thead>
+        <tbody className="divide-y">
+          {sorted.map((row) => (
+            <tr key={row.loinc}>
+              <td className="px-4 py-2 text-sm font-medium">{row.vital}</td>
+              <td className="px-4 py-2 text-sm tabular-nums">
+                {row.value} <span className="text-muted-foreground">{row.unit}</span>
+              </td>
+              <td className="px-4 py-2 text-sm text-muted-foreground">{row.date}</td>
+            </tr>
+          ))}
+        </tbody>
+      </table>
+    </CardContent>
+  );
+}
+
+// -- Allergies table with sort ------------------------------------------------
+
+type AllergySortKey = "allergen" | "category" | "criticality" | "clinicalStatus" | "onsetDate";
+
+function CriticalityText({ criticality }: { criticality: AllergyRow["criticality"] }) {
+  if (criticality === "high") {
+    return <span className="text-xs text-[#C24E42] dark:text-[#D46F65]">High</span>;
+  }
+  return <span className="text-xs text-muted-foreground">Low</span>;
+}
+
+function AllergyStatusText({ status }: { status: AllergyRow["clinicalStatus"] }) {
+  if (status === "active") {
+    return <span className="text-xs text-[#388E3C] dark:text-[#66BB6A]">Active</span>;
+  }
+  return <span className="text-xs text-muted-foreground">Inactive</span>;
+}
+
+function AllergiesTable() {
+  const { sortKey, sortDir, toggle } = useSortState<AllergySortKey>();
+  const sorted = sortRows(allergies, sortKey, sortDir, (row, key) => row[key as keyof AllergyRow]);
+
+  const cols: { key: AllergySortKey; label: string }[] = [
+    { key: "allergen", label: "Allergen" },
+    { key: "category", label: "Category" },
+    { key: "criticality", label: "Criticality" },
+    { key: "clinicalStatus", label: "Status" },
+    { key: "onsetDate", label: "Onset" },
+  ];
+
+  return (
+    <CardContent className="p-0">
+      <table className="w-full">
+        <thead>
+          <tr className="border-b bg-muted/30">
+            {cols.map((col) => (
+              <SortHeader
+                key={col.key}
+                label={col.label}
+                active={sortKey === col.key}
+                direction={sortKey === col.key ? sortDir : null}
+                onClick={() => toggle(col.key)}
+              />
+            ))}
+          </tr>
+        </thead>
+        <tbody className="divide-y">
+          {sorted.map((row) => (
+            <tr key={row.allergen}>
+              <td className="px-4 py-2 text-sm font-medium">{row.allergen}</td>
+              <td className="px-4 py-2 text-sm text-muted-foreground capitalize">{row.category}</td>
+              <td className="px-4 py-2"><CriticalityText criticality={row.criticality} /></td>
+              <td className="px-4 py-2"><AllergyStatusText status={row.clinicalStatus} /></td>
+              <td className="px-4 py-2 text-sm text-muted-foreground">{row.onsetDate}</td>
+            </tr>
+          ))}
+        </tbody>
+      </table>
+    </CardContent>
+  );
+}
+
+// -- Procedures table with sort -----------------------------------------------
+
+type ProcSortKey = "procedure" | "date" | "location" | "reason";
+
+function ProceduresTable() {
+  const { sortKey, sortDir, toggle } = useSortState<ProcSortKey>();
+  const sorted = sortRows(procedures, sortKey, sortDir, (row, key) => row[key as keyof ProcedureRow] ?? "");
+
+  const cols: { key: ProcSortKey; label: string }[] = [
+    { key: "procedure", label: "Procedure" },
+    { key: "date", label: "Date" },
+    { key: "location", label: "Location" },
+    { key: "reason", label: "Reason" },
+  ];
+
+  return (
+    <CardContent className="p-0">
+      <table className="w-full">
+        <thead>
+          <tr className="border-b bg-muted/30">
+            {cols.map((col) => (
+              <SortHeader
+                key={col.key}
+                label={col.label}
+                active={sortKey === col.key}
+                direction={sortKey === col.key ? sortDir : null}
+                onClick={() => toggle(col.key)}
+              />
+            ))}
+          </tr>
+        </thead>
+        <tbody className="divide-y">
+          {sorted.map((row) => (
+            <tr key={`${row.procedure}-${row.date}`}>
+              <td className="px-4 py-2 text-sm font-medium">{row.procedure}</td>
+              <td className="px-4 py-2 text-sm text-muted-foreground">{row.date}</td>
+              <td className="px-4 py-2 text-sm text-muted-foreground">{row.location}</td>
+              <td className="px-4 py-2 text-sm text-muted-foreground">
+                {row.reason ?? <span className="italic">—</span>}
+              </td>
+            </tr>
+          ))}
+        </tbody>
+      </table>
+    </CardContent>
+  );
+}
+
+// -- Encounters table with sort -----------------------------------------------
+
+type EncSortKey = "type" | "encounterClass" | "date" | "provider" | "location" | "reason";
+
+function EncounterClassText({ encounterClass }: { encounterClass: EncounterRow["encounterClass"] }) {
+  const styles: Record<string, string> = {
+    AMB: "text-xs text-muted-foreground",
+    EMER: "text-xs text-[#C24E42] dark:text-[#D46F65]",
+    IMP: "text-xs text-[#D9A036] dark:text-[#EBC47C]",
+  };
+  const labels: Record<string, string> = { AMB: "Ambulatory", EMER: "Emergency", IMP: "Inpatient" };
+  return <span className={styles[encounterClass]}>{labels[encounterClass]}</span>;
+}
+
+function EncountersTable() {
+  const { sortKey, sortDir, toggle } = useSortState<EncSortKey>();
+  const sorted = sortRows(encounters, sortKey, sortDir, (row, key) => row[key as keyof EncounterRow] ?? "");
+
+  const cols: { key: EncSortKey; label: string }[] = [
+    { key: "type", label: "Type" },
+    { key: "encounterClass", label: "Class" },
+    { key: "date", label: "Date" },
+    { key: "provider", label: "Provider" },
+    { key: "location", label: "Location" },
+    { key: "reason", label: "Reason" },
+  ];
+
+  return (
+    <CardContent className="p-0">
+      <table className="w-full">
+        <thead>
+          <tr className="border-b bg-muted/30">
+            {cols.map((col) => (
+              <SortHeader
+                key={col.key}
+                label={col.label}
+                active={sortKey === col.key}
+                direction={sortKey === col.key ? sortDir : null}
+                onClick={() => toggle(col.key)}
+              />
+            ))}
+          </tr>
+        </thead>
+        <tbody className="divide-y">
+          {sorted.map((row, i) => (
+            <tr key={`${row.type}-${row.date}-${i}`}>
+              <td className="px-4 py-2 text-sm font-medium">{row.type}</td>
+              <td className="px-4 py-2"><EncounterClassText encounterClass={row.encounterClass} /></td>
+              <td className="px-4 py-2 text-sm text-muted-foreground">{row.date}</td>
+              <td className="px-4 py-2 text-sm text-muted-foreground">{row.provider}</td>
+              <td className="px-4 py-2 text-sm text-muted-foreground">{row.location}</td>
+              <td className="px-4 py-2 text-sm text-muted-foreground">
+                {row.reason ?? <span className="italic">—</span>}
+              </td>
+            </tr>
+          ))}
+        </tbody>
+      </table>
+    </CardContent>
+  );
+}
+
 // -- Page ---------------------------------------------------------------------
 
 export default function TablePage() {
@@ -813,6 +1202,77 @@ export default function TablePage() {
               In FHIR, the requester is the practitioner who authored the medication order, sourced
               via NPI reference. This is placed last as the least-scanned column — clinicians
               prioritize what the drug is and whether it&apos;s active over who prescribed it.
+            </p>
+          </div>
+        </div>
+      </div>
+
+      {/* Immunizations */}
+      <div className="space-y-6">
+        <h2 className="text-2xl font-medium">Immunizations</h2>
+        <p className="text-muted-foreground max-w-2xl">
+          Data mirrors FHIR Immunization resources. The vaccine column uses the CVX display
+          string from <code className="text-xs bg-muted px-1 py-0.5 rounded">vaccineCode.text</code>.
+          All Synthea immunizations have status &ldquo;completed&rdquo; — there are no pending or
+          refused records in the fixtures.
+        </p>
+        <Card className="py-0 gap-0">
+          <div className="flex items-center gap-2 px-4 py-2 border-b">
+            <Syringe className="size-4 text-muted-foreground" />
+            <span className="text-sm font-medium">Immunizations</span>
+          </div>
+          <ImmunizationsTable />
+        </Card>
+
+        {/* Immunizations design documentation */}
+        <div className="space-y-4 text-sm text-muted-foreground">
+          <h3 className="text-lg font-medium text-foreground">Design Notes</h3>
+
+          <div className="space-y-3">
+            <p className="font-medium text-foreground">Column Order</p>
+            <p>
+              <strong className="text-foreground">Vaccine → Date → Location</strong>.
+              The clinician identifies which vaccine was given, checks when it was administered,
+              and notes where. Status is omitted as a column because all Synthea immunizations
+              are &ldquo;completed&rdquo; — in a production system with pending/refused states,
+              a status column would be added.
+            </p>
+          </div>
+
+          <div className="space-y-3">
+            <p className="font-medium text-foreground">FHIR Data Mapping</p>
+            <p>
+              The vaccine name comes from <code className="text-xs bg-muted px-1 py-0.5 rounded">vaccineCode.text</code>,
+              which contains the CVX display string (e.g. &ldquo;Influenza, seasonal, injectable,
+              preservative free&rdquo;). Date maps to <code className="text-xs bg-muted px-1 py-0.5 rounded">occurrenceDateTime</code> and
+              location to <code className="text-xs bg-muted px-1 py-0.5 rounded">location.display</code>.
+              The CVX code (<code className="text-xs bg-muted px-1 py-0.5 rounded">vaccineCode.coding[0].code</code>) is
+              available in the FHIR data but omitted from display — the full vaccine name provides
+              sufficient identification for clinical review.
+            </p>
+          </div>
+
+          <div className="space-y-3">
+            <p className="font-medium text-foreground">Fixture Characteristics</p>
+            <p>
+              Synthea generates 73 immunization records across 5 patient bundles with 7 distinct
+              vaccine types. Influenza dominates (50 of 73), followed by COVID-19 variants (10),
+              tetanus (5), zoster (4), hepatitis B (3), and meningococcal (1). All records
+              include <code className="text-xs bg-muted px-1 py-0.5 rounded">primarySource: true</code> and
+              a location reference. No optional FHIR fields (site, route, doseQuantity, performer)
+              are present in the Synthea data.
+            </p>
+          </div>
+
+          <div className="space-y-3">
+            <p className="font-medium text-foreground">Omitted Fields</p>
+            <p>
+              Several FHIR Immunization fields are absent from Synthea fixtures
+              and therefore not displayed: <strong className="text-foreground">site</strong> (injection
+              site), <strong className="text-foreground">route</strong> (administration
+              route), <strong className="text-foreground">doseQuantity</strong>, <strong className="text-foreground">performer</strong> (administering
+              practitioner), and <strong className="text-foreground">note</strong>. A production
+              implementation would add columns for these if populated.
             </p>
           </div>
         </div>
