@@ -52,8 +52,8 @@ class ClinicalTable(BaseModel):
         max_length=200,
         description="Table title displayed in the card header",
     )
-    rows: list[dict[str, Any]] = Field(
-        description="Row data with keys matching the type's column spec",
+    rows: str = Field(
+        description="JSON array of row objects with keys matching the type's column spec",
     )
 
 
