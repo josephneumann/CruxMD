@@ -9,6 +9,7 @@ import {
   Line,
   ResponsiveContainer,
   YAxis,
+  Tooltip,
 } from "recharts";
 
 // -- Theme-aware colors (matches chart page) ----------------------------------
@@ -32,6 +33,11 @@ function useTableColors() {
 
 type HL7Interpretation = "N" | "H" | "L" | "HH" | "LL";
 
+interface HistoryPoint {
+  value: number;
+  date: string;
+}
+
 interface LabResult {
   test: string;
   value: number;
@@ -40,8 +46,7 @@ interface LabResult {
   rangeHigh: number;
   interpretation: HL7Interpretation;
   date: string;
-  history: number[];
-  historyStart: string; // earliest reading date for "since" annotation
+  history: HistoryPoint[];
 }
 
 const labResults: LabResult[] = [
@@ -53,8 +58,14 @@ const labResults: LabResult[] = [
     rangeHigh: 11.0,
     interpretation: "N",
     date: "01/25/2026",
-    history: [6.8, 7.2, 7.0, 7.3, 7.1, 7.5],
-    historyStart: "Aug '25",
+    history: [
+      { value: 6.8, date: "08/12/2025" },
+      { value: 7.2, date: "09/15/2025" },
+      { value: 7.0, date: "10/14/2025" },
+      { value: 7.3, date: "11/11/2025" },
+      { value: 7.1, date: "12/16/2025" },
+      { value: 7.5, date: "01/25/2026" },
+    ],
   },
   {
     test: "Hemoglobin",
@@ -64,8 +75,14 @@ const labResults: LabResult[] = [
     rangeHigh: 17.5,
     interpretation: "N",
     date: "01/25/2026",
-    history: [14.8, 15.0, 14.9, 15.1, 15.0, 15.2],
-    historyStart: "Aug '25",
+    history: [
+      { value: 14.8, date: "08/12/2025" },
+      { value: 15.0, date: "09/15/2025" },
+      { value: 14.9, date: "10/14/2025" },
+      { value: 15.1, date: "11/11/2025" },
+      { value: 15.0, date: "12/16/2025" },
+      { value: 15.2, date: "01/25/2026" },
+    ],
   },
   {
     test: "Platelets",
@@ -75,8 +92,14 @@ const labResults: LabResult[] = [
     rangeHigh: 400,
     interpretation: "H",
     date: "01/25/2026",
-    history: [380, 395, 400, 410, 418, 425],
-    historyStart: "Aug '25",
+    history: [
+      { value: 380, date: "08/12/2025" },
+      { value: 395, date: "09/15/2025" },
+      { value: 400, date: "10/14/2025" },
+      { value: 410, date: "11/11/2025" },
+      { value: 418, date: "12/16/2025" },
+      { value: 425, date: "01/25/2026" },
+    ],
   },
   {
     test: "Potassium",
@@ -86,8 +109,14 @@ const labResults: LabResult[] = [
     rangeHigh: 5.0,
     interpretation: "HH",
     date: "01/25/2026",
-    history: [4.2, 4.5, 4.8, 5.1, 5.8, 6.2],
-    historyStart: "Aug '25",
+    history: [
+      { value: 4.2, date: "08/12/2025" },
+      { value: 4.5, date: "09/15/2025" },
+      { value: 4.8, date: "10/14/2025" },
+      { value: 5.1, date: "11/11/2025" },
+      { value: 5.8, date: "12/16/2025" },
+      { value: 6.2, date: "01/25/2026" },
+    ],
   },
 ];
 
@@ -176,19 +205,37 @@ function RangeBar({ value, low, high, interpretation }: {
 }
 
 /**
+ * Compact tooltip for sparklines — shows value and date.
+ */
+function SparklineTooltip({ active, payload }: {
+  active?: boolean;
+  payload?: Array<{ payload?: { value: number; date: string } }>;
+}) {
+  if (!active || !payload?.[0]?.payload) return null;
+  const { value, date } = payload[0].payload;
+  return (
+    <div className="rounded border bg-card px-2 py-1 shadow-md text-[11px] leading-snug">
+      <p className="font-medium tabular-nums">{value}</p>
+      <p className="text-muted-foreground">{date}</p>
+    </div>
+  );
+}
+
+/**
  * Inline sparkline with % change annotation and "since" date.
  * Color matches interpretation: green for N, amber for H/L, red for HH/LL.
+ * Hover reveals value/date tooltip on each data point.
  */
-function SparklineWithDelta({ data, interpretation, sinceDate }: {
-  data: number[];
+function SparklineWithDelta({ data, interpretation, unit }: {
+  data: HistoryPoint[];
   interpretation: HL7Interpretation;
-  sinceDate: string;
+  unit: string;
 }) {
   const c = useTableColors();
-  const chartData = data.map((v) => ({ v }));
 
-  const min = Math.min(...data);
-  const max = Math.max(...data);
+  const values = data.map((d) => d.value);
+  const min = Math.min(...values);
+  const max = Math.max(...values);
   const pad = (max - min) * 0.15 || 0.5;
   const domain: [number, number] = [min - pad, max + pad];
 
@@ -197,24 +244,34 @@ function SparklineWithDelta({ data, interpretation, sinceDate }: {
   const strokeColor = isCritical ? c.critical : isAbnormal ? c.warning : c.chart1;
 
   // Calculate % change from first to last reading
-  const first = data[0];
-  const last = data[data.length - 1];
+  const first = values[0];
+  const last = values[values.length - 1];
   const pctChange = first !== 0 ? Math.round(((last - first) / first) * 100) : 0;
   const arrow = pctChange > 0 ? "↑" : pctChange < 0 ? "↓" : "→";
   const deltaColor = isCritical ? "text-[#C24E42]" : isAbnormal ? "text-[#D9A036]" : "text-muted-foreground";
+
+  // Derive "since" from first history point
+  const sinceDate = data[0].date;
 
   return (
     <div className="flex items-center gap-2">
       <div className="w-[72px] h-[28px] shrink-0">
         <ResponsiveContainer width="100%" height="100%">
-          <LineChart data={chartData} margin={{ top: 2, right: 2, bottom: 2, left: 2 }}>
+          <LineChart data={data} margin={{ top: 2, right: 2, bottom: 2, left: 2 }}>
             <YAxis domain={domain} hide />
+            <Tooltip
+              content={<SparklineTooltip />}
+              cursor={false}
+              position={{ y: -38 }}
+              allowEscapeViewBox={{ x: true, y: true }}
+            />
             <Line
               type="monotone"
-              dataKey="v"
+              dataKey="value"
               stroke={strokeColor}
               strokeWidth={1.5}
               dot={false}
+              activeDot={{ r: 3, fill: strokeColor, strokeWidth: 0 }}
               isAnimationActive={false}
             />
           </LineChart>
@@ -294,7 +351,7 @@ export default function TablePage() {
                         <SparklineWithDelta
                           data={row.history}
                           interpretation={row.interpretation}
-                          sinceDate={row.historyStart}
+                          unit={row.unit}
                         />
                       </td>
                       <td className="p-4 text-muted-foreground">{row.date}</td>
@@ -392,8 +449,7 @@ interface LabResult {
   rangeHigh: number;
   interpretation: HL7Interpretation;
   date: string;
-  history: number[];     // last 6 readings
-  historyStart: string;  // earliest reading date
+  history: { value: number; date: string }[];  // last 6 readings
 }
 
 // Column order follows clinical reading flow:
@@ -413,7 +469,7 @@ interface LabResult {
 <SparklineWithDelta
   data={row.history}
   interpretation={row.interpretation}
-  sinceDate={row.historyStart}
+  unit={row.unit}
 />`}
       />
     </div>
