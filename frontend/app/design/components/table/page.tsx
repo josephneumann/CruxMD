@@ -2,7 +2,7 @@
 
 import React, { useState } from "react";
 import { useTheme } from "next-themes";
-import { FlaskConical, Pill, ChevronDown, ChevronRight } from "lucide-react";
+import { FlaskConical, Pill, ChevronDown, ChevronRight, ArrowUpDown, ArrowUp, ArrowDown } from "lucide-react";
 import { Badge } from "@/components/ui/badge";
 import { Card, CardHeader, CardTitle, CardContent } from "@/components/ui/card";
 import { CodeBlock } from "@/components/design-system/CodeBlock";
@@ -188,11 +188,69 @@ const medications: MedicationRow[] = [
   { medication: "Ibuprofen 200 MG Oral Tablet", frequency: "As needed", reason: "Osteoarthritis of knee", status: "active", authoredOn: "09/14/2025", requester: "Dr. Maia Williams" },
 ];
 
+// -- Table header cell helper -------------------------------------------------
+
+const TH = "text-left px-4 py-2 text-xs font-medium text-muted-foreground uppercase tracking-wider";
+
 // -- Components ---------------------------------------------------------------
 
 function MedStatusBadge({ status }: { status: MedicationRow["status"] }) {
-  if (status === "active") return <Badge variant="positive" size="sm">Active</Badge>;
-  return <Badge variant="neutral" size="sm">Completed</Badge>;
+  if (status === "active") {
+    return <span className="text-xs text-[#388E3C] dark:text-[#66BB6A]">Active</span>;
+  }
+  return <span className="text-xs text-muted-foreground">Completed</span>;
+}
+
+// -- Sortable column header ---------------------------------------------------
+
+type SortDir = "asc" | "desc" | null;
+
+function SortHeader({ label, active, direction, onClick }: {
+  label: string;
+  active: boolean;
+  direction: SortDir;
+  onClick: () => void;
+}) {
+  const Icon = active ? (direction === "asc" ? ArrowUp : ArrowDown) : ArrowUpDown;
+  return (
+    <th
+      className={`${TH} cursor-pointer select-none hover:text-foreground transition-colors`}
+      onClick={onClick}
+    >
+      <div className="flex items-center gap-1">
+        {label}
+        <Icon className={`size-3 ${active ? "text-foreground" : ""}`} />
+      </div>
+    </th>
+  );
+}
+
+function useSortState<K extends string>(defaultKey?: K) {
+  const [sortKey, setSortKey] = useState<K | null>(defaultKey ?? null);
+  const [sortDir, setSortDir] = useState<SortDir>(null);
+
+  const toggle = (key: K) => {
+    if (sortKey === key) {
+      if (sortDir === "asc") setSortDir("desc");
+      else if (sortDir === "desc") { setSortKey(null); setSortDir(null); }
+      else setSortDir("asc");
+    } else {
+      setSortKey(key);
+      setSortDir("asc");
+    }
+  };
+
+  return { sortKey, sortDir, toggle };
+}
+
+function sortRows<T>(rows: T[], key: string | null, dir: SortDir, accessor: (row: T, key: string) => string | number): T[] {
+  if (!key || !dir) return rows;
+  return [...rows].sort((a, b) => {
+    const va = accessor(a, key);
+    const vb = accessor(b, key);
+    if (typeof va === "number" && typeof vb === "number") return dir === "asc" ? va - vb : vb - va;
+    return dir === "asc" ? String(va).localeCompare(String(vb)) : String(vb).localeCompare(String(va));
+  });
 }
 
 /**
@@ -374,9 +432,115 @@ function LabResultRow({ row, indented }: { row: LabResult; indented?: boolean })
   );
 }
 
-// -- Table header cell helper -------------------------------------------------
+// -- Medications table with sort + active/completed divider -------------------
 
-const TH = "text-left px-4 py-2 text-xs font-medium text-muted-foreground uppercase tracking-wider";
+type MedSortKey = "medication" | "frequency" | "reason" | "status" | "authoredOn" | "requester";
+
+function medAccessor(row: MedicationRow, key: string): string {
+  return String(row[key as keyof MedicationRow] ?? "");
+}
+
+function MedRow({ row }: { row: MedicationRow }) {
+  return (
+    <tr key={row.medication}>
+      <td className="px-4 py-2 text-sm font-medium">{row.medication}</td>
+      <td className="px-4 py-2 text-sm">{row.frequency ?? <span className="text-muted-foreground italic">—</span>}</td>
+      <td className="px-4 py-2 text-sm text-muted-foreground">{row.reason}</td>
+      <td className="px-4 py-2"><MedStatusBadge status={row.status} /></td>
+      <td className="px-4 py-2 text-sm text-muted-foreground">{row.authoredOn}</td>
+      <td className="px-4 py-2 text-sm text-muted-foreground">{row.requester}</td>
+    </tr>
+  );
+}
+
+function MedicationsTable() {
+  const { sortKey, sortDir, toggle } = useSortState<MedSortKey>();
+
+  const activeMeds = medications.filter((m) => m.status === "active");
+  const completedMeds = medications.filter((m) => m.status === "completed");
+  const sortedActive = sortRows(activeMeds, sortKey, sortDir, medAccessor);
+  const sortedCompleted = sortRows(completedMeds, sortKey, sortDir, medAccessor);
+
+  const cols: { key: MedSortKey; label: string }[] = [
+    { key: "medication", label: "Medication" },
+    { key: "frequency", label: "Frequency" },
+    { key: "reason", label: "Reason" },
+    { key: "status", label: "Status" },
+    { key: "authoredOn", label: "Prescribed" },
+    { key: "requester", label: "Requester" },
+  ];
+
+  return (
+    <CardContent className="p-0">
+      <table className="w-full">
+        <thead>
+          <tr className="border-b bg-muted/30">
+            {cols.map((col) => (
+              <SortHeader
+                key={col.key}
+                label={col.label}
+                active={sortKey === col.key}
+                direction={sortKey === col.key ? sortDir : null}
+                onClick={() => toggle(col.key)}
+              />
+            ))}
+          </tr>
+        </thead>
+        <tbody className="divide-y">
+          {sortedActive.map((row) => <MedRow key={row.medication} row={row} />)}
+        </tbody>
+        {sortedCompleted.length > 0 && (
+          <tbody className="divide-y">
+            <tr>
+              <td colSpan={6} className="px-4 py-1.5 bg-muted/20">
+                <span className="text-xs text-muted-foreground uppercase tracking-wider">Completed</span>
+              </td>
+            </tr>
+            {sortedCompleted.map((row) => <MedRow key={row.medication} row={row} />)}
+          </tbody>
+        )}
+      </table>
+    </CardContent>
+  );
+}
+
+// -- Basic props table with sort -----------------------------------------------
+
+interface PropRow { name: string; type: string; defaultVal: string }
+const propRows: PropRow[] = [
+  { name: "variant", type: "string", defaultVal: '"default"' },
+  { name: "size", type: "string", defaultVal: '"md"' },
+];
+
+type PropSortKey = "name" | "type" | "defaultVal";
+
+function BasicPropsTable() {
+  const { sortKey, sortDir, toggle } = useSortState<PropSortKey>();
+  const sorted = sortRows(propRows, sortKey, sortDir, (row, key) => row[key as keyof PropRow]);
+
+  return (
+    <CardContent className="p-0">
+      <table className="w-full">
+        <thead>
+          <tr className="border-b bg-muted/30">
+            <SortHeader label="Name" active={sortKey === "name"} direction={sortKey === "name" ? sortDir : null} onClick={() => toggle("name")} />
+            <SortHeader label="Type" active={sortKey === "type"} direction={sortKey === "type" ? sortDir : null} onClick={() => toggle("type")} />
+            <SortHeader label="Default" active={sortKey === "defaultVal"} direction={sortKey === "defaultVal" ? sortDir : null} onClick={() => toggle("defaultVal")} />
+          </tr>
+        </thead>
+        <tbody className="divide-y">
+          {sorted.map((row) => (
+            <tr key={row.name}>
+              <td className="px-4 py-2.5 font-mono text-sm">{row.name}</td>
+              <td className="px-4 py-2.5 text-sm text-muted-foreground">{row.type}</td>
+              <td className="px-4 py-2.5 font-mono text-sm">{row.defaultVal}</td>
+            </tr>
+          ))}
+        </tbody>
+      </table>
+    </CardContent>
+  );
+}
 
 // -- Page ---------------------------------------------------------------------
 
@@ -388,6 +552,27 @@ export default function TablePage() {
   const togglePanel = (name: string) => {
     setExpandedPanels((prev) => ({ ...prev, [name]: !prev[name] }));
   };
+
+  type LabSortKey = "test" | "value" | "date";
+  const labSort = useSortState<LabSortKey>();
+
+  // Flatten lab entries for sorting: extract all LabResults with their panel context
+  const sortedLabEntries = React.useMemo(() => {
+    if (!labSort.sortKey || !labSort.sortDir) return labEntries;
+
+    return labEntries.map((entry) => {
+      if (entry.type === "panel") {
+        const sorted = sortRows(entry.results, labSort.sortKey, labSort.sortDir, (row, key) => {
+          if (key === "test") return row.test;
+          if (key === "value") return row.value;
+          if (key === "date") return row.date;
+          return "";
+        });
+        return { ...entry, results: sorted };
+      }
+      return entry;
+    });
+  }, [labSort.sortKey, labSort.sortDir]);
 
   return (
     <div className="space-y-12">
@@ -416,15 +601,15 @@ export default function TablePage() {
             <table className="w-full">
               <thead>
                 <tr className="border-b bg-muted/30">
-                  <th className={TH}>Test</th>
-                  <th className={TH}>Result</th>
+                  <SortHeader label="Test" active={labSort.sortKey === "test"} direction={labSort.sortKey === "test" ? labSort.sortDir : null} onClick={() => labSort.toggle("test")} />
+                  <SortHeader label="Result" active={labSort.sortKey === "value"} direction={labSort.sortKey === "value" ? labSort.sortDir : null} onClick={() => labSort.toggle("value")} />
                   <th className={TH}>Reference Range</th>
                   <th className={TH}>Trend</th>
-                  <th className={TH}>Date</th>
+                  <SortHeader label="Date" active={labSort.sortKey === "date"} direction={labSort.sortKey === "date" ? labSort.sortDir : null} onClick={() => labSort.toggle("date")} />
                 </tr>
               </thead>
               <tbody className="divide-y">
-                {labEntries.map((entry) => {
+                {sortedLabEntries.map((entry) => {
                   if (entry.type === "panel") {
                     const isExpanded = expandedPanels[entry.name] ?? false;
                     const Chevron = isExpanded ? ChevronDown : ChevronRight;
@@ -559,33 +744,78 @@ export default function TablePage() {
             <Pill className="size-4 text-muted-foreground" />
             <span className="text-sm font-medium">Medications</span>
           </div>
-          <CardContent className="p-0">
-            <table className="w-full">
-              <thead>
-                <tr className="border-b bg-muted/30">
-                  <th className={TH}>Medication</th>
-                  <th className={TH}>Frequency</th>
-                  <th className={TH}>Reason</th>
-                  <th className={TH}>Status</th>
-                  <th className={TH}>Prescribed</th>
-                  <th className={TH}>Requester</th>
-                </tr>
-              </thead>
-              <tbody className="divide-y">
-                {medications.map((row) => (
-                  <tr key={row.medication}>
-                    <td className="px-4 py-2 text-sm font-medium">{row.medication}</td>
-                    <td className="px-4 py-2 text-sm">{row.frequency ?? <span className="text-muted-foreground italic">—</span>}</td>
-                    <td className="px-4 py-2 text-sm text-muted-foreground">{row.reason}</td>
-                    <td className="px-4 py-2"><MedStatusBadge status={row.status} /></td>
-                    <td className="px-4 py-2 text-sm text-muted-foreground">{row.authoredOn}</td>
-                    <td className="px-4 py-2 text-sm text-muted-foreground">{row.requester}</td>
-                  </tr>
-                ))}
-              </tbody>
-            </table>
-          </CardContent>
+          <MedicationsTable />
         </Card>
+
+        {/* Medications design documentation */}
+        <div className="space-y-4 text-sm text-muted-foreground">
+          <h3 className="text-lg font-medium text-foreground">Design Notes</h3>
+
+          <div className="space-y-3">
+            <p className="font-medium text-foreground">Column Order — Clinical Reading Flow</p>
+            <p>
+              Columns follow clinical scanning priority: <strong className="text-foreground">Medication → Frequency → Reason → Status → Prescribed → Requester</strong>.
+              The clinician identifies the drug and dose, checks the schedule, understands why it was
+              prescribed, confirms whether it&apos;s still active, then notes when it started and who
+              ordered it. This mirrors the natural question flow when reviewing a medication list.
+            </p>
+          </div>
+
+          <div className="space-y-3">
+            <p className="font-medium text-foreground">FHIR Data Mapping</p>
+            <p>
+              All columns map directly to FHIR MedicationRequest fields. The medication name uses
+              the full RxNorm display string from <code className="text-xs bg-muted px-1 py-0.5 rounded">medicationCodeableConcept.text</code> which
+              includes drug name, dose, and form (e.g. &ldquo;Lisinopril 10 MG Oral Tablet&rdquo;). This
+              eliminates the need for separate dosage and route columns — both are embedded in the
+              medication name. Frequency is derived from <code className="text-xs bg-muted px-1 py-0.5 rounded">dosageInstruction[].timing.repeat</code> or
+              falls back to <code className="text-xs bg-muted px-1 py-0.5 rounded">dosageInstruction[].text</code>. About 20% of
+              MedicationRequests in Synthea fixtures lack dosageInstruction entirely.
+            </p>
+          </div>
+
+          <div className="space-y-3">
+            <p className="font-medium text-foreground">Reason for Prescribing</p>
+            <p>
+              The reason column surfaces clinical intent from <code className="text-xs bg-muted px-1 py-0.5 rounded">reasonReference[].display</code> or <code className="text-xs bg-muted px-1 py-0.5 rounded">reasonCode[].text</code>.
+              This connects the medication to the underlying condition (e.g. Lisinopril → Hypertension),
+              giving context that a drug name alone cannot. In real workflows, this helps catch
+              inappropriate prescriptions and supports medication reconciliation.
+            </p>
+          </div>
+
+          <div className="space-y-3">
+            <p className="font-medium text-foreground">Status Values</p>
+            <p>
+              FHIR MedicationRequest uses <code className="text-xs bg-muted px-1 py-0.5 rounded">active</code> and <code className="text-xs bg-muted px-1 py-0.5 rounded">completed</code> —
+              not &ldquo;discontinued&rdquo; as commonly seen in EHR interfaces. The <code className="text-xs bg-muted px-1 py-0.5 rounded">positive</code> badge
+              variant (green) marks active medications, and <code className="text-xs bg-muted px-1 py-0.5 rounded">neutral</code> (gray)
+              marks completed ones. Status is placed mid-table as a key scanning signal — the
+              clinician needs to quickly distinguish current from historical medications.
+            </p>
+          </div>
+
+          <div className="space-y-3">
+            <p className="font-medium text-foreground">Dropped Columns</p>
+            <p>
+              <strong className="text-foreground">Dosage</strong> and <strong className="text-foreground">Route</strong> are
+              intentionally omitted. Synthea&apos;s RxNorm display strings embed both (e.g. &ldquo;500 MG Oral
+              Tablet&rdquo;), making separate columns redundant. Route in particular has extremely low
+              information density — nearly all outpatient medications are oral. Removing these
+              columns reduces visual noise and lets the table focus on clinically actionable fields.
+            </p>
+          </div>
+
+          <div className="space-y-3">
+            <p className="font-medium text-foreground">Requester vs Prescriber</p>
+            <p>
+              The column is labeled &ldquo;Requester&rdquo; to match the FHIR field name (<code className="text-xs bg-muted px-1 py-0.5 rounded">requester.display</code>).
+              In FHIR, the requester is the practitioner who authored the medication order, sourced
+              via NPI reference. This is placed last as the least-scanned column — clinicians
+              prioritize what the drug is and whether it&apos;s active over who prescribed it.
+            </p>
+          </div>
+        </div>
       </div>
 
       {/* Basic Table */}
@@ -599,29 +829,7 @@ export default function TablePage() {
           <div className="flex items-center gap-2 px-4 py-2 border-b">
             <span className="text-sm font-medium">Props API</span>
           </div>
-          <CardContent className="p-0">
-            <table className="w-full">
-              <thead>
-                <tr className="border-b bg-muted/30">
-                  <th className={TH}>Name</th>
-                  <th className={TH}>Type</th>
-                  <th className={TH}>Default</th>
-                </tr>
-              </thead>
-              <tbody className="divide-y">
-                <tr>
-                  <td className="px-4 py-2.5 font-mono text-sm">variant</td>
-                  <td className="px-4 py-2.5 text-sm text-muted-foreground">string</td>
-                  <td className="px-4 py-2.5 font-mono text-sm">&quot;default&quot;</td>
-                </tr>
-                <tr>
-                  <td className="px-4 py-2.5 font-mono text-sm">size</td>
-                  <td className="px-4 py-2.5 text-sm text-muted-foreground">string</td>
-                  <td className="px-4 py-2.5 font-mono text-sm">&quot;md&quot;</td>
-                </tr>
-              </tbody>
-            </table>
-          </CardContent>
+          <BasicPropsTable />
         </Card>
 
         {/* Shared styling documentation */}
