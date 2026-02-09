@@ -575,6 +575,46 @@ class TestComputeObservationTrends:
         assert result[0]["_trend"]["previous_value"] == 100.0
         assert result[0]["_trend"]["delta"] == 20.0
 
+    @pytest.mark.asyncio
+    async def test_runtime_interpretation_fallback(self, db_session: AsyncSession):
+        """Should add interpretation at runtime for obs missing stored interpretation."""
+        patient_id = uuid.uuid4()
+
+        # Observation WITHOUT interpretation (simulates pre-enrichment data)
+        obs = make_observation("2345-7", "laboratory", "2024-06-01T10:00:00Z", 250.0)
+        assert "interpretation" not in obs
+
+        result = await compute_observation_trends(
+            db_session, patient_id, [obs], patient_sex="male",
+        )
+
+        assert len(result) == 1
+        # Should have interpretation added at runtime (250 mg/dL glucose = High)
+        assert "interpretation" in result[0]
+        coding = result[0]["interpretation"][0]["coding"][0]
+        assert coding["code"] == "H"
+        # Should also have referenceRange
+        assert "referenceRange" in result[0]
+        assert result[0]["referenceRange"][0]["low"]["value"] == 70
+        # Original should NOT be mutated
+        assert "interpretation" not in obs
+
+    @pytest.mark.asyncio
+    async def test_runtime_interpretation_skips_if_already_present(self, db_session: AsyncSession):
+        """Should NOT overwrite existing interpretation."""
+        patient_id = uuid.uuid4()
+
+        obs = make_observation("2345-7", "laboratory", "2024-06-01T10:00:00Z", 250.0)
+        # Pre-populate with a stored interpretation
+        obs["interpretation"] = [{"coding": [{"code": "N", "display": "Normal"}]}]
+
+        result = await compute_observation_trends(
+            db_session, patient_id, [obs], patient_sex="male",
+        )
+
+        # Should preserve the original "N", not overwrite with "H"
+        assert result[0]["interpretation"][0]["coding"][0]["code"] == "N"
+
 
 # =============================================================================
 # Tests for pure helper functions
