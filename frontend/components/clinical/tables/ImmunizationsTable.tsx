@@ -18,7 +18,7 @@ export function ImmunizationsTable({ rows }: { rows: Record<string, unknown>[] }
   );
 
   return (
-    <CardContent className="p-0">
+    <CardContent className="p-0 overflow-x-auto">
       <table className="w-full">
         <thead>
           <tr className="border-b bg-muted/30">
@@ -36,9 +36,9 @@ export function ImmunizationsTable({ rows }: { rows: Record<string, unknown>[] }
         <tbody className="divide-y">
           {sorted.map((row, i) => (
             <tr key={`${row.vaccine}-${i}`}>
-              <td className="px-4 py-2 text-sm font-medium">{String(row.vaccine ?? "")}</td>
-              <td className="px-4 py-2 text-sm text-muted-foreground">{String(row.date ?? "")}</td>
-              <td className="px-4 py-2 text-sm text-muted-foreground">{String(row.location ?? "")}</td>
+              <td className="px-3 py-2 text-sm font-medium">{String(row.vaccine ?? "")}</td>
+              <td className="px-3 py-2 text-sm text-muted-foreground">{String(row.date ?? "")}</td>
+              <td className="px-3 py-2 text-sm text-muted-foreground">{String(row.location ?? "")}</td>
             </tr>
           ))}
         </tbody>

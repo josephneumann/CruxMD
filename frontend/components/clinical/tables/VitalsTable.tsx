@@ -42,7 +42,7 @@ export function VitalsTable({ rows }: { rows: Record<string, unknown>[] }) {
   });
 
   return (
-    <CardContent className="p-0">
+    <CardContent className="p-0 overflow-x-auto">
       <table className="w-full">
         <thead>
           <tr className="border-b bg-muted/30">
@@ -86,7 +86,7 @@ export function VitalsTable({ rows }: { rows: Record<string, unknown>[] }) {
 
             return (
               <tr key={`${vital}-${i}`}>
-                <td className="px-4 py-2.5 text-sm font-medium">
+                <td className="px-3 py-2.5 text-sm font-medium">
                   <div className="flex items-center gap-2">
                     {VitalIcon && (
                       <VitalIcon className="size-3.5 text-muted-foreground" />
@@ -94,7 +94,7 @@ export function VitalsTable({ rows }: { rows: Record<string, unknown>[] }) {
                     {vital}
                   </div>
                 </td>
-                <td className="px-4 py-2.5 text-sm whitespace-nowrap">
+                <td className="px-3 py-2.5 text-sm whitespace-nowrap">
                   <span
                     className={`tabular-nums ${isCritical ? "text-[#C24E42] font-medium" : isAbnormal ? "text-[#D9A036] font-medium" : ""}`}
                   >
@@ -104,7 +104,7 @@ export function VitalsTable({ rows }: { rows: Record<string, unknown>[] }) {
                     </span>
                   </span>
                 </td>
-                <td className="px-4 py-2.5">
+                <td className="px-3 py-2.5">
                   {hasRange && (
                     <RangeBar
                       value={Number(row.numericValue ?? 0)}
@@ -114,7 +114,7 @@ export function VitalsTable({ rows }: { rows: Record<string, unknown>[] }) {
                     />
                   )}
                 </td>
-                <td className="px-4 py-2.5">
+                <td className="px-3 py-2.5">
                   {hasHistory && (
                     <SparklineWithDelta
                       data={row.history as HistoryPoint[]}
@@ -123,7 +123,7 @@ export function VitalsTable({ rows }: { rows: Record<string, unknown>[] }) {
                     />
                   )}
                 </td>
-                <td className="px-4 py-2.5 text-sm text-muted-foreground">
+                <td className="px-3 py-2.5 text-sm text-muted-foreground">
                   {String(row.date ?? "")}
                 </td>
               </tr>

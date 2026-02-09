@@ -24,12 +24,12 @@ function condAccessor(row: Record<string, unknown>, key: string): string {
 function CondRow({ row }: { row: Record<string, unknown> }) {
   return (
     <tr>
-      <td className="px-4 py-2 text-sm font-medium">{String(row.condition ?? "")}</td>
-      <td className="px-4 py-2">
+      <td className="px-3 py-2 text-sm font-medium">{String(row.condition ?? "")}</td>
+      <td className="px-3 py-2">
         <ConditionStatusText status={(row.clinicalStatus as "active" | "resolved") ?? "active"} />
       </td>
-      <td className="px-4 py-2 text-sm text-muted-foreground">{String(row.onsetDate ?? "")}</td>
-      <td className="px-4 py-2 text-sm text-muted-foreground">
+      <td className="px-3 py-2 text-sm text-muted-foreground">{String(row.onsetDate ?? "")}</td>
+      <td className="px-3 py-2 text-sm text-muted-foreground">
         {row.abatementDate ? String(row.abatementDate) : <span className="italic">&mdash;</span>}
       </td>
     </tr>
@@ -45,7 +45,7 @@ export function ConditionsTable({ rows }: { rows: Record<string, unknown>[] }) {
   const sortedResolved = sortRows(resolvedConds, sortKey, sortDir, condAccessor);
 
   return (
-    <CardContent className="p-0">
+    <CardContent className="p-0 overflow-x-auto">
       <table className="w-full">
         <thead>
           <tr className="border-b bg-muted/30">
@@ -68,7 +68,7 @@ export function ConditionsTable({ rows }: { rows: Record<string, unknown>[] }) {
         {sortedResolved.length > 0 && (
           <tbody className="divide-y">
             <tr>
-              <td colSpan={4} className="px-4 py-1.5 bg-muted/20">
+              <td colSpan={4} className="px-3 py-1.5 bg-muted/20">
                 <span className="text-xs text-muted-foreground uppercase tracking-wider">
                   Resolved
                 </span>

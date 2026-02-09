@@ -52,17 +52,17 @@ function LabResultRow({ row, indented }: { row: LabRow; indented?: boolean }) {
   const textSize = indented ? "text-[13px]" : "";
   return (
     <tr className={isCritical ? "bg-[#C24E42]/5" : ""}>
-      <td className={`px-4 py-2.5 font-medium ${textSize} ${indented ? "pl-8" : ""}`}>
+      <td className={`px-3 py-2.5 font-medium ${textSize} ${indented ? "pl-8" : ""}`}>
         {row.test}
       </td>
-      <td className={`px-4 py-2.5 ${textSize}`}>
+      <td className={`px-3 py-2.5 ${textSize}`}>
         <span
           className={`tabular-nums ${isCritical ? "text-[#C24E42] font-medium" : isAbnormal ? "text-[#D9A036] font-medium" : ""}`}
         >
           {row.value} <span className="text-muted-foreground font-normal">{row.unit}</span>
         </span>
       </td>
-      <td className="px-4 py-2.5">
+      <td className="px-3 py-2.5">
         <RangeBar
           value={row.value}
           low={row.rangeLow}
@@ -70,7 +70,7 @@ function LabResultRow({ row, indented }: { row: LabRow; indented?: boolean }) {
           interpretation={row.interpretation}
         />
       </td>
-      <td className="px-4 py-2.5">
+      <td className="px-3 py-2.5">
         {row.history.length > 0 && (
           <SparklineWithDelta
             data={row.history}
@@ -79,7 +79,7 @@ function LabResultRow({ row, indented }: { row: LabRow; indented?: boolean }) {
           />
         )}
       </td>
-      <td className="px-4 py-2.5 text-muted-foreground">{row.date}</td>
+      <td className="px-3 py-2.5 text-muted-foreground">{row.date}</td>
     </tr>
   );
 }
@@ -125,7 +125,7 @@ export function LabResultsTable({ rows }: { rows: Record<string, unknown>[] }) {
   };
 
   return (
-    <CardContent className="p-0">
+    <CardContent className="p-0 overflow-x-auto">
       <table className="w-full">
         <thead>
           <tr className="border-b bg-muted/30">
@@ -166,7 +166,7 @@ export function LabResultsTable({ rows }: { rows: Record<string, unknown>[] }) {
                 className="bg-muted/20 cursor-pointer hover:bg-muted/40"
                 onClick={() => togglePanel(panel.name)}
               >
-                <td colSpan={5} className="px-4 py-2">
+                <td colSpan={5} className="px-3 py-2">
                   <div className="flex items-center justify-between">
                     <span>
                       <span className="font-medium">{panel.name}</span>{" "}

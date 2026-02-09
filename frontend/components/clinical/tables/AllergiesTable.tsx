@@ -26,7 +26,7 @@ export function AllergiesTable({ rows }: { rows: Record<string, unknown>[] }) {
   );
 
   return (
-    <CardContent className="p-0">
+    <CardContent className="p-0 overflow-x-auto">
       <table className="w-full">
         <thead>
           <tr className="border-b bg-muted/30">
@@ -44,17 +44,17 @@ export function AllergiesTable({ rows }: { rows: Record<string, unknown>[] }) {
         <tbody className="divide-y">
           {sorted.map((row, i) => (
             <tr key={`${row.allergen}-${i}`}>
-              <td className="px-4 py-2 text-sm font-medium">{String(row.allergen ?? "")}</td>
-              <td className="px-4 py-2 text-sm text-muted-foreground capitalize">
+              <td className="px-3 py-2 text-sm font-medium">{String(row.allergen ?? "")}</td>
+              <td className="px-3 py-2 text-sm text-muted-foreground capitalize">
                 {String(row.category ?? "")}
               </td>
-              <td className="px-4 py-2">
+              <td className="px-3 py-2">
                 <CriticalityText criticality={(row.criticality as "high" | "low") ?? "low"} />
               </td>
-              <td className="px-4 py-2">
+              <td className="px-3 py-2">
                 <AllergyStatusText status={(row.clinicalStatus as "active" | "inactive") ?? "active"} />
               </td>
-              <td className="px-4 py-2 text-sm text-muted-foreground">{String(row.onsetDate ?? "")}</td>
+              <td className="px-3 py-2 text-sm text-muted-foreground">{String(row.onsetDate ?? "")}</td>
             </tr>
           ))}
         </tbody>

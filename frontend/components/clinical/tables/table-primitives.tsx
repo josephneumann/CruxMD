@@ -41,7 +41,14 @@ export function useTableColors() {
 // -- Table header cell --------------------------------------------------------
 
 export const TH =
-  "text-left px-4 py-2 text-xs font-medium text-muted-foreground uppercase tracking-wider";
+  "text-left px-3 py-2 text-xs font-medium text-muted-foreground uppercase tracking-wider";
+
+// -- Column visibility helper -------------------------------------------------
+
+/** Returns true if at least one row has a non-null, non-empty value for `key`. */
+export function columnHasData(rows: Record<string, unknown>[], key: string): boolean {
+  return rows.some((row) => row[key] != null && row[key] !== "");
+}
 
 // -- Collapsible card wrapper -------------------------------------------------
 
