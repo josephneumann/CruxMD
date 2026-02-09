@@ -160,13 +160,17 @@ class LightningResponse(BaseModel):
     """Minimal response for Lightning-tier fact extraction.
 
     Simpler schema for gpt-4o-mini structured output reliability.
-    Only includes narrative and optional follow-ups — no thinking,
-    insights, visualizations, tables, or actions.
+    Includes narrative, optional tables for structured data display,
+    and follow-ups. No thinking, insights, or visualizations.
     """
 
     narrative: str = Field(
         min_length=1,
         description="Direct answer in markdown format",
+    )
+    tables: list[ClinicalTable] | None = Field(
+        default=None,
+        description="Clinical data tables when presenting structured data",
     )
     follow_ups: list[FollowUp] | None = Field(
         default=None,

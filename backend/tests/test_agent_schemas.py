@@ -324,9 +324,9 @@ class TestLightningResponse:
         assert len(response.follow_ups) == 1
 
     def test_lightning_response_has_no_extra_fields(self):
-        """LightningResponse has narrative, follow_ups, and needs_deeper_search -- no thinking, insights, etc."""
+        """LightningResponse has narrative, tables, follow_ups, and needs_deeper_search -- no thinking, insights, etc."""
         fields = set(LightningResponse.model_fields.keys())
-        assert fields == {"narrative", "follow_ups", "needs_deeper_search"}
+        assert fields == {"narrative", "tables", "follow_ups", "needs_deeper_search"}
 
     def test_needs_deeper_search_defaults_false(self):
         """needs_deeper_search defaults to False."""
