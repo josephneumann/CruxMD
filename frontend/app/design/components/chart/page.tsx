@@ -26,6 +26,7 @@ interface ChartTooltipProps {
   payload?: Array<{
     name: string;
     value: number;
+    unit?: string;
     color?: string;
     payload?: Record<string, unknown>;
   }>;
@@ -38,6 +39,9 @@ function useChartColors() {
   const { resolvedTheme } = useTheme();
   const isDark = resolvedTheme === "dark";
   return {
+    // Primary line color — used for single-series charts
+    // Multi-series charts use chart1/chart4/chart5 etc. to distinguish lines
+    line: isDark ? "#E8E8E3" : "#1A1A18",
     grid: isDark ? "#4A4A48" : "#E5E4DF",
     tick: isDark ? "#BFBFBA" : "#666663",
     chart1: isDark ? "#4A9A88" : "#2F5E52",
@@ -145,21 +149,23 @@ const bpData = [
 
 // -- Shared components ----------------------------------------------------
 
-function CustomTooltip({ active, payload, label }: ChartTooltipProps) {
+function ChartTooltip({ active, payload, label }: ChartTooltipProps) {
   if (!active || !payload?.length) return null;
-  const unitMap: Record<string, string> = {
-    HbA1c: "%", eGFR: " mL/min", Systolic: " mmHg", Diastolic: " mmHg",
-  };
+  const multi = payload.length > 1;
   return (
-    <div className="rounded-lg border bg-card p-3 shadow-md">
-      <p className="text-sm font-medium">{label}</p>
+    <div className="rounded-lg border bg-card px-3 py-2 shadow-md">
+      <p className="text-xs text-muted-foreground">{label}</p>
       {payload.map((entry, i) => (
-        <p key={i} className="text-sm" style={{ color: entry.color }}>
-          {entry.name}: {entry.value}{unitMap[entry.name] ?? ""}
-        </p>
+        <div key={i} className="flex items-center gap-1.5 mt-0.5">
+          {multi && (
+            <span className="size-2 rounded-full shrink-0" style={{ backgroundColor: entry.color }} />
+          )}
+          {multi && <span className="text-sm text-muted-foreground">{entry.name}</span>}
+          <span className="text-sm font-medium">{entry.value}{entry.unit ?? ""}</span>
+        </div>
       ))}
       {typeof payload[0]?.payload?.event === "string" && (
-        <p className="text-xs text-primary mt-1 border-t pt-1">
+        <p className="text-xs text-primary mt-1.5 border-t pt-1.5">
           {payload[0].payload.event}
         </p>
       )}
@@ -289,8 +295,8 @@ export default function ChartPage() {
                 <AreaChart data={basicTrendData} margin={CHART_MARGIN}>
                   <defs>
                     <linearGradient id="basicGrad" x1="0" y1="0" x2="0" y2="1">
-                      <stop offset="5%" stopColor={c.chart1} stopOpacity={c.gradientFrom} />
-                      <stop offset="95%" stopColor={c.chart1} stopOpacity={c.gradientTo} />
+                      <stop offset="5%" stopColor={c.line} stopOpacity={c.gradientFrom} />
+                      <stop offset="95%" stopColor={c.line} stopOpacity={c.gradientTo} />
                     </linearGradient>
                   </defs>
                   <CartesianGrid strokeDasharray="6 4" stroke={c.grid} vertical={false} />
@@ -302,15 +308,17 @@ export default function ChartPage() {
                     tickLine={false}
                     tick={{ fill: c.tick, fontSize: 12 }}
                   />
-                  <Tooltip />
+                  <Tooltip content={<ChartTooltip />} />
                   <Area
                     type="monotone"
                     dataKey="value"
-                    stroke={c.chart1}
+                    name="Cholesterol"
+                    unit=" mg/dL"
+                    stroke={c.line}
                     strokeWidth={2}
                     fill="url(#basicGrad)"
-                    dot={{ fill: c.chart1, strokeWidth: 0, r: 4 }}
-                    activeDot={{ fill: c.chart1, strokeWidth: 2, stroke: "#fff", r: 6 }}
+                    dot={{ fill: c.line, strokeWidth: 0, r: 4 }}
+                    activeDot={{ fill: c.line, strokeWidth: 2, stroke: "#fff", r: 6 }}
                   />
                 </AreaChart>
               </ResponsiveContainer>
@@ -354,14 +362,15 @@ export default function ChartPage() {
                     tickLine={false}
                     tick={{ fill: c.tick, fontSize: 12 }}
                   />
-                  <Tooltip />
+                  <Tooltip content={<ChartTooltip />} />
                   <Line
                     type="monotone"
                     dataKey="value"
-                    stroke={c.chart1}
+                    name="Lab Value"
+                    stroke={c.line}
                     strokeWidth={2}
-                    dot={{ fill: c.chart1, strokeWidth: 0, r: 4 }}
-                    activeDot={{ fill: c.chart1, strokeWidth: 2, stroke: "#fff", r: 6 }}
+                    dot={{ fill: c.line, strokeWidth: 0, r: 4 }}
+                    activeDot={{ fill: c.line, strokeWidth: 2, stroke: "#fff", r: 6 }}
                   />
                 </LineChart>
               </ResponsiveContainer>
@@ -398,7 +407,7 @@ export default function ChartPage() {
                     <Line
                       type="monotone"
                       dataKey="v"
-                      stroke={m.status === "warning" ? c.warning : c.chart1}
+                      stroke={c.line}
                       strokeWidth={1.5}
                       dot={false}
                     />
@@ -468,7 +477,7 @@ export default function ChartPage() {
                     tick={{ fill: c.tick, fontSize: 12 }}
                     tickFormatter={(v) => `${v}%`}
                   />
-                  <Tooltip content={<CustomTooltip />} />
+                  <Tooltip content={<ChartTooltip />} />
                   <ReferenceLine
                     y={7}
                     stroke={c.chart5}
@@ -479,10 +488,11 @@ export default function ChartPage() {
                     type="monotone"
                     dataKey="value"
                     name="HbA1c"
-                    stroke={c.chart5}
+                    unit="%"
+                    stroke={c.line}
                     strokeWidth={2}
-                    dot={{ fill: c.chart5, strokeWidth: 0, r: 4 }}
-                    activeDot={{ fill: c.chart5, strokeWidth: 2, stroke: "#fff", r: 6 }}
+                    dot={{ fill: c.line, strokeWidth: 0, r: 4 }}
+                    activeDot={{ fill: c.line, strokeWidth: 2, stroke: "#fff", r: 6 }}
                   />
                 </LineChart>
               </ResponsiveContainer>
@@ -551,15 +561,16 @@ export default function ChartPage() {
                     tickLine={false}
                     tick={{ fill: c.tick, fontSize: 12 }}
                   />
-                  <Tooltip content={<CustomTooltip />} />
+                  <Tooltip content={<ChartTooltip />} />
                   <Line
                     type="monotone"
                     dataKey="value"
                     name="eGFR"
-                    stroke={c.chart1}
+                    unit=" mL/min"
+                    stroke={c.line}
                     strokeWidth={2}
-                    dot={{ fill: c.chart1, strokeWidth: 0, r: 4 }}
-                    activeDot={{ fill: c.chart1, strokeWidth: 2, stroke: "#fff", r: 6 }}
+                    dot={{ fill: c.line, strokeWidth: 0, r: 4 }}
+                    activeDot={{ fill: c.line, strokeWidth: 2, stroke: "#fff", r: 6 }}
                   />
                 </LineChart>
               </ResponsiveContainer>
@@ -601,7 +612,7 @@ export default function ChartPage() {
                     tickLine={false}
                     tick={{ fill: c.tick, fontSize: 12 }}
                   />
-                  <Tooltip content={<CustomTooltip />} />
+                  <Tooltip content={<ChartTooltip />} />
                   <ReferenceLine
                     y={130}
                     stroke={c.warning}
@@ -618,6 +629,7 @@ export default function ChartPage() {
                     type="monotone"
                     dataKey="systolic"
                     name="Systolic"
+                    unit=" mmHg"
                     stroke={c.chart1}
                     strokeWidth={2}
                     dot={{ fill: c.chart1, strokeWidth: 0, r: 4 }}
@@ -627,6 +639,7 @@ export default function ChartPage() {
                     type="monotone"
                     dataKey="diastolic"
                     name="Diastolic"
+                    unit=" mmHg"
                     stroke={c.chart4}
                     strokeWidth={2}
                     dot={{ fill: c.chart4, strokeWidth: 0, r: 4 }}
@@ -689,16 +702,26 @@ export default function ChartPage() {
         </p>
         <div className="grid md:grid-cols-2 gap-4">
           <div className="rounded-lg border bg-card p-4">
-            <h3 className="font-medium text-sm mb-2">Data-Ink Ratio</h3>
+            <h3 className="font-medium text-sm mb-2">Single-Series: Primary Foreground</h3>
             <p className="text-sm text-muted-foreground">
-              Maximize data, minimize chrome. Every pixel should communicate information.
+              Charts with one data series use the primary foreground color (white in dark mode,
+              black in light mode). This keeps the line neutral and lets reference range bands
+              carry the semantic color. Palette colors are reserved for multi-series charts
+              where color distinguishes between lines (e.g. systolic vs diastolic).
             </p>
           </div>
           <div className="rounded-lg border bg-card p-4">
             <h3 className="font-medium text-sm mb-2">Clinical Range Bands</h3>
             <p className="text-sm text-muted-foreground">
-              Use subtle background color zones to encode clinical meaning. Pre-attentive
+              Subtle background color zones encode clinical meaning. Pre-attentive
               color processing lets users see normal/abnormal instantly without reading labels.
+              Bands always use palette colors regardless of series count.
+            </p>
+          </div>
+          <div className="rounded-lg border bg-card p-4">
+            <h3 className="font-medium text-sm mb-2">Data-Ink Ratio</h3>
+            <p className="text-sm text-muted-foreground">
+              Maximize data, minimize chrome. Every pixel should communicate information.
             </p>
           </div>
           <div className="rounded-lg border bg-card p-4">
@@ -734,11 +757,20 @@ export default function ChartPage() {
               <span className="text-muted-foreground">Active dot:</span>
               <span className="ml-2 font-mono">6px + ring</span>
             </div>
+            <div>
+              <span className="text-muted-foreground">1 series color:</span>
+              <span className="ml-2 font-mono">foreground</span>
+            </div>
+            <div>
+              <span className="text-muted-foreground">N series color:</span>
+              <span className="ml-2 font-mono">palette</span>
+            </div>
           </div>
         </div>
         <div className="rounded-lg border border-destructive/30 bg-destructive/5 p-4">
           <h3 className="font-medium text-sm mb-2 text-destructive">Avoid</h3>
           <ul className="text-sm text-muted-foreground space-y-1">
+            <li>Colored lines on single-series charts — use primary foreground instead</li>
             <li>3D effects, bevels, or drop shadows on chart elements</li>
             <li>Bold gradients on bars (subtle area fills with opacity fade are acceptable)</li>
             <li>Decorative patterns or textures</li>
@@ -751,14 +783,16 @@ export default function ChartPage() {
       <div className="space-y-6">
         <h2 className="text-2xl font-medium">Chart Colors</h2>
         <p className="text-muted-foreground">
-          Use the design system palette for consistent data visualization.
+          Single-series charts use the primary foreground color (white in dark mode, black in
+          light mode). Palette colors are reserved for multi-series charts and reference
+          range bands.
         </p>
         <div className="grid grid-cols-5 gap-4">
           {[
-            { name: "Chart 1", color: "#2F5E52", use: "Primary data" },
+            { name: "Chart 1", color: "#2F5E52", use: "Series 1 (multi)" },
             { name: "Chart 2", color: "#D9A036", use: "Warning/threshold" },
             { name: "Chart 3", color: "#C24E42", use: "Critical/alert" },
-            { name: "Chart 4", color: "#4A7A8C", use: "Info/reference" },
+            { name: "Chart 4", color: "#4A7A8C", use: "Series 2 (multi)" },
             { name: "Chart 5", color: "#388E3C", use: "Positive/target" },
           ].map((item) => (
             <div key={item.name} className="flex items-center gap-3 rounded-lg border p-3">
@@ -782,8 +816,9 @@ export default function ChartPage() {
   ReferenceArea,
 } from "recharts";
 
-// When reference range bands are present, use LineChart (no area fill).
-// The bands provide the visual context — area fill would compete.
+// Single-series: use primary foreground color (c.line).
+// Palette colors are only for multi-series charts.
+// Reference range bands still use palette colors for clinical zones.
 <ResponsiveContainer width="100%" height={256}>
   <LineChart data={data}>
     {/* Background range bands — render before data */}
@@ -794,11 +829,11 @@ export default function ChartPage() {
     <CartesianGrid strokeDasharray="6 4" stroke="#E5E4DF" vertical={false} />
     <XAxis dataKey="date" axisLine={false} tickLine={false} />
     <YAxis axisLine={false} tickLine={false} />
-    <Tooltip />
+    <Tooltip content={<ChartTooltip />} />
     <Line
       type="monotone"
       dataKey="value"
-      stroke="#388E3C"
+      stroke={c.line}  // primary foreground — not a palette color
       strokeWidth={2}
     />
   </LineChart>
