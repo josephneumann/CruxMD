@@ -70,6 +70,17 @@ QUICK_PROFILE = QueryProfile(
     response_schema="full",
 )
 
+QUICK_LOOKUP_PROFILE = QueryProfile(
+    tier=QueryTier.QUICK,
+    model=None,
+    reasoning=False,
+    reasoning_effort="low",
+    include_tools=False,
+    max_output_tokens=4096,
+    system_prompt_mode="quick",
+    response_schema="full",
+)
+
 DEEP_PROFILE = QueryProfile(
     tier=QueryTier.DEEP,
     model=None,
@@ -343,10 +354,10 @@ def _classify_layer1(message: str) -> QueryProfile | None:
     if _has_retrieval_verb_with_entity(msg, words):
         return QUICK_PROFILE
 
-    # 6. Category data lookups → QUICK (need structured tables)
-    # 6a. Chart entity + lookup prefix → QUICK for table rendering
+    # 6. Category data lookups → QUICK_LOOKUP (structured tables, no reasoning/tools)
+    # 6a. Chart entity + lookup prefix → table rendering, no reasoning needed
     if _has_chart_entity(msg, words) and _has_lookup_prefix(msg):
-        return QUICK_PROFILE
+        return QUICK_LOOKUP_PROFILE
 
     # 6b. Bare entity shortcut (<=30 chars after stripping punctuation)
     bare = re.sub(r"[^\w\s]", "", msg).strip()
@@ -354,7 +365,7 @@ def _classify_layer1(message: str) -> QueryProfile | None:
     if len(bare) <= 30 and _has_chart_entity(msg, words) and not any(
         bare.startswith(s) for s in _follow_up_starts
     ):
-        return QUICK_PROFILE
+        return QUICK_LOOKUP_PROFILE
 
     # 6c. Specific-item patterns (<=100 chars) → LIGHTNING (single-value lookups)
     if len(msg) <= 100:

@@ -17,6 +17,7 @@ import pytest
 from app.services.query_classifier import (
     DEEP_PROFILE,
     LIGHTNING_PROFILE,
+    QUICK_LOOKUP_PROFILE,
     QUICK_PROFILE,
     QueryProfile,
     QueryTier,
@@ -31,9 +32,9 @@ from app.services.query_classifier import (
 
 
 class TestLayer1CategoryLookups:
-    """Layer 1 deterministic classification → QUICK for category data lookups."""
+    """Layer 1 deterministic classification → QUICK_LOOKUP for category data lookups."""
 
-    # Path A: entity + lookup prefix → QUICK (needs structured tables)
+    # Path A: entity + lookup prefix → QUICK_LOOKUP (tables, no reasoning/tools)
     @pytest.mark.parametrize("msg", [
         "What medications is the patient on?",
         "What meds is this patient taking?",
@@ -66,9 +67,9 @@ class TestLayer1CategoryLookups:
         "Are there any allergies?",
     ])
     def test_path_a_entity_plus_prefix(self, msg: str):
-        assert _classify_layer1(msg) == QUICK_PROFILE
+        assert _classify_layer1(msg) == QUICK_LOOKUP_PROFILE
 
-    # Path B: bare entity shortcut (<=30 chars) → QUICK (needs structured tables)
+    # Path B: bare entity shortcut (<=30 chars) → QUICK_LOOKUP (tables, no reasoning/tools)
     @pytest.mark.parametrize("msg", [
         "medications",
         "labs?",
@@ -83,7 +84,7 @@ class TestLayer1CategoryLookups:
         "hr",
     ])
     def test_path_b_bare_entity(self, msg: str):
-        assert _classify_layer1(msg) == QUICK_PROFILE
+        assert _classify_layer1(msg) == QUICK_LOOKUP_PROFILE
 
 
 # =============================================================================
@@ -310,13 +311,13 @@ class TestLayer1HasHistoryIgnored:
     """has_history parameter no longer affects classification."""
 
     @pytest.mark.parametrize("msg,expected", [
-        # Category lookups → QUICK (need tables)
-        ("What medications is the patient on?", QUICK_PROFILE),
-        ("medications", QUICK_PROFILE),
-        ("labs?", QUICK_PROFILE),
-        ("bp", QUICK_PROFILE),
-        ("List all conditions", QUICK_PROFILE),
-        ("allergies", QUICK_PROFILE),
+        # Category lookups → QUICK_LOOKUP (tables, no reasoning)
+        ("What medications is the patient on?", QUICK_LOOKUP_PROFILE),
+        ("medications", QUICK_LOOKUP_PROFILE),
+        ("labs?", QUICK_LOOKUP_PROFILE),
+        ("bp", QUICK_LOOKUP_PROFILE),
+        ("List all conditions", QUICK_LOOKUP_PROFILE),
+        ("allergies", QUICK_LOOKUP_PROFILE),
         # Specific-item lookups → LIGHTNING
         ("What's the HbA1c?", LIGHTNING_PROFILE),
         ("Is the patient on metformin?", LIGHTNING_PROFILE),
@@ -348,8 +349,8 @@ class TestLayer1EdgeCases:
         assert _classify_layer1(msg) == DEEP_PROFILE
 
     def test_case_insensitivity(self):
-        assert _classify_layer1("WHAT MEDICATIONS?") == QUICK_PROFILE
-        assert _classify_layer1("What Medications?") == QUICK_PROFILE
+        assert _classify_layer1("WHAT MEDICATIONS?") == QUICK_LOOKUP_PROFILE
+        assert _classify_layer1("What Medications?") == QUICK_LOOKUP_PROFILE
 
     def test_reasoning_keyword_overrides_entity(self):
         assert _classify_layer1("Why is the patient on these medications?") == DEEP_PROFILE
@@ -361,8 +362,8 @@ class TestLayer1EdgeCases:
     def test_contraindication_stem(self):
         assert _classify_layer1("Any contraindications for this drug?") == DEEP_PROFILE
 
-    def test_how_many_is_quick(self):
-        assert _classify_layer1("How many medications?") == QUICK_PROFILE
+    def test_how_many_is_quick_lookup(self):
+        assert _classify_layer1("How many medications?") == QUICK_LOOKUP_PROFILE
 
     def test_how_should_is_deep(self):
         assert _classify_layer1("How should we manage the diabetes?") == DEEP_PROFILE
@@ -374,16 +375,16 @@ class TestLayer1EdgeCases:
         # Falls through to ambiguous
         assert result is None or result == DEEP_PROFILE
 
-    def test_what_about_is_quick(self):
-        # "What about the labs?" -> "what" prefix + entity -> QUICK (tables)
-        assert _classify_layer1("What about the labs?") == QUICK_PROFILE
+    def test_what_about_is_quick_lookup(self):
+        # "What about the labs?" -> "what" prefix + entity -> QUICK_LOOKUP (tables)
+        assert _classify_layer1("What about the labs?") == QUICK_LOOKUP_PROFILE
 
     def test_clinical_shorthand_bp(self):
-        assert _classify_layer1("bp") == QUICK_PROFILE
-        assert _classify_layer1("bp?") == QUICK_PROFILE
+        assert _classify_layer1("bp") == QUICK_LOOKUP_PROFILE
+        assert _classify_layer1("bp?") == QUICK_LOOKUP_PROFILE
 
     def test_clinical_shorthand_hr(self):
-        assert _classify_layer1("hr") == QUICK_PROFILE
+        assert _classify_layer1("hr") == QUICK_LOOKUP_PROFILE
 
     def test_whether_analytical_phrase(self):
         assert _classify_layer1("Show labs and whether the A1c improved") == DEEP_PROFILE
@@ -523,7 +524,7 @@ class TestLayer2LLMFallback:
             "app.services.query_classifier._classify_layer2"
         ) as mock_layer2:
             result = await classify_query("medications")
-            assert result == QUICK_PROFILE
+            assert result == QUICK_LOOKUP_PROFILE
             mock_layer2.assert_not_called()
 
     @pytest.mark.asyncio
@@ -549,10 +550,10 @@ class TestClassifyQueryAsync:
 
     @pytest.mark.asyncio
     @pytest.mark.parametrize("msg,expected", [
-        # Category lookups → Quick (structured tables)
-        ("medications", QUICK_PROFILE),
-        ("bp", QUICK_PROFILE),
-        ("What medications is the patient on?", QUICK_PROFILE),
+        # Category lookups → Quick Lookup (structured tables, no reasoning)
+        ("medications", QUICK_LOOKUP_PROFILE),
+        ("bp", QUICK_LOOKUP_PROFILE),
+        ("What medications is the patient on?", QUICK_LOOKUP_PROFILE),
         # Specific-item lookups → Lightning (narrative only)
         ("What's the A1c?", LIGHTNING_PROFILE),
         ("Is the patient allergic to penicillin?", LIGHTNING_PROFILE),
@@ -607,6 +608,15 @@ class TestQueryProfileValues:
         assert QUICK_PROFILE.max_output_tokens == 4096
         assert QUICK_PROFILE.system_prompt_mode == "quick"
         assert QUICK_PROFILE.response_schema == "full"
+
+    def test_quick_lookup_profile_values(self):
+        assert QUICK_LOOKUP_PROFILE.tier == QueryTier.QUICK
+        assert QUICK_LOOKUP_PROFILE.model is None
+        assert QUICK_LOOKUP_PROFILE.reasoning is False
+        assert QUICK_LOOKUP_PROFILE.include_tools is False
+        assert QUICK_LOOKUP_PROFILE.max_output_tokens == 4096
+        assert QUICK_LOOKUP_PROFILE.system_prompt_mode == "quick"
+        assert QUICK_LOOKUP_PROFILE.response_schema == "full"
 
     def test_deep_profile_values(self):
         assert DEEP_PROFILE.tier == QueryTier.DEEP
