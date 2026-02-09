@@ -335,7 +335,7 @@ export default function TablePage() {
                     <tr key={row.test} className={isCritical ? "bg-[#C24E42]/5" : ""}>
                       <td className="p-4 font-medium">{row.test}</td>
                       <td className="p-4">
-                        <span className={isAbnormal ? "text-[#C24E42] font-medium tabular-nums" : "tabular-nums"}>
+                        <span className={`tabular-nums ${isCritical ? "text-[#C24E42] font-medium" : isAbnormal ? "text-[#D9A036] font-medium" : ""}`}>
                           {row.value} <span className="text-muted-foreground font-normal">{row.unit}</span>
                         </span>
                       </td>
