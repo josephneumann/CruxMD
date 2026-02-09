@@ -1,6 +1,8 @@
 "use client";
 
+import React, { useState } from "react";
 import { useTheme } from "next-themes";
+import { FlaskConical, Pill, ChevronDown, ChevronRight } from "lucide-react";
 import { Badge } from "@/components/ui/badge";
 import { Card, CardHeader, CardTitle, CardContent } from "@/components/ui/card";
 import { CodeBlock } from "@/components/design-system/CodeBlock";
@@ -49,96 +51,148 @@ interface LabResult {
   history: HistoryPoint[];
 }
 
-const labResults: LabResult[] = [
+// Panel group: a named set of component results (e.g. CBC)
+interface LabPanel {
+  type: "panel";
+  name: string;
+  results: LabResult[];
+}
+
+// Standalone result: a single test not part of a panel
+interface StandaloneResult {
+  type: "standalone";
+  result: LabResult;
+}
+
+type LabEntry = LabPanel | StandaloneResult;
+
+const labEntries: LabEntry[] = [
   {
-    test: "White Blood Cells",
-    value: 7.5,
-    unit: "K/uL",
-    rangeLow: 4.5,
-    rangeHigh: 11.0,
-    interpretation: "N",
-    date: "01/25/2026",
-    history: [
-      { value: 6.8, date: "08/12/2025" },
-      { value: 7.2, date: "09/15/2025" },
-      { value: 7.0, date: "10/14/2025" },
-      { value: 7.3, date: "11/11/2025" },
-      { value: 7.1, date: "12/16/2025" },
-      { value: 7.5, date: "01/25/2026" },
-    ],
+    type: "standalone",
+    result: {
+      test: "Hemoglobin A1c",
+      value: 6.8,
+      unit: "%",
+      rangeLow: 4.0,
+      rangeHigh: 5.6,
+      interpretation: "H",
+      date: "01/25/2026",
+      history: [
+        { value: 7.4, date: "08/12/2025" },
+        { value: 7.1, date: "09/15/2025" },
+        { value: 7.0, date: "10/14/2025" },
+        { value: 6.9, date: "11/11/2025" },
+        { value: 6.8, date: "12/16/2025" },
+        { value: 6.8, date: "01/25/2026" },
+      ],
+    },
   },
   {
-    test: "Hemoglobin",
-    value: 15.2,
-    unit: "g/dL",
-    rangeLow: 13.5,
-    rangeHigh: 17.5,
-    interpretation: "N",
-    date: "01/25/2026",
-    history: [
-      { value: 14.8, date: "08/12/2025" },
-      { value: 15.0, date: "09/15/2025" },
-      { value: 14.9, date: "10/14/2025" },
-      { value: 15.1, date: "11/11/2025" },
-      { value: 15.0, date: "12/16/2025" },
-      { value: 15.2, date: "01/25/2026" },
-    ],
-  },
-  {
-    test: "Platelets",
-    value: 425,
-    unit: "K/uL",
-    rangeLow: 150,
-    rangeHigh: 400,
-    interpretation: "H",
-    date: "01/25/2026",
-    history: [
-      { value: 380, date: "08/12/2025" },
-      { value: 395, date: "09/15/2025" },
-      { value: 400, date: "10/14/2025" },
-      { value: 410, date: "11/11/2025" },
-      { value: 418, date: "12/16/2025" },
-      { value: 425, date: "01/25/2026" },
-    ],
-  },
-  {
-    test: "Potassium",
-    value: 6.2,
-    unit: "mEq/L",
-    rangeLow: 3.5,
-    rangeHigh: 5.0,
-    interpretation: "HH",
-    date: "01/25/2026",
-    history: [
-      { value: 4.2, date: "08/12/2025" },
-      { value: 4.5, date: "09/15/2025" },
-      { value: 4.8, date: "10/14/2025" },
-      { value: 5.1, date: "11/11/2025" },
-      { value: 5.8, date: "12/16/2025" },
-      { value: 6.2, date: "01/25/2026" },
+    type: "panel",
+    name: "Complete Blood Count (CBC)",
+    results: [
+      {
+        test: "White Blood Cells",
+        value: 7.5,
+        unit: "K/uL",
+        rangeLow: 4.5,
+        rangeHigh: 11.0,
+        interpretation: "N",
+        date: "01/25/2026",
+        history: [
+          { value: 6.8, date: "08/12/2025" },
+          { value: 7.2, date: "09/15/2025" },
+          { value: 7.0, date: "10/14/2025" },
+          { value: 7.3, date: "11/11/2025" },
+          { value: 7.1, date: "12/16/2025" },
+          { value: 7.5, date: "01/25/2026" },
+        ],
+      },
+      {
+        test: "Hemoglobin",
+        value: 15.2,
+        unit: "g/dL",
+        rangeLow: 13.5,
+        rangeHigh: 17.5,
+        interpretation: "N",
+        date: "01/25/2026",
+        history: [
+          { value: 14.8, date: "08/12/2025" },
+          { value: 15.0, date: "09/15/2025" },
+          { value: 14.9, date: "10/14/2025" },
+          { value: 15.1, date: "11/11/2025" },
+          { value: 15.0, date: "12/16/2025" },
+          { value: 15.2, date: "01/25/2026" },
+        ],
+      },
+      {
+        test: "Platelets",
+        value: 425,
+        unit: "K/uL",
+        rangeLow: 150,
+        rangeHigh: 400,
+        interpretation: "H",
+        date: "01/25/2026",
+        history: [
+          { value: 380, date: "08/12/2025" },
+          { value: 395, date: "09/15/2025" },
+          { value: 400, date: "10/14/2025" },
+          { value: 410, date: "11/11/2025" },
+          { value: 418, date: "12/16/2025" },
+          { value: 425, date: "01/25/2026" },
+        ],
+      },
+      {
+        test: "Potassium",
+        value: 6.2,
+        unit: "mEq/L",
+        rangeLow: 3.5,
+        rangeHigh: 5.0,
+        interpretation: "HH",
+        date: "01/25/2026",
+        history: [
+          { value: 4.2, date: "08/12/2025" },
+          { value: 4.5, date: "09/15/2025" },
+          { value: 4.8, date: "10/14/2025" },
+          { value: 5.1, date: "11/11/2025" },
+          { value: 5.8, date: "12/16/2025" },
+          { value: 6.2, date: "01/25/2026" },
+        ],
+      },
     ],
   },
 ];
 
-const medications = [
-  { name: "Lisinopril", dosage: "10 mg", frequency: "Once daily", route: "Oral", prescriber: "Dr. Anderson", startDate: "01/15/2025", status: "active" },
-  { name: "Metformin", dosage: "500 mg", frequency: "Twice daily", route: "Oral", prescriber: "Dr. Anderson", startDate: "03/20/2025", status: "active" },
-  { name: "Atorvastatin", dosage: "20 mg", frequency: "Once daily at bedtime", route: "Oral", prescriber: "Dr. Williams", startDate: "06/10/2024", status: "active" },
-  { name: "Warfarin", dosage: "5 mg", frequency: "Once daily", route: "Oral", prescriber: "Dr. Anderson", startDate: "12/01/2024", status: "discontinued" },
+// Mirrors MedicationRequest FHIR structure:
+// - medication: from medicationCodeableConcept.text (includes drug + dose + form)
+// - frequency: derived from dosageInstruction[].timing.repeat or .text
+// - reason: from reasonReference[].display or reasonCode[].text
+// - status: "active" | "completed" (FHIR values, not "discontinued")
+// - authoredOn: from authoredOn (ISO 8601)
+// - requester: from requester.display
+
+interface MedicationRow {
+  medication: string;
+  frequency: string | null;
+  reason: string;
+  status: "active" | "completed";
+  authoredOn: string;
+  requester: string;
+}
+
+const medications: MedicationRow[] = [
+  { medication: "Lisinopril 10 MG Oral Tablet", frequency: "1x daily", reason: "Hypertension", status: "active", authoredOn: "01/15/2025", requester: "Dr. Terri Gutmann" },
+  { medication: "Metformin hydrochloride 500 MG Oral Tablet", frequency: "2x daily", reason: "Diabetes mellitus type 2", status: "active", authoredOn: "03/20/2025", requester: "Dr. Terri Gutmann" },
+  { medication: "Atorvastatin 20 MG Oral Tablet", frequency: "1x daily", reason: "Hyperlipidemia", status: "active", authoredOn: "06/10/2024", requester: "Dr. Maia Williams" },
+  { medication: "Warfarin Sodium 5 MG Oral Tablet", frequency: "1x daily", reason: "Atrial fibrillation", status: "completed", authoredOn: "12/01/2024", requester: "Dr. Terri Gutmann" },
+  { medication: "Ibuprofen 200 MG Oral Tablet", frequency: "As needed", reason: "Osteoarthritis of knee", status: "active", authoredOn: "09/14/2025", requester: "Dr. Maia Williams" },
 ];
 
 // -- Components ---------------------------------------------------------------
 
-function MedStatusBadge({ status }: { status: string }) {
-  const variants: Record<string, "positive" | "neutral"> = {
-    active: "positive",
-    discontinued: "neutral",
-  };
-  const labels: Record<string, string> = {
-    active: "Active",
-    discontinued: "Discontinued",
-  };
-  return <Badge variant={variants[status]} size="sm">{labels[status]}</Badge>;
+function MedStatusBadge({ status }: { status: MedicationRow["status"] }) {
+  if (status === "active") return <Badge variant="positive" size="sm">Active</Badge>;
+  return <Badge variant="neutral" size="sm">Completed</Badge>;
 }
 
 /**
@@ -286,13 +340,55 @@ function SparklineWithDelta({ data, interpretation, unit }: {
   );
 }
 
+// -- Lab result row -----------------------------------------------------------
+
+function LabResultRow({ row, indented }: { row: LabResult; indented?: boolean }) {
+  const isCritical = row.interpretation === "HH" || row.interpretation === "LL";
+  const isAbnormal = row.interpretation !== "N";
+  const textSize = indented ? "text-[13px]" : "";
+  return (
+    <tr key={row.test} className={isCritical ? "bg-[#C24E42]/5" : ""}>
+      <td className={`px-4 py-2.5 font-medium ${textSize} ${indented ? "pl-8" : ""}`}>{row.test}</td>
+      <td className={`px-4 py-2.5 ${textSize}`}>
+        <span className={`tabular-nums ${isCritical ? "text-[#C24E42] font-medium" : isAbnormal ? "text-[#D9A036] font-medium" : ""}`}>
+          {row.value} <span className="text-muted-foreground font-normal">{row.unit}</span>
+        </span>
+      </td>
+      <td className="px-4 py-2.5">
+        <RangeBar
+          value={row.value}
+          low={row.rangeLow}
+          high={row.rangeHigh}
+          interpretation={row.interpretation}
+        />
+      </td>
+      <td className="px-4 py-2.5">
+        <SparklineWithDelta
+          data={row.history}
+          interpretation={row.interpretation}
+          unit={row.unit}
+        />
+      </td>
+      <td className="px-4 py-2.5 text-muted-foreground">{row.date}</td>
+    </tr>
+  );
+}
+
 // -- Table header cell helper -------------------------------------------------
 
-const TH = "text-left p-4 text-xs font-medium text-muted-foreground uppercase tracking-wider";
+const TH = "text-left px-4 py-2 text-xs font-medium text-muted-foreground uppercase tracking-wider";
 
 // -- Page ---------------------------------------------------------------------
 
 export default function TablePage() {
+  const [expandedPanels, setExpandedPanels] = useState<Record<string, boolean>>({
+    "Complete Blood Count (CBC)": true,
+  });
+
+  const togglePanel = (name: string) => {
+    setExpandedPanels((prev) => ({ ...prev, [name]: !prev[name] }));
+  };
+
   return (
     <div className="space-y-12">
       <div className="space-y-4">
@@ -308,14 +404,14 @@ export default function TablePage() {
         <h2 className="text-2xl font-medium">Laboratory Results</h2>
         <p className="text-muted-foreground max-w-2xl">
           Columns follow clinical reading order: identify the test, read the value, check if
-          it&apos;s in range (via the range bar marker color), then assess the trend. The range bar
-          encodes interpretation through marker color — green for normal, amber for high/low,
-          red for critical — eliminating the need for separate status badges.
+          it&apos;s in range (via the range bar marker color), then assess the trend. Panel groups
+          (like CBC) are collapsible; standalone results sit alongside them in the same table.
         </p>
-        <Card>
-          <CardHeader>
-            <CardTitle>Complete Blood Count (CBC)</CardTitle>
-          </CardHeader>
+        <Card className="py-0 gap-0">
+          <div className="flex items-center gap-2 px-4 py-2 border-b">
+            <FlaskConical className="size-4 text-muted-foreground" />
+            <span className="text-sm font-medium">Lab Results</span>
+          </div>
           <CardContent className="p-0">
             <table className="w-full">
               <thead>
@@ -328,72 +424,162 @@ export default function TablePage() {
                 </tr>
               </thead>
               <tbody className="divide-y">
-                {labResults.map((row) => {
-                  const isCritical = row.interpretation === "HH" || row.interpretation === "LL";
-                  const isAbnormal = row.interpretation !== "N";
-                  return (
-                    <tr key={row.test} className={isCritical ? "bg-[#C24E42]/5" : ""}>
-                      <td className="p-4 font-medium">{row.test}</td>
-                      <td className="p-4">
-                        <span className={`tabular-nums ${isCritical ? "text-[#C24E42] font-medium" : isAbnormal ? "text-[#D9A036] font-medium" : ""}`}>
-                          {row.value} <span className="text-muted-foreground font-normal">{row.unit}</span>
-                        </span>
-                      </td>
-                      <td className="p-4">
-                        <RangeBar
-                          value={row.value}
-                          low={row.rangeLow}
-                          high={row.rangeHigh}
-                          interpretation={row.interpretation}
-                        />
-                      </td>
-                      <td className="p-4">
-                        <SparklineWithDelta
-                          data={row.history}
-                          interpretation={row.interpretation}
-                          unit={row.unit}
-                        />
-                      </td>
-                      <td className="p-4 text-muted-foreground">{row.date}</td>
-                    </tr>
-                  );
+                {labEntries.map((entry) => {
+                  if (entry.type === "panel") {
+                    const isExpanded = expandedPanels[entry.name] ?? false;
+                    const Chevron = isExpanded ? ChevronDown : ChevronRight;
+                    return (
+                      <React.Fragment key={entry.name}>
+                        <tr
+                          className="bg-muted/20 cursor-pointer select-none hover:bg-muted/40 transition-colors"
+                          onClick={() => togglePanel(entry.name)}
+                        >
+                          <td colSpan={5} className="px-4 py-2.5">
+                            <div className="flex items-center justify-between font-medium">
+                              <div className="flex items-center gap-2">
+                                {entry.name}
+                                <span className="text-xs text-muted-foreground font-normal">
+                                  ({entry.results.length} components)
+                                </span>
+                              </div>
+                              <Chevron className="size-4 text-muted-foreground" />
+                            </div>
+                          </td>
+                        </tr>
+                        {isExpanded && entry.results.map((row) => (
+                          <LabResultRow key={row.test} row={row} indented />
+                        ))}
+                      </React.Fragment>
+                    );
+                  }
+                  return <LabResultRow key={entry.result.test} row={entry.result} />;
                 })}
               </tbody>
             </table>
           </CardContent>
         </Card>
+
+        {/* Design documentation */}
+        <div className="space-y-4 text-sm text-muted-foreground">
+          <h3 className="text-lg font-medium text-foreground">Design Notes</h3>
+
+          <div className="space-y-3">
+            <p className="font-medium text-foreground">Column Order — Clinical Reading Flow</p>
+            <p>
+              Columns are ordered to match how clinicians scan lab results: <strong className="text-foreground">Test → Result → Reference Range → Trend → Date</strong>.
+              The eye identifies the test name, reads the numeric value, checks whether it falls
+              within range (via the range bar), assesses the trend direction, then notes recency.
+              This left-to-right flow mirrors the cognitive priority of clinical decision-making.
+            </p>
+          </div>
+
+          <div className="space-y-3">
+            <p className="font-medium text-foreground">Range Bar — Interpretation Without Labels</p>
+            <p>
+              The reference range bar replaces text-based status badges entirely. A horizontal track
+              shows the normal zone as a shaded region, with a colored dot marker indicating where
+              the current value sits. Marker color encodes HL7 interpretation: <span className="text-[#388E3C]">green</span> for
+              Normal (N), <span className="text-[#D9A036]">amber</span> for High/Low (H/L),
+              and <span className="text-[#C24E42]">red</span> for Critically High/Low (HH/LL).
+              This removes the need for separate badge components or a legend — the color is
+              the interpretation, visible at a glance.
+            </p>
+          </div>
+
+          <div className="space-y-3">
+            <p className="font-medium text-foreground">Result Value Color</p>
+            <p>
+              Result numbers use a three-tier color system matching the range bar marker:
+              default text for normal values, amber for abnormal (H/L), and red for critical
+              (HH/LL). This reinforces the range bar without requiring the user to look across
+              to the bar for every row.
+            </p>
+          </div>
+
+          <div className="space-y-3">
+            <p className="font-medium text-foreground">Sparkline Trends</p>
+            <p>
+              Each row includes a 72px inline sparkline showing the last 6 readings. The line
+              color matches the current interpretation tier. A percentage-change annotation
+              (e.g. &ldquo;↑ 12%&rdquo;) and &ldquo;since&rdquo; date are displayed alongside to give
+              immediate context on trajectory and timeframe. Hovering over the sparkline reveals
+              a tooltip with the exact value and date for each data point, positioned above the
+              chart to avoid obscuring the line.
+            </p>
+          </div>
+
+          <div className="space-y-3">
+            <p className="font-medium text-foreground">Panel Groups &amp; Standalone Results</p>
+            <p>
+              Lab results can appear as collapsible panel groups (e.g. CBC with 4 components) or
+              standalone rows (e.g. HbA1c). Panel headers span the full table width with a chevron
+              toggle on the right edge. Component rows within a panel are slightly indented and
+              use a smaller font size to establish visual hierarchy. Standalone results render at
+              the same level as panel headers. This structure mirrors how lab panels are ordered
+              in clinical systems.
+            </p>
+          </div>
+
+          <div className="space-y-3">
+            <p className="font-medium text-foreground">Compact Card Layout</p>
+            <p>
+              The card uses zero internal padding (<code className="text-xs bg-muted px-1 py-0.5 rounded">py-0 gap-0</code> overrides)
+              with a slim title bar separated by a border. Column headers use reduced vertical
+              padding. Data rows use <code className="text-xs bg-muted px-1 py-0.5 rounded">py-2.5</code> for
+              density without sacrificing readability. Critical rows receive a subtle red background
+              tint to draw attention without overwhelming the table.
+            </p>
+          </div>
+
+          <div className="space-y-3">
+            <p className="font-medium text-foreground">HL7 FHIR Interpretation Codes</p>
+            <p>
+              Values follow the HL7 FHIR Observation Interpretation code system:
+              N (Normal), H (High), L (Low), HH (Critically High), LL (Critically Low).
+              Note that Synthea fixture data does not include <code className="text-xs bg-muted px-1 py-0.5 rounded">interpretation</code> or <code className="text-xs bg-muted px-1 py-0.5 rounded">referenceRange</code> fields
+              on Observations — interpretation must be derived at display time using LOINC-based
+              reference ranges.
+            </p>
+          </div>
+        </div>
       </div>
 
-      {/* Current Medications */}
+      {/* Medications */}
       <div className="space-y-6">
-        <h2 className="text-2xl font-medium">Current Medications</h2>
-        <Card>
-          <CardHeader>
-            <CardTitle>Current Medications</CardTitle>
-          </CardHeader>
+        <h2 className="text-2xl font-medium">Medications</h2>
+        <p className="text-muted-foreground max-w-2xl">
+          Data mirrors FHIR MedicationRequest structure. The medication column contains the full
+          RxNorm display string (drug + dose + form) from <code className="text-xs bg-muted px-1 py-0.5 rounded">medicationCodeableConcept.text</code>.
+          Frequency is derived from <code className="text-xs bg-muted px-1 py-0.5 rounded">dosageInstruction</code> timing
+          data. Reason comes from <code className="text-xs bg-muted px-1 py-0.5 rounded">reasonReference.display</code>.
+          Separate dosage and route columns are unnecessary — both are embedded in the medication name.
+        </p>
+        <Card className="py-0 gap-0">
+          <div className="flex items-center gap-2 px-4 py-2 border-b">
+            <Pill className="size-4 text-muted-foreground" />
+            <span className="text-sm font-medium">Medications</span>
+          </div>
           <CardContent className="p-0">
             <table className="w-full">
               <thead>
                 <tr className="border-b bg-muted/30">
                   <th className={TH}>Medication</th>
-                  <th className={TH}>Dosage</th>
                   <th className={TH}>Frequency</th>
-                  <th className={TH}>Route</th>
-                  <th className={TH}>Prescriber</th>
-                  <th className={TH}>Start Date</th>
+                  <th className={TH}>Reason</th>
                   <th className={TH}>Status</th>
+                  <th className={TH}>Prescribed</th>
+                  <th className={TH}>Requester</th>
                 </tr>
               </thead>
               <tbody className="divide-y">
                 {medications.map((row) => (
-                  <tr key={row.name}>
-                    <td className="p-4 font-medium">{row.name}</td>
-                    <td className="p-4">{row.dosage}</td>
-                    <td className="p-4">{row.frequency}</td>
-                    <td className="p-4">{row.route}</td>
-                    <td className="p-4">{row.prescriber}</td>
-                    <td className="p-4 text-muted-foreground">{row.startDate}</td>
-                    <td className="p-4"><MedStatusBadge status={row.status} /></td>
+                  <tr key={row.medication}>
+                    <td className="px-4 py-2 text-sm font-medium">{row.medication}</td>
+                    <td className="px-4 py-2 text-sm">{row.frequency ?? <span className="text-muted-foreground italic">—</span>}</td>
+                    <td className="px-4 py-2 text-sm text-muted-foreground">{row.reason}</td>
+                    <td className="px-4 py-2"><MedStatusBadge status={row.status} /></td>
+                    <td className="px-4 py-2 text-sm text-muted-foreground">{row.authoredOn}</td>
+                    <td className="px-4 py-2 text-sm text-muted-foreground">{row.requester}</td>
                   </tr>
                 ))}
               </tbody>
@@ -406,30 +592,83 @@ export default function TablePage() {
       <div className="space-y-6">
         <h2 className="text-2xl font-medium">Basic Table</h2>
         <p className="text-muted-foreground">
-          Minimal table styling without card wrapper.
+          Simple key-value or props reference table using the shared compact card wrapper
+          and consistent column header styling.
         </p>
-        <div className="rounded-lg border overflow-hidden">
-          <table className="w-full">
-            <thead>
-              <tr className="border-b bg-muted/50">
-                <th className="text-left p-3 text-sm font-medium">Name</th>
-                <th className="text-left p-3 text-sm font-medium">Type</th>
-                <th className="text-left p-3 text-sm font-medium">Default</th>
-              </tr>
-            </thead>
-            <tbody className="divide-y">
-              <tr>
-                <td className="p-3 font-mono text-sm">variant</td>
-                <td className="p-3 text-sm text-muted-foreground">string</td>
-                <td className="p-3 font-mono text-sm">&quot;default&quot;</td>
-              </tr>
-              <tr>
-                <td className="p-3 font-mono text-sm">size</td>
-                <td className="p-3 text-sm text-muted-foreground">string</td>
-                <td className="p-3 font-mono text-sm">&quot;md&quot;</td>
-              </tr>
-            </tbody>
-          </table>
+        <Card className="py-0 gap-0">
+          <div className="flex items-center gap-2 px-4 py-2 border-b">
+            <span className="text-sm font-medium">Props API</span>
+          </div>
+          <CardContent className="p-0">
+            <table className="w-full">
+              <thead>
+                <tr className="border-b bg-muted/30">
+                  <th className={TH}>Name</th>
+                  <th className={TH}>Type</th>
+                  <th className={TH}>Default</th>
+                </tr>
+              </thead>
+              <tbody className="divide-y">
+                <tr>
+                  <td className="px-4 py-2.5 font-mono text-sm">variant</td>
+                  <td className="px-4 py-2.5 text-sm text-muted-foreground">string</td>
+                  <td className="px-4 py-2.5 font-mono text-sm">&quot;default&quot;</td>
+                </tr>
+                <tr>
+                  <td className="px-4 py-2.5 font-mono text-sm">size</td>
+                  <td className="px-4 py-2.5 text-sm text-muted-foreground">string</td>
+                  <td className="px-4 py-2.5 font-mono text-sm">&quot;md&quot;</td>
+                </tr>
+              </tbody>
+            </table>
+          </CardContent>
+        </Card>
+
+        {/* Shared styling documentation */}
+        <div className="space-y-4 text-sm text-muted-foreground">
+          <h3 className="text-lg font-medium text-foreground">Shared Table Styling</h3>
+
+          <div className="space-y-3">
+            <p className="font-medium text-foreground">Card Wrapper</p>
+            <p>
+              All tables use <code className="text-xs bg-muted px-1 py-0.5 rounded">Card</code> with <code className="text-xs bg-muted px-1 py-0.5 rounded">py-0 gap-0</code> overrides
+              to eliminate the default vertical padding and gap. A slim title bar sits at the top,
+              separated from the table by a border. This keeps the card chrome minimal so the data
+              is the focus.
+            </p>
+          </div>
+
+          <div className="space-y-3">
+            <p className="font-medium text-foreground">Column Headers</p>
+            <p>
+              All column headers share the same class: uppercase, <code className="text-xs bg-muted px-1 py-0.5 rounded">text-xs</code>,
+              muted foreground color, with <code className="text-xs bg-muted px-1 py-0.5 rounded">px-4 py-2</code> padding
+              and a <code className="text-xs bg-muted px-1 py-0.5 rounded">bg-muted/30</code> background. This creates a
+              consistent, unobtrusive header row across all table variants.
+            </p>
+          </div>
+
+          <div className="space-y-3">
+            <p className="font-medium text-foreground">Data Rows</p>
+            <p>
+              Data cells use <code className="text-xs bg-muted px-1 py-0.5 rounded">px-4 py-2</code> to <code className="text-xs bg-muted px-1 py-0.5 rounded">py-2.5</code> padding
+              depending on content density, with <code className="text-xs bg-muted px-1 py-0.5 rounded">text-sm</code> font
+              sizing. Rows are separated by <code className="text-xs bg-muted px-1 py-0.5 rounded">divide-y</code> borders.
+              The first column is typically <code className="text-xs bg-muted px-1 py-0.5 rounded">font-medium</code> to
+              anchor the eye, while secondary columns like dates use <code className="text-xs bg-muted px-1 py-0.5 rounded">text-muted-foreground</code>.
+            </p>
+          </div>
+
+          <div className="space-y-3">
+            <p className="font-medium text-foreground">Status Badges</p>
+            <p>
+              Status indicators use the <code className="text-xs bg-muted px-1 py-0.5 rounded">Badge</code> component
+              at <code className="text-xs bg-muted px-1 py-0.5 rounded">sm</code> size. The <code className="text-xs bg-muted px-1 py-0.5 rounded">positive</code> variant
+              (green) is used for active states, and <code className="text-xs bg-muted px-1 py-0.5 rounded">neutral</code> (gray)
+              for inactive or discontinued states. Badges are placed in the final column as a
+              scannable status indicator.
+            </p>
+          </div>
         </div>
       </div>
 
