@@ -24,7 +24,7 @@ import { loadLottieData, getLottieData, isLottieLoaded, subscribeLottieCache } f
 import type { DisplayMessage } from "@/hooks";
 import { INTRO_PHASES, TRIAGE_PHASES } from "./useAutoplay";
 import type { DemoScenario, DemoInteraction, DemoAction, DemoEpilogueCompletion } from "@/lib/demo-scenarios";
-import type { ActionType } from "@/lib/types";
+import type { DemoActionType } from "@/lib/demo-scenarios";
 
 const PHASES_PER_INTERACTION = 5;
 
@@ -59,7 +59,7 @@ function getActionIcon(action: DemoAction): IconComponent {
   return (action.icon && ICON_MAP[action.icon]) || ICON_MAP[action.type] || Send;
 }
 
-const ACTION_COLORS: Record<ActionType, string> = {
+const ACTION_COLORS: Record<DemoActionType, string> = {
   order: "text-foreground border-border bg-muted/50 hover:bg-muted",
   refer: "text-foreground border-border bg-muted/50 hover:bg-muted",
   document: "text-muted-foreground border-border bg-muted/50 hover:bg-muted",

@@ -22,7 +22,8 @@ import { ChatInput } from "@/components/canvas/ChatInput";
 import { FollowUpSuggestions } from "@/components/canvas/FollowUpSuggestions";
 import { InsightCard } from "@/components/clinical/InsightCard";
 import type { DisplayMessage } from "@/hooks";
-import type { ModelId, ActionType } from "@/lib/types";
+import type { ModelId } from "@/lib/types";
+import type { DemoActionType } from "@/lib/demo-scenarios";
 
 // ---------------------------------------------------------------------------
 // Heart Failure Scenario Mock Data
@@ -168,7 +169,7 @@ const MOCK_MESSAGES: DisplayMessage[] = [MOCK_USER_1, MOCK_AGENT_1, MOCK_USER_2,
 
 interface DemoAction {
   label: string;
-  type: ActionType;
+  type: DemoActionType;
   icon?: string;
 }
 
@@ -186,7 +187,7 @@ const ACTION_ICONS: Record<string, typeof Pill> = {
   heart: Heart,
 };
 
-const ACTION_COLORS: Record<ActionType, string> = {
+const ACTION_COLORS: Record<DemoActionType, string> = {
   order: "text-foreground border-border bg-muted/50 hover:bg-muted",
   refer: "text-foreground border-border bg-muted/50 hover:bg-muted",
   document: "text-muted-foreground border-border bg-muted/50 hover:bg-muted",

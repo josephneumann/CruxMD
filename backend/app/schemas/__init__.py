@@ -1,14 +1,18 @@
 """Pydantic schemas."""
 
 from app.schemas.agent import (
-    Action,
     AgentResponse,
-    DataQuery,
-    DataTable,
+    ClinicalTable,
+    ClinicalVisualization,
     FollowUp,
     Insight,
-    TableColumn,
-    Visualization,
+    MedTimelineRow,
+    MedTimelineSegment,
+    RangeBand,
+    ReferenceLine,
+    TimelineEvent,
+    TrendPoint,
+    TrendSeries,
 )
 from app.schemas.patient_profile import PatientProfile
 from app.schemas.session import (
@@ -34,15 +38,19 @@ from app.schemas.task import (
 )
 
 __all__ = [
-    "Action",
     "AgentResponse",
-    "DataQuery",
-    "DataTable",
+    "ClinicalTable",
+    "ClinicalVisualization",
     "FollowUp",
     "Insight",
+    "MedTimelineRow",
+    "MedTimelineSegment",
     "PatientProfile",
-    "TableColumn",
-    "Visualization",
+    "RangeBand",
+    "ReferenceLine",
+    "TimelineEvent",
+    "TrendPoint",
+    "TrendSeries",
     # Task schemas
     "AITaskProvenance",
     "TaskCategory",

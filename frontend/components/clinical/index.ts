@@ -4,3 +4,5 @@
  */
 export { InsightCard } from "./InsightCard";
 export type { InsightCardProps } from "./InsightCard";
+export { ClinicalTable } from "./ClinicalTable";
+export { ClinicalVisualization } from "./ClinicalVisualization";

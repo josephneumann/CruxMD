@@ -1556,8 +1556,8 @@ class TestBuildSystemPromptDeep:
         char_count = len(prompt)
         # At minimum the template + fixture data should be > 3000 chars
         assert char_count > 3000, f"Prompt too short: {char_count} chars"
-        # With our test data it shouldn't exceed 10k chars
-        assert char_count < 10000, f"Prompt too long for test fixture: {char_count} chars"
+        # With our test data it shouldn't exceed 12k chars (includes table/viz type specs)
+        assert char_count < 12000, f"Prompt too long for test fixture: {char_count} chars"
 
 
 class TestFormatAsTable:
@@ -2540,7 +2540,7 @@ class TestLightningModelRouting:
         assert result.insights is None
         assert result.visualizations is None
         assert result.tables is None
-        assert result.actions is None
+        # actions field was removed from AgentResponse
 
     @pytest.mark.asyncio
     async def test_lightning_wraps_needs_deeper_search_true(

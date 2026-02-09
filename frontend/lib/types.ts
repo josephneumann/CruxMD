@@ -61,14 +61,6 @@ export interface ChatResponse {
 // Agent Response Types (mirrors backend/app/schemas/agent.py)
 // =============================================================================
 
-/** Query specification for resolving data at runtime */
-export interface DataQuery {
-  resource_types?: string[];
-  filters?: string;
-  time_range?: string;
-  limit?: number;
-}
-
 /** Valid insight types - source of truth for type and validation */
 export const INSIGHT_TYPES = ["info", "warning", "critical", "positive"] as const;
 export type InsightType = (typeof INSIGHT_TYPES)[number];
@@ -81,47 +73,97 @@ export interface Insight {
   citations?: string[];
 }
 
-/** Valid column formats - source of truth for type and validation */
-export const COLUMN_FORMATS = ["text", "date", "number", "badge"] as const;
-export type ColumnFormat = (typeof COLUMN_FORMATS)[number];
+/** Clinical table types matching backend ClinicalTable.type */
+export const CLINICAL_TABLE_TYPES = [
+  "medications", "lab_results", "vitals", "conditions",
+  "allergies", "immunizations", "procedures", "encounters",
+] as const;
+export type ClinicalTableType = (typeof CLINICAL_TABLE_TYPES)[number];
 
-/** Column definition for a data table */
-export interface TableColumn {
-  key: string;
-  header: string;
-  format?: ColumnFormat;
-}
-
-/** Valid visualization types - source of truth for type and validation */
-export const VISUALIZATION_TYPES = ["line_chart", "bar_chart", "timeline", "vitals_grid"] as const;
-export type VisualizationType = (typeof VISUALIZATION_TYPES)[number];
-
-/** Visualization specification for charts and graphs */
-export interface Visualization {
-  type: VisualizationType;
+/** Resource-typed clinical data table with inline data */
+export interface ClinicalTable {
+  type: ClinicalTableType;
   title: string;
-  description?: string;
-  data_query: DataQuery;
-  config?: string;
+  rows: Record<string, unknown>[];
 }
 
-/** Table specification for displaying structured data */
-export interface DataTable {
-  title: string;
-  columns: TableColumn[];
-  data_query: DataQuery;
+/** HL7 FHIR Observation Interpretation codes */
+export type HL7Interpretation = "N" | "H" | "L" | "HH" | "LL";
+
+/** History data point for sparklines */
+export interface HistoryPoint {
+  value: number;
+  date: string;
 }
 
-/** Valid action types - source of truth for type and validation */
-export const ACTION_TYPES = ["order", "refer", "document", "alert", "link"] as const;
-export type ActionType = (typeof ACTION_TYPES)[number];
+/** Single data point on a trend chart */
+export interface TrendPoint {
+  date: string;
+  value: number;
+  label?: string;
+}
 
-/** Suggested action for the user to take */
-export interface Action {
+/** One line/area on a trend chart */
+export interface TrendSeries {
+  name: string;
+  unit?: string;
+  data_points: TrendPoint[];
+}
+
+/** Horizontal threshold line */
+export interface ReferenceLine {
+  value: number;
   label: string;
-  type: ActionType;
-  description?: string;
-  payload?: string;
+}
+
+/** Background color zone for clinical ranges */
+export interface RangeBand {
+  y1: number;
+  y2: number;
+  severity: "normal" | "warning" | "critical";
+  label?: string;
+}
+
+/** One segment in a medication timeline bar */
+export interface MedTimelineSegment {
+  label: string;
+  flex: number;
+  active: boolean;
+}
+
+/** One drug row in the medication timeline */
+export interface MedTimelineRow {
+  drug: string;
+  segments: MedTimelineSegment[];
+}
+
+/** Single event on an encounter timeline */
+export interface TimelineEvent {
+  date: string;
+  title: string;
+  detail?: string;
+  category?: string;
+}
+
+/** Clinical visualization types */
+export const CLINICAL_VIZ_TYPES = ["trend_chart", "encounter_timeline"] as const;
+export type ClinicalVisualizationType = (typeof CLINICAL_VIZ_TYPES)[number];
+
+/** Clinical chart or timeline with inline data */
+export interface ClinicalVisualization {
+  type: ClinicalVisualizationType;
+  title: string;
+  subtitle?: string;
+  current_value?: string;
+  trend_summary?: string;
+  trend_status?: "positive" | "warning" | "critical" | "neutral";
+  // trend_chart fields
+  series?: TrendSeries[];
+  reference_lines?: ReferenceLine[];
+  range_bands?: RangeBand[];
+  medications?: MedTimelineRow[];
+  // encounter_timeline fields
+  events?: TimelineEvent[];
 }
 
 /** Suggested follow-up question for emergent navigation */
@@ -135,9 +177,8 @@ export interface AgentResponse {
   thinking?: string;
   narrative: string;
   insights?: Insight[];
-  visualizations?: Visualization[];
-  tables?: DataTable[];
-  actions?: Action[];
+  tables?: ClinicalTable[];
+  visualizations?: ClinicalVisualization[];
   follow_ups?: FollowUp[];
 }
 
@@ -202,20 +243,6 @@ export function isChatMessage(obj: unknown): obj is ChatMessage {
   );
 }
 
-/** Type guard for DataQuery */
-export function isDataQuery(obj: unknown): obj is DataQuery {
-  if (!isObject(obj)) return false;
-  // All fields are optional, but validate types if present
-  if (obj.resource_types != null) {
-    if (!Array.isArray(obj.resource_types)) return false;
-    if (!obj.resource_types.every((t) => typeof t === "string")) return false;
-  }
-  if (obj.filters != null && typeof obj.filters !== "string") return false;
-  if (obj.time_range != null && typeof obj.time_range !== "string") return false;
-  if (obj.limit != null && typeof obj.limit !== "number") return false;
-  return true;
-}
-
 /** Type guard for Insight */
 export function isInsight(obj: unknown): obj is Insight {
   if (!isObject(obj)) return false;
@@ -230,43 +257,20 @@ export function isInsight(obj: unknown): obj is Insight {
   return true;
 }
 
-/** Type guard for TableColumn */
-export function isTableColumn(obj: unknown): obj is TableColumn {
+/** Type guard for ClinicalTable */
+export function isClinicalTable(obj: unknown): obj is ClinicalTable {
   if (!isObject(obj)) return false;
-  if (typeof obj.key !== "string") return false;
-  if (typeof obj.header !== "string") return false;
-  if (obj.format != null && !COLUMN_FORMATS.includes(obj.format as ColumnFormat)) return false;
-  return true;
-}
-
-/** Type guard for Visualization */
-export function isVisualization(obj: unknown): obj is Visualization {
-  if (!isObject(obj)) return false;
-  if (!VISUALIZATION_TYPES.includes(obj.type as VisualizationType)) return false;
+  if (!CLINICAL_TABLE_TYPES.includes(obj.type as ClinicalTableType)) return false;
   if (typeof obj.title !== "string") return false;
-  if (obj.description != null && typeof obj.description !== "string") return false;
-  if (!isDataQuery(obj.data_query)) return false;
-  if (obj.config != null && typeof obj.config !== "string") return false;
+  if (!Array.isArray(obj.rows)) return false;
   return true;
 }
 
-/** Type guard for DataTable */
-export function isDataTable(obj: unknown): obj is DataTable {
+/** Type guard for ClinicalVisualization */
+export function isClinicalVisualization(obj: unknown): obj is ClinicalVisualization {
   if (!isObject(obj)) return false;
+  if (!CLINICAL_VIZ_TYPES.includes(obj.type as ClinicalVisualizationType)) return false;
   if (typeof obj.title !== "string") return false;
-  if (!Array.isArray(obj.columns)) return false;
-  if (!obj.columns.every(isTableColumn)) return false;
-  if (!isDataQuery(obj.data_query)) return false;
-  return true;
-}
-
-/** Type guard for Action */
-export function isAction(obj: unknown): obj is Action {
-  if (!isObject(obj)) return false;
-  if (typeof obj.label !== "string") return false;
-  if (!ACTION_TYPES.includes(obj.type as ActionType)) return false;
-  if (obj.description != null && typeof obj.description !== "string") return false;
-  if (obj.payload != null && typeof obj.payload !== "string") return false;
   return true;
 }
 
@@ -290,17 +294,13 @@ export function isAgentResponse(obj: unknown): obj is AgentResponse {
     if (!Array.isArray(obj.insights)) return false;
     if (!obj.insights.every(isInsight)) return false;
   }
-  if (obj.visualizations != null) {
-    if (!Array.isArray(obj.visualizations)) return false;
-    if (!obj.visualizations.every(isVisualization)) return false;
-  }
   if (obj.tables != null) {
     if (!Array.isArray(obj.tables)) return false;
-    if (!obj.tables.every(isDataTable)) return false;
+    if (!obj.tables.every(isClinicalTable)) return false;
   }
-  if (obj.actions != null) {
-    if (!Array.isArray(obj.actions)) return false;
-    if (!obj.actions.every(isAction)) return false;
+  if (obj.visualizations != null) {
+    if (!Array.isArray(obj.visualizations)) return false;
+    if (!obj.visualizations.every(isClinicalVisualization)) return false;
   }
   if (obj.follow_ups != null) {
     if (!Array.isArray(obj.follow_ups)) return false;

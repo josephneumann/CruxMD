@@ -6,37 +6,9 @@ and suggested follow-ups. The LLM outputs JSON conforming to AgentResponse,
 which is validated by Pydantic before being sent to the frontend.
 """
 
-from typing import Literal
+from typing import Any, Literal
 
 from pydantic import BaseModel, Field
-
-
-class DataQuery(BaseModel):
-    """Query specification for resolving data at runtime.
-
-    The LLM specifies what data it needs, and the backend resolves
-    the query against the patient's FHIR resources before sending
-    the response to the frontend.
-    """
-
-    resource_types: list[str] | None = Field(
-        default=None,
-        description="FHIR resource types to query (e.g., ['Observation', 'Condition'])",
-    )
-    filters: str | None = Field(
-        default=None,
-        description="JSON-encoded key-value filters (e.g., '{\"code\": \"HbA1c\"}')",
-    )
-    time_range: str | None = Field(
-        default=None,
-        description="Time range for the query (e.g., 'last_6_months', 'last_year')",
-    )
-    limit: int | None = Field(
-        default=None,
-        ge=1,
-        le=1000,
-        description="Maximum number of results to return",
-    )
 
 
 class Insight(BaseModel):
@@ -64,83 +36,110 @@ class Insight(BaseModel):
     )
 
 
-class TableColumn(BaseModel):
-    """Column definition for a data table."""
+class ClinicalTable(BaseModel):
+    """Resource-typed clinical data table with inline data.
 
-    key: str = Field(
-        min_length=1,
-        description="Key to extract from data rows",
+    The LLM populates rows with data from the patient record.
+    Row keys are fixed per type — the frontend uses the type discriminator
+    to select per-resource-type renderers with clinical styling.
+    """
+
+    type: Literal[
+        "medications", "lab_results", "vitals", "conditions",
+        "allergies", "immunizations", "procedures", "encounters",
+    ] = Field(description="Clinical resource type determining column layout")
+    title: str = Field(
+        max_length=200,
+        description="Table title displayed in the card header",
     )
-    header: str = Field(
-        min_length=1,
-        description="Display header for the column",
-    )
-    format: Literal["text", "date", "number", "badge"] | None = Field(
-        default=None,
-        description="How to format values in this column",
+    rows: list[dict[str, Any]] = Field(
+        description="Row data with keys matching the type's column spec",
     )
 
 
-class Visualization(BaseModel):
-    """Visualization specification for charts and graphs."""
+class TrendPoint(BaseModel):
+    """Single data point on a trend chart."""
 
-    type: Literal["line_chart", "bar_chart", "timeline", "vitals_grid"] = Field(
-        description="Type of visualization to render"
+    date: str
+    value: float
+    label: str | None = None
+
+
+class TrendSeries(BaseModel):
+    """One line/area on a trend chart."""
+
+    name: str
+    unit: str | None = None
+    data_points: list[TrendPoint]
+
+
+class ReferenceLine(BaseModel):
+    """Horizontal threshold line (e.g., 'Target <7%')."""
+
+    value: float
+    label: str
+
+
+class RangeBand(BaseModel):
+    """Background color zone for clinical ranges."""
+
+    y1: float
+    y2: float
+    severity: Literal["normal", "warning", "critical"]
+    label: str | None = None
+
+
+class MedTimelineSegment(BaseModel):
+    """One segment in a medication timeline bar."""
+
+    label: str
+    flex: int
+    active: bool
+
+
+class MedTimelineRow(BaseModel):
+    """One drug row in the medication timeline."""
+
+    drug: str
+    segments: list[MedTimelineSegment]
+
+
+class TimelineEvent(BaseModel):
+    """Single event on an encounter timeline."""
+
+    date: str
+    title: str
+    detail: str | None = None
+    category: str | None = None
+
+
+class ClinicalVisualization(BaseModel):
+    """Clinical chart or timeline with inline data.
+
+    The type field determines rendering variant:
+    - trend_chart: auto-selects area/line/multi-series based on data
+    - encounter_timeline: vertical CSS timeline with category dots
+    """
+
+    type: Literal["trend_chart", "encounter_timeline"] = Field(
+        description="Visualization type determining render variant"
     )
     title: str = Field(
-        min_length=1,
         max_length=200,
-        description="Title for the visualization",
+        description="Chart title displayed in the card header",
     )
-    description: str | None = Field(
-        default=None,
-        description="Optional description or subtitle",
-    )
-    data_query: DataQuery = Field(
-        description="Query to resolve the visualization data"
-    )
-    config: str | None = Field(
-        default=None,
-        description="JSON-encoded configuration for the visualization",
-    )
-
-
-class DataTable(BaseModel):
-    """Table specification for displaying structured data."""
-
-    title: str = Field(
-        min_length=1,
-        max_length=200,
-        description="Title for the table",
-    )
-    columns: list[TableColumn] = Field(
-        min_length=1,
-        description="Column definitions for the table",
-    )
-    data_query: DataQuery = Field(
-        description="Query to resolve the table data"
-    )
-
-
-class Action(BaseModel):
-    """Suggested action for the user to take."""
-
-    label: str = Field(
-        min_length=1,
-        max_length=100,
-        description="Button label for the action",
-    )
-    type: Literal["order", "refer", "document", "alert", "link"] = Field(
-        description="Category of action"
-    )
-    description: str | None = Field(
-        default=None,
-        description="Explanation of what the action does",
-    )
-    payload: str | None = Field(
-        default=None,
-        description="JSON-encoded data payload for the action",
-    )
+    subtitle: str | None = None
+    # Card header metrics
+    current_value: str | None = None
+    trend_summary: str | None = None
+    trend_status: Literal["positive", "warning", "critical", "neutral"] | None = None
+    # trend_chart fields
+    series: list[TrendSeries] | None = None
+    reference_lines: list[ReferenceLine] | None = None
+    range_bands: list[RangeBand] | None = None
+    medications: list[MedTimelineRow] | None = None
+    # encounter_timeline fields
+    events: list[TimelineEvent] | None = None
 
 
 class FollowUp(BaseModel):
@@ -199,17 +198,13 @@ class AgentResponse(BaseModel):
         default=None,
         description="Clinical insights to highlight",
     )
-    visualizations: list[Visualization] | None = Field(
+    tables: list[ClinicalTable] | None = Field(
         default=None,
-        description="Visualizations to render",
+        description="Resource-typed clinical data tables",
     )
-    tables: list[DataTable] | None = Field(
+    visualizations: list[ClinicalVisualization] | None = Field(
         default=None,
-        description="Data tables to display",
-    )
-    actions: list[Action] | None = Field(
-        default=None,
-        description="Suggested actions for the user",
+        description="Clinical charts and timelines",
     )
     follow_ups: list[FollowUp] | None = Field(
         default=None,

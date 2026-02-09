@@ -5,13 +5,15 @@
  * re-exported here for consumption by the DemoSection component.
  */
 
-import type { Insight, FollowUp, ActionType } from "./types";
+import type { Insight, FollowUp } from "./types";
 
 // ─── Types ───────────────────────────────────────────────────────────────────
 
+export type DemoActionType = "order" | "refer" | "document" | "alert" | "link";
+
 export interface DemoAction {
   label: string;
-  type: ActionType;
+  type: DemoActionType;
   description?: string;
   icon?: "heart" | "pill" | "stethoscope" | "file" | "alert" | "link";
 }

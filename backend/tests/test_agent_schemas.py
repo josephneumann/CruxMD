@@ -4,51 +4,20 @@ import pytest
 from pydantic import ValidationError
 
 from app.schemas.agent import (
-    Action,
     AgentResponse,
-    DataQuery,
-    DataTable,
+    ClinicalTable,
+    ClinicalVisualization,
     FollowUp,
     Insight,
     LightningResponse,
-    TableColumn,
-    Visualization,
+    MedTimelineRow,
+    MedTimelineSegment,
+    RangeBand,
+    ReferenceLine,
+    TimelineEvent,
+    TrendPoint,
+    TrendSeries,
 )
-
-
-class TestDataQuery:
-    """Tests for DataQuery schema."""
-
-    def test_empty_data_query(self):
-        """DataQuery with no fields is valid."""
-        query = DataQuery()
-        assert query.resource_types is None
-        assert query.filters is None
-        assert query.time_range is None
-        assert query.limit is None
-
-    def test_full_data_query(self):
-        """DataQuery with all fields populated."""
-        query = DataQuery(
-            resource_types=["Observation", "Condition"],
-            filters='{"code": "HbA1c", "status": "final"}',
-            time_range="last_6_months",
-            limit=50,
-        )
-        assert query.resource_types == ["Observation", "Condition"]
-        assert "HbA1c" in query.filters
-        assert query.time_range == "last_6_months"
-        assert query.limit == 50
-
-    def test_limit_validation(self):
-        """DataQuery limit must be between 1 and 1000."""
-        with pytest.raises(ValidationError) as exc_info:
-            DataQuery(limit=0)
-        assert "limit" in str(exc_info.value)
-
-        with pytest.raises(ValidationError) as exc_info:
-            DataQuery(limit=1001)
-        assert "limit" in str(exc_info.value)
 
 
 class TestInsight:
@@ -88,105 +57,193 @@ class TestInsight:
         assert "title" in str(exc_info.value)
 
 
-class TestVisualization:
-    """Tests for Visualization schema."""
+class TestClinicalTable:
+    """Tests for ClinicalTable schema."""
 
-    def test_valid_visualization(self):
-        """Visualization with required fields."""
-        viz = Visualization(
-            type="line_chart",
-            title="HbA1c Trend",
-            data_query=DataQuery(
-                resource_types=["Observation"],
-                filters='{"code": "HbA1c"}',
-            ),
-        )
-        assert viz.type == "line_chart"
-        assert viz.title == "HbA1c Trend"
-        assert viz.description is None
-        assert viz.config is None
-
-    def test_visualization_with_config(self):
-        """Visualization with optional config."""
-        viz = Visualization(
-            type="bar_chart",
-            title="Medication Adherence",
-            description="Weekly adherence rates",
-            data_query=DataQuery(),
-            config='{"color": "blue", "showLegend": true}',
-        )
-        assert "blue" in viz.config
-        assert viz.description == "Weekly adherence rates"
-
-    def test_visualization_type_validation(self):
-        """Visualization type must be valid literal."""
-        with pytest.raises(ValidationError) as exc_info:
-            Visualization(
-                type="pie_chart",  # Not a valid type
-                title="Test",
-                data_query=DataQuery(),
-            )
-        assert "type" in str(exc_info.value)
-
-
-class TestDataTable:
-    """Tests for DataTable schema."""
-
-    def test_valid_data_table(self):
-        """DataTable with columns and data query."""
-        table = DataTable(
-            title="Recent Lab Results",
-            columns=[
-                TableColumn(key="date", header="Date", format="date"),
-                TableColumn(key="value", header="Value", format="number"),
-                TableColumn(key="status", header="Status", format="badge"),
+    def test_valid_medications_table(self):
+        """ClinicalTable with medications type and inline rows."""
+        table = ClinicalTable(
+            type="medications",
+            title="Current Medications",
+            rows=[
+                {
+                    "medication": "Lisinopril 10 MG Oral Tablet",
+                    "frequency": "1x daily",
+                    "reason": "Hypertension",
+                    "status": "active",
+                    "authoredOn": "2025-01-15",
+                    "requester": "Dr. Smith",
+                },
             ],
-            data_query=DataQuery(resource_types=["Observation"]),
         )
-        assert table.title == "Recent Lab Results"
-        assert len(table.columns) == 3
-        assert table.columns[0].format == "date"
+        assert table.type == "medications"
+        assert len(table.rows) == 1
+        assert table.rows[0]["medication"] == "Lisinopril 10 MG Oral Tablet"
 
-    def test_data_table_requires_columns(self):
-        """DataTable must have at least one column."""
+    def test_valid_lab_results_table(self):
+        """ClinicalTable with lab_results type including history and panel."""
+        table = ClinicalTable(
+            type="lab_results",
+            title="Recent Lab Results",
+            rows=[
+                {
+                    "test": "Hemoglobin A1c",
+                    "value": 6.8,
+                    "unit": "%",
+                    "rangeLow": 4.0,
+                    "rangeHigh": 5.6,
+                    "interpretation": "H",
+                    "date": "2026-01-25",
+                    "history": [
+                        {"value": 7.4, "date": "2025-08-12"},
+                        {"value": 6.8, "date": "2026-01-25"},
+                    ],
+                    "panel": "Metabolic Panel",
+                },
+            ],
+        )
+        assert table.type == "lab_results"
+        assert table.rows[0]["value"] == 6.8
+        assert table.rows[0]["interpretation"] == "H"
+        assert len(table.rows[0]["history"]) == 2
+
+    def test_all_eight_table_types(self):
+        """All 8 clinical table types are valid."""
+        types = [
+            "medications", "lab_results", "vitals", "conditions",
+            "allergies", "immunizations", "procedures", "encounters",
+        ]
+        for t in types:
+            table = ClinicalTable(type=t, title=f"Test {t}", rows=[])
+            assert table.type == t
+
+    def test_invalid_table_type(self):
+        """ClinicalTable rejects unknown types."""
         with pytest.raises(ValidationError) as exc_info:
-            DataTable(
-                title="Empty Table",
-                columns=[],
-                data_query=DataQuery(),
-            )
-        assert "columns" in str(exc_info.value)
-
-
-class TestAction:
-    """Tests for Action schema."""
-
-    def test_valid_action(self):
-        """Action with required fields."""
-        action = Action(
-            label="Order Lab",
-            type="order",
-        )
-        assert action.label == "Order Lab"
-        assert action.type == "order"
-        assert action.description is None
-        assert action.payload is None
-
-    def test_action_with_payload(self):
-        """Action with optional payload."""
-        action = Action(
-            label="Schedule Follow-up",
-            type="refer",
-            description="Schedule with endocrinology",
-            payload='{"specialty": "endocrinology", "urgency": "routine"}',
-        )
-        assert "endocrinology" in action.payload
-
-    def test_action_type_validation(self):
-        """Action type must be valid literal."""
-        with pytest.raises(ValidationError) as exc_info:
-            Action(label="Test", type="invalid_type")
+            ClinicalTable(type="diagnosis", title="Test", rows=[])
         assert "type" in str(exc_info.value)
+
+    def test_title_max_length(self):
+        """ClinicalTable title respects max_length."""
+        with pytest.raises(ValidationError):
+            ClinicalTable(type="medications", title="x" * 201, rows=[])
+
+    def test_empty_rows_allowed(self):
+        """ClinicalTable with empty rows is valid."""
+        table = ClinicalTable(type="conditions", title="Conditions", rows=[])
+        assert len(table.rows) == 0
+
+
+class TestClinicalVisualization:
+    """Tests for ClinicalVisualization schema."""
+
+    def test_valid_trend_chart(self):
+        """ClinicalVisualization with trend_chart type and series."""
+        viz = ClinicalVisualization(
+            type="trend_chart",
+            title="HbA1c Trend",
+            subtitle="12-month glycemic control",
+            current_value="7.2%",
+            trend_summary="↓ 21% · Above Target",
+            trend_status="warning",
+            series=[
+                TrendSeries(
+                    name="HbA1c",
+                    unit="%",
+                    data_points=[
+                        TrendPoint(date="Jan 24", value=9.1),
+                        TrendPoint(date="Jan 25", value=7.2),
+                    ],
+                )
+            ],
+            reference_lines=[ReferenceLine(value=7.0, label="Target <7%")],
+            range_bands=[
+                RangeBand(y1=4.0, y2=5.7, severity="normal", label="Normal"),
+                RangeBand(y1=5.7, y2=6.5, severity="warning", label="Pre-diabetes"),
+                RangeBand(y1=6.5, y2=14.0, severity="critical", label="Diabetes"),
+            ],
+        )
+        assert viz.type == "trend_chart"
+        assert len(viz.series) == 1
+        assert len(viz.reference_lines) == 1
+        assert len(viz.range_bands) == 3
+        assert viz.trend_status == "warning"
+
+    def test_trend_chart_with_medications(self):
+        """Trend chart with medication timeline aligned below."""
+        viz = ClinicalVisualization(
+            type="trend_chart",
+            title="Blood Pressure",
+            series=[
+                TrendSeries(name="Systolic", unit="mmHg", data_points=[
+                    TrendPoint(date="Sep", value=152),
+                    TrendPoint(date="Jan", value=122),
+                ]),
+            ],
+            medications=[
+                MedTimelineRow(drug="Lisinopril", segments=[
+                    MedTimelineSegment(label="10mg", flex=3, active=True),
+                    MedTimelineSegment(label="20mg", flex=4, active=True),
+                ]),
+            ],
+        )
+        assert len(viz.medications) == 1
+        assert viz.medications[0].drug == "Lisinopril"
+
+    def test_valid_encounter_timeline(self):
+        """ClinicalVisualization with encounter_timeline type."""
+        viz = ClinicalVisualization(
+            type="encounter_timeline",
+            title="Encounter History",
+            events=[
+                TimelineEvent(
+                    date="2026-01-25",
+                    title="General examination",
+                    detail="Routine visit",
+                    category="AMB",
+                ),
+                TimelineEvent(
+                    date="2025-07-14",
+                    title="Emergency room admission",
+                    category="EMER",
+                ),
+            ],
+        )
+        assert viz.type == "encounter_timeline"
+        assert len(viz.events) == 2
+        assert viz.events[0].category == "AMB"
+
+    def test_invalid_visualization_type(self):
+        """ClinicalVisualization rejects unknown types."""
+        with pytest.raises(ValidationError) as exc_info:
+            ClinicalVisualization(type="pie_chart", title="Test")
+        assert "type" in str(exc_info.value)
+
+    def test_trend_status_validation(self):
+        """Trend status must be a valid literal."""
+        with pytest.raises(ValidationError):
+            ClinicalVisualization(
+                type="trend_chart",
+                title="Test",
+                trend_status="invalid",
+            )
+
+    def test_range_band_severity_validation(self):
+        """RangeBand severity must be normal/warning/critical."""
+        with pytest.raises(ValidationError):
+            RangeBand(y1=0, y2=10, severity="mild")
+
+    def test_minimal_trend_chart(self):
+        """Trend chart with only required fields."""
+        viz = ClinicalVisualization(type="trend_chart", title="Weight Trend")
+        assert viz.subtitle is None
+        assert viz.series is None
+        assert viz.range_bands is None
+
+    def test_trend_point_with_label(self):
+        """TrendPoint with optional annotation label."""
+        point = TrendPoint(date="Sep 15", value=148, label="Started Lisinopril 10mg")
+        assert point.label == "Started Lisinopril 10mg"
 
 
 class TestFollowUp:
@@ -296,7 +353,6 @@ class TestAgentResponse:
         assert response.insights is None
         assert response.visualizations is None
         assert response.tables is None
-        assert response.actions is None
         assert response.follow_ups is None
         assert response.needs_deeper_search is False
 
@@ -322,29 +378,37 @@ class TestAgentResponse:
                     content="HbA1c has improved.",
                 )
             ],
-            visualizations=[
-                Visualization(
-                    type="line_chart",
-                    title="HbA1c Trend",
-                    data_query=DataQuery(resource_types=["Observation"]),
-                )
-            ],
             tables=[
-                DataTable(
-                    title="Recent Labs",
-                    columns=[TableColumn(key="test", header="Test")],
-                    data_query=DataQuery(),
+                ClinicalTable(
+                    type="medications",
+                    title="Medications",
+                    rows=[{"medication": "Metformin", "status": "active"}],
                 )
             ],
-            actions=[Action(label="Order Follow-up", type="order")],
+            visualizations=[
+                ClinicalVisualization(
+                    type="trend_chart",
+                    title="HbA1c Trend",
+                    series=[TrendSeries(
+                        name="HbA1c",
+                        unit="%",
+                        data_points=[TrendPoint(date="Jan", value=7.2)],
+                    )],
+                )
+            ],
             follow_ups=[FollowUp(question="What about blood pressure?")],
         )
         assert response.thinking is not None
         assert len(response.insights) == 1
-        assert len(response.visualizations) == 1
         assert len(response.tables) == 1
-        assert len(response.actions) == 1
+        assert response.tables[0].type == "medications"
+        assert len(response.visualizations) == 1
+        assert response.visualizations[0].type == "trend_chart"
         assert len(response.follow_ups) == 1
+
+    def test_no_actions_field(self):
+        """AgentResponse does not have an actions field."""
+        assert "actions" not in AgentResponse.model_fields
 
     def test_empty_narrative_rejected(self):
         """AgentResponse requires non-empty narrative."""
@@ -375,3 +439,55 @@ class TestAgentResponse:
         response = AgentResponse.model_validate(json_data)
         assert response.narrative == "Parsed response"
         assert response.insights[0].type == "warning"
+
+    def test_response_with_clinical_table_from_json(self):
+        """AgentResponse with clinical table can be parsed from JSON."""
+        json_data = {
+            "narrative": "Here are the medications.",
+            "tables": [
+                {
+                    "type": "medications",
+                    "title": "Current Medications",
+                    "rows": [
+                        {
+                            "medication": "Lisinopril 10 MG",
+                            "status": "active",
+                            "frequency": "1x daily",
+                        }
+                    ],
+                }
+            ],
+        }
+        response = AgentResponse.model_validate(json_data)
+        assert len(response.tables) == 1
+        assert response.tables[0].type == "medications"
+        assert response.tables[0].rows[0]["medication"] == "Lisinopril 10 MG"
+
+    def test_response_with_visualization_from_json(self):
+        """AgentResponse with visualization can be parsed from JSON."""
+        json_data = {
+            "narrative": "Here is the trend.",
+            "visualizations": [
+                {
+                    "type": "trend_chart",
+                    "title": "HbA1c Trend",
+                    "current_value": "7.2%",
+                    "trend_summary": "↓ 21%",
+                    "trend_status": "warning",
+                    "series": [
+                        {
+                            "name": "HbA1c",
+                            "unit": "%",
+                            "data_points": [
+                                {"date": "Jan", "value": 9.1},
+                                {"date": "Jul", "value": 7.2},
+                            ],
+                        }
+                    ],
+                }
+            ],
+        }
+        response = AgentResponse.model_validate(json_data)
+        assert len(response.visualizations) == 1
+        assert response.visualizations[0].current_value == "7.2%"
+        assert len(response.visualizations[0].series[0].data_points) == 2

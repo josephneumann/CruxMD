@@ -8,6 +8,8 @@ import { Tooltip, TooltipTrigger, TooltipContent } from "@/components/ui/tooltip
 import type { DisplayMessage } from "@/hooks";
 import { ToolActivity } from "./ToolActivity";
 import { InsightCard } from "@/components/clinical/InsightCard";
+import { ClinicalTable } from "@/components/clinical/ClinicalTable";
+import { ClinicalVisualization } from "@/components/clinical/ClinicalVisualization";
 import { FollowUpSuggestions } from "./FollowUpSuggestions";
 import { STREAM_CHARS_PER_TICK, STREAM_INTERVAL_MS } from "@/lib/constants/chat";
 
@@ -172,6 +174,14 @@ function AgentMessageInner({
   const { visibleText, done } = useTypewriter(narrativeContent, animate, onContentGrow);
   const showExtras = !animate || done;
 
+  // Tables and visualizations
+  const tables = agentResponse?.tables ?? [];
+  const visualizations = agentResponse?.visualizations ?? [];
+  const structuredItems = [...tables.map((t) => ({ kind: "table" as const, data: t })), ...visualizations.map((v) => ({ kind: "viz" as const, data: v }))];
+  const [visibleStructuredCount, setVisibleStructuredCount] = useState(
+    animate ? 0 : structuredItems.length,
+  );
+
   // Sort insight cards by severity (critical first)
   const insights = [...(agentResponse?.insights ?? [])].sort(
     (a, b) => (INSIGHT_SEVERITY_ORDER[a.type] ?? 9) - (INSIGHT_SEVERITY_ORDER[b.type] ?? 9),
@@ -180,23 +190,39 @@ function AgentMessageInner({
     animate ? 0 : insights.length,
   );
 
+  // Stagger reveal: structured items first, then insights
   useEffect(() => {
-    if (!animate || !showExtras || insights.length === 0) {
-      if (showExtras) setVisibleInsightCount(insights.length);
+    if (!animate || !showExtras) {
+      if (showExtras) {
+        setVisibleStructuredCount(structuredItems.length);
+        setVisibleInsightCount(insights.length);
+      }
       return;
     }
 
+    setVisibleStructuredCount(0);
     setVisibleInsightCount(0);
-    let i = 0;
-    const timer = setInterval(() => {
-      i++;
-      setVisibleInsightCount(i);
+
+    let si = 0;
+    const structuredTimer = setInterval(() => {
+      si++;
+      setVisibleStructuredCount(si);
       onContentGrow?.();
-      if (i >= insights.length) clearInterval(timer);
+      if (si >= structuredItems.length) {
+        clearInterval(structuredTimer);
+        // Start insight stagger after structured items
+        let ii = 0;
+        const insightTimer = setInterval(() => {
+          ii++;
+          setVisibleInsightCount(ii);
+          onContentGrow?.();
+          if (ii >= insights.length) clearInterval(insightTimer);
+        }, INSIGHT_STAGGER_MS);
+      }
     }, INSIGHT_STAGGER_MS);
 
-    return () => clearInterval(timer);
-  }, [showExtras, animate, insights.length, onContentGrow]);
+    return () => clearInterval(structuredTimer);
+  }, [showExtras, animate, structuredItems.length, insights.length, onContentGrow]);
 
   const durationLabel = reasoningDurationMs
     ? `Thought for ${formatDuration(reasoningDurationMs)}`
@@ -248,6 +274,24 @@ function AgentMessageInner({
           <ReactMarkdown remarkPlugins={[remarkGfm]}>
             {visibleText}
           </ReactMarkdown>
+        </div>
+      )}
+
+      {/* Tables & Visualizations — staggered reveal */}
+      {structuredItems.length > 0 && visibleStructuredCount > 0 && (
+        <div className="space-y-3 mt-4">
+          {structuredItems.slice(0, visibleStructuredCount).map((item, index) => (
+            <div
+              key={index}
+              className={animate ? "animate-in fade-in slide-in-from-bottom-2 duration-300" : ""}
+            >
+              {item.kind === "table" ? (
+                <ClinicalTable table={item.data} />
+              ) : (
+                <ClinicalVisualization viz={item.data} />
+              )}
+            </div>
+          ))}
         </div>
       )}
 
