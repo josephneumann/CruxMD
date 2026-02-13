@@ -14,6 +14,8 @@ from unittest.mock import AsyncMock, MagicMock, patch
 
 import pytest
 
+from dataclasses import replace
+
 from app.services.query_classifier import (
     DEEP_PROFILE,
     LIGHTNING_PROFILE,
@@ -24,6 +26,13 @@ from app.services.query_classifier import (
     _classify_layer1,
     classify_query,
 )
+
+
+def _is_quick_lookup(profile: QueryProfile | None) -> bool:
+    """Check if profile matches QUICK_LOOKUP_PROFILE (ignoring table_hint)."""
+    if profile is None:
+        return False
+    return replace(profile, table_hint=None) == QUICK_LOOKUP_PROFILE
 
 
 # =============================================================================
@@ -67,7 +76,7 @@ class TestLayer1CategoryLookups:
         "Are there any allergies?",
     ])
     def test_path_a_entity_plus_prefix(self, msg: str):
-        assert _classify_layer1(msg) == QUICK_LOOKUP_PROFILE
+        assert _is_quick_lookup(_classify_layer1(msg))
 
     # Path B: bare entity shortcut (<=30 chars) → QUICK_LOOKUP (tables, no reasoning/tools)
     @pytest.mark.parametrize("msg", [
@@ -84,7 +93,7 @@ class TestLayer1CategoryLookups:
         "hr",
     ])
     def test_path_b_bare_entity(self, msg: str):
-        assert _classify_layer1(msg) == QUICK_LOOKUP_PROFILE
+        assert _is_quick_lookup(_classify_layer1(msg))
 
 
 # =============================================================================
@@ -325,9 +334,12 @@ class TestLayer1HasHistoryIgnored:
     @pytest.mark.asyncio
     async def test_has_history_no_longer_upgrades(self, msg: str, expected: QueryProfile):
         """Classification is stable regardless of has_history."""
-        assert _classify_layer1(msg) == expected
-        assert await classify_query(msg, has_history=True) == expected
-        assert await classify_query(msg, has_history=False) == expected
+        # Normalize table_hint since auto-detect sets it for QUICK_LOOKUP profiles
+        assert replace(_classify_layer1(msg), table_hint=None) == replace(expected, table_hint=None)
+        result_with = await classify_query(msg, has_history=True)
+        assert replace(result_with, table_hint=None) == replace(expected, table_hint=None)
+        result_without = await classify_query(msg, has_history=False)
+        assert replace(result_without, table_hint=None) == replace(expected, table_hint=None)
 
 
 # =============================================================================
@@ -349,8 +361,8 @@ class TestLayer1EdgeCases:
         assert _classify_layer1(msg) == DEEP_PROFILE
 
     def test_case_insensitivity(self):
-        assert _classify_layer1("WHAT MEDICATIONS?") == QUICK_LOOKUP_PROFILE
-        assert _classify_layer1("What Medications?") == QUICK_LOOKUP_PROFILE
+        assert _is_quick_lookup(_classify_layer1("WHAT MEDICATIONS?"))
+        assert _is_quick_lookup(_classify_layer1("What Medications?"))
 
     def test_reasoning_keyword_overrides_entity(self):
         assert _classify_layer1("Why is the patient on these medications?") == DEEP_PROFILE
@@ -363,7 +375,7 @@ class TestLayer1EdgeCases:
         assert _classify_layer1("Any contraindications for this drug?") == DEEP_PROFILE
 
     def test_how_many_is_quick_lookup(self):
-        assert _classify_layer1("How many medications?") == QUICK_LOOKUP_PROFILE
+        assert _is_quick_lookup(_classify_layer1("How many medications?"))
 
     def test_how_should_is_deep(self):
         assert _classify_layer1("How should we manage the diabetes?") == DEEP_PROFILE
@@ -377,14 +389,14 @@ class TestLayer1EdgeCases:
 
     def test_what_about_is_quick_lookup(self):
         # "What about the labs?" -> "what" prefix + entity -> QUICK_LOOKUP (tables)
-        assert _classify_layer1("What about the labs?") == QUICK_LOOKUP_PROFILE
+        assert _is_quick_lookup(_classify_layer1("What about the labs?"))
 
     def test_clinical_shorthand_bp(self):
-        assert _classify_layer1("bp") == QUICK_LOOKUP_PROFILE
-        assert _classify_layer1("bp?") == QUICK_LOOKUP_PROFILE
+        assert _is_quick_lookup(_classify_layer1("bp"))
+        assert _is_quick_lookup(_classify_layer1("bp?"))
 
     def test_clinical_shorthand_hr(self):
-        assert _classify_layer1("hr") == QUICK_LOOKUP_PROFILE
+        assert _is_quick_lookup(_classify_layer1("hr"))
 
     def test_whether_analytical_phrase(self):
         assert _classify_layer1("Show labs and whether the A1c improved") == DEEP_PROFILE
@@ -524,7 +536,7 @@ class TestLayer2LLMFallback:
             "app.services.query_classifier._classify_layer2"
         ) as mock_layer2:
             result = await classify_query("medications")
-            assert result == QUICK_LOOKUP_PROFILE
+            assert _is_quick_lookup(result)
             mock_layer2.assert_not_called()
 
     @pytest.mark.asyncio
@@ -572,7 +584,8 @@ class TestClassifyQueryAsync:
     async def test_layer1_resolved_queries(self, msg: str, expected: QueryProfile):
         """Queries that Layer 1 resolves deterministically."""
         result = await classify_query(msg)
-        assert result == expected
+        # Normalize table_hint since auto-detect sets it for QUICK_LOOKUP profiles
+        assert replace(result, table_hint=None) == replace(expected, table_hint=None)
 
     @pytest.mark.asyncio
     async def test_has_history_does_not_upgrade_deep(self):

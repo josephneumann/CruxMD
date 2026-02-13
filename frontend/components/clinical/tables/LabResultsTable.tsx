@@ -11,6 +11,8 @@ import {
   sortRows,
   RangeBar,
   SparklineWithDelta,
+  useResponsiveColumns,
+  type ColumnPriority,
 } from "./table-primitives";
 
 type LabSortKey = "test" | "value" | "date";
@@ -46,15 +48,25 @@ function labAccessor(row: LabRow, key: string): string | number {
   return String(row[key as keyof LabRow] ?? "");
 }
 
-function LabResultRow({ row, indented }: { row: LabRow; indented?: boolean }) {
+function LabResultRow({
+  row,
+  indented,
+  maxPriority,
+}: {
+  row: LabRow;
+  indented?: boolean;
+  maxPriority: ColumnPriority;
+}) {
   const isCritical = row.interpretation === "HH" || row.interpretation === "LL";
   const isAbnormal = row.interpretation !== "N";
   const textSize = indented ? "text-[13px]" : "";
   return (
     <tr className={isCritical ? "bg-[#C24E42]/5" : ""}>
+      {/* P1: Test name */}
       <td className={`px-3 py-2.5 font-medium ${textSize} ${indented ? "pl-8" : ""}`}>
         {row.test}
       </td>
+      {/* P1: Value + unit + interpretation */}
       <td className={`px-3 py-2.5 ${textSize}`}>
         <span
           className={`tabular-nums ${isCritical ? "text-[#C24E42] font-medium" : isAbnormal ? "text-[#D9A036] font-medium" : ""}`}
@@ -62,31 +74,44 @@ function LabResultRow({ row, indented }: { row: LabRow; indented?: boolean }) {
           {row.value} <span className="text-muted-foreground font-normal">{row.unit}</span>
         </span>
       </td>
-      <td className="px-3 py-2.5">
-        <RangeBar
-          value={row.value}
-          low={row.rangeLow}
-          high={row.rangeHigh}
-          interpretation={row.interpretation}
-        />
-      </td>
-      <td className="px-3 py-2.5">
-        {row.history.length > 0 && (
-          <SparklineWithDelta
-            data={row.history}
+      {/* P2: Reference range bar */}
+      {maxPriority >= 2 && (
+        <td className="px-3 py-2.5">
+          <RangeBar
+            value={row.value}
+            low={row.rangeLow}
+            high={row.rangeHigh}
             interpretation={row.interpretation}
-            unit={row.unit}
           />
-        )}
-      </td>
-      <td className="px-3 py-2.5 text-muted-foreground">{row.date}</td>
+        </td>
+      )}
+      {/* P3: Trend sparkline */}
+      {maxPriority >= 3 && (
+        <td className="px-3 py-2.5">
+          {row.history.length > 0 && (
+            <SparklineWithDelta
+              data={row.history}
+              interpretation={row.interpretation}
+              unit={row.unit}
+            />
+          )}
+        </td>
+      )}
+      {/* P3: Date */}
+      {maxPriority >= 3 && (
+        <td className="px-3 py-2.5 text-muted-foreground">{row.date}</td>
+      )}
     </tr>
   );
 }
 
 export function LabResultsTable({ rows }: { rows: Record<string, unknown>[] }) {
   const { sortKey, sortDir, toggle } = useSortState<LabSortKey>();
+  const { containerRef, maxPriority } = useResponsiveColumns();
   const labRows = rows.map(asLabRow);
+
+  // Count visible columns for colSpan
+  const colCount = 2 + (maxPriority >= 2 ? 1 : 0) + (maxPriority >= 3 ? 2 : 0);
 
   // Group into panels and standalone
   const panelMap = new Map<string, LabRow[]>();
@@ -125,7 +150,7 @@ export function LabResultsTable({ rows }: { rows: Record<string, unknown>[] }) {
   };
 
   return (
-    <CardContent className="p-0 overflow-x-auto">
+    <CardContent className="p-0 overflow-x-auto" ref={containerRef}>
       <table className="w-full">
         <thead>
           <tr className="border-b bg-muted/30">
@@ -141,20 +166,22 @@ export function LabResultsTable({ rows }: { rows: Record<string, unknown>[] }) {
               direction={sortKey === "value" ? sortDir : null}
               onClick={() => toggle("value")}
             />
-            <th className={TH}>Reference Range</th>
-            <th className={TH}>Trend</th>
-            <SortHeader
-              label="Date"
-              active={sortKey === "date"}
-              direction={sortKey === "date" ? sortDir : null}
-              onClick={() => toggle("date")}
-            />
+            {maxPriority >= 2 && <th className={TH}>Reference Range</th>}
+            {maxPriority >= 3 && <th className={TH}>Trend</th>}
+            {maxPriority >= 3 && (
+              <SortHeader
+                label="Date"
+                active={sortKey === "date"}
+                direction={sortKey === "date" ? sortDir : null}
+                onClick={() => toggle("date")}
+              />
+            )}
           </tr>
         </thead>
         <tbody className="divide-y">
           {/* Standalone results */}
           {sortedStandalone.map((row) => (
-            <LabResultRow key={row.test} row={row} />
+            <LabResultRow key={row.test} row={row} maxPriority={maxPriority} />
           ))}
           {/* Panel groups */}
           {sortedPanels.map((panel) => {
@@ -166,7 +193,7 @@ export function LabResultsTable({ rows }: { rows: Record<string, unknown>[] }) {
                 className="bg-muted/20 cursor-pointer hover:bg-muted/40"
                 onClick={() => togglePanel(panel.name)}
               >
-                <td colSpan={5} className="px-3 py-2">
+                <td colSpan={colCount} className="px-3 py-2">
                   <div className="flex items-center justify-between">
                     <span>
                       <span className="font-medium">{panel.name}</span>{" "}
@@ -184,6 +211,7 @@ export function LabResultsTable({ rows }: { rows: Record<string, unknown>[] }) {
                       key={`${panel.name}-${row.test}`}
                       row={row}
                       indented
+                      maxPriority={maxPriority}
                     />
                   ))
                 : []),

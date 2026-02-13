@@ -33,6 +33,49 @@ _SEMANTIC_SIMILARITY_THRESHOLD = 0.4
 # Tool Schemas (OpenAI function calling format)
 # =============================================================================
 
+SHOW_CLINICAL_TABLE_SCHEMA: dict[str, Any] = {
+    "type": "function",
+    "name": "show_clinical_table",
+    "description": (
+        "Display a clinical data table to the user. Use this when your response "
+        "would benefit from showing structured data (medications list, lab results, "
+        "conditions, etc.). The table is generated deterministically from the patient "
+        "record — you do NOT need to populate the data."
+    ),
+    "parameters": {
+        "type": "object",
+        "properties": {
+            "table_type": {
+                "type": "string",
+                "enum": [
+                    "medications", "lab_results", "vitals", "conditions",
+                    "allergies", "immunizations", "procedures", "encounters",
+                ],
+                "description": "Type of clinical data table to display.",
+            },
+            "status": {
+                "type": ["string", "null"],
+                "description": (
+                    "Filter by status (e.g., 'active', 'completed'). "
+                    "Applies to medications and conditions. Optional."
+                ),
+            },
+            "codes": {
+                "type": ["array", "null"],
+                "items": {"type": "string"},
+                "description": "LOINC codes for lab/vital filtering. Optional.",
+            },
+            "panel": {
+                "type": ["string", "null"],
+                "description": "Panel name for lab grouping (e.g., 'CBC', 'BMP'). Optional.",
+            },
+        },
+        "required": ["table_type", "status", "codes", "panel"],
+        "additionalProperties": False,
+    },
+    "strict": True,
+}
+
 TOOL_SCHEMAS: list[dict[str, Any]] = [
     {
         "type": "function",
@@ -181,6 +224,7 @@ TOOL_SCHEMAS: list[dict[str, Any]] = [
         },
         "strict": True,
     },
+    SHOW_CLINICAL_TABLE_SCHEMA,
 ]
 
 
@@ -190,6 +234,7 @@ async def execute_tool(
     patient_id: str,
     graph: KnowledgeGraph,
     db: AsyncSession,
+    generated_tables: list[dict[str, Any]] | None = None,
 ) -> str:
     """Execute a tool by name with JSON-encoded arguments.
 
@@ -199,11 +244,20 @@ async def execute_tool(
         patient_id: Current patient ID (injected, not from LLM).
         graph: KnowledgeGraph instance.
         db: AsyncSession for Postgres queries.
+        generated_tables: Optional side-channel list. When show_clinical_table
+            is called, the generated table dict is appended here so it can
+            be attached to the final API response.
 
     Returns:
         Tool result as a JSON string.
     """
     args = json.loads(arguments)
+
+    # Handle show_clinical_table specially — generates table via side channel
+    if name == "show_clinical_table":
+        return await _execute_show_clinical_table(
+            args, patient_id, db, generated_tables,
+        )
 
     handlers = {
         "query_patient_data": lambda: query_patient_data(
@@ -242,6 +296,47 @@ async def execute_tool(
     if handler is None:
         return json.dumps({"error": f"Unknown tool: {name}"})
     return await handler()
+
+
+async def _execute_show_clinical_table(
+    args: dict[str, Any],
+    patient_id: str,
+    db: AsyncSession,
+    generated_tables: list[dict[str, Any]] | None,
+) -> str:
+    """Execute show_clinical_table: build table and store in side channel."""
+    import uuid
+    from app.services.table_builder import build_table_for_type
+
+    table_type = args.get("table_type", "")
+    try:
+        table = await build_table_for_type(
+            table_type=table_type,
+            patient_id=uuid.UUID(patient_id),
+            db=db,
+            status=args.get("status"),
+            codes=args.get("codes"),
+            panel=args.get("panel"),
+        )
+    except Exception as e:
+        logger.error("show_clinical_table failed: %s", e)
+        return json.dumps({"error": f"Failed to generate {table_type} table: {e}"})
+
+    if table is None:
+        return json.dumps({
+            "displayed": False,
+            "message": f"No {table_type} data found for this patient.",
+        })
+
+    # Store in side channel for attachment to final response
+    if generated_tables is not None:
+        generated_tables.append(table)
+
+    row_count = len(table.get("rows", []))
+    return json.dumps({
+        "displayed": True,
+        "message": f"Table displayed: {table['title']} ({row_count} rows)",
+    })
 
 
 # =============================================================================

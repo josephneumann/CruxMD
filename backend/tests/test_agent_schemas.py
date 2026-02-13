@@ -5,6 +5,7 @@ from pydantic import ValidationError
 
 from app.schemas.agent import (
     AgentResponse,
+    ChatAgentResponse,
     ClinicalTable,
     ClinicalVisualization,
     FollowUp,
@@ -61,8 +62,7 @@ class TestClinicalTable:
     """Tests for ClinicalTable schema."""
 
     def test_valid_medications_table(self):
-        """ClinicalTable with medications type and JSON-encoded rows."""
-        import json
+        """ClinicalTable with medications type and native list rows."""
         rows_data = [
             {
                 "medication": "Lisinopril 10 MG Oral Tablet",
@@ -76,16 +76,14 @@ class TestClinicalTable:
         table = ClinicalTable(
             type="medications",
             title="Current Medications",
-            rows=json.dumps(rows_data),
+            rows=rows_data,
         )
         assert table.type == "medications"
-        parsed = json.loads(table.rows)
-        assert len(parsed) == 1
-        assert parsed[0]["medication"] == "Lisinopril 10 MG Oral Tablet"
+        assert len(table.rows) == 1
+        assert table.rows[0]["medication"] == "Lisinopril 10 MG Oral Tablet"
 
     def test_valid_lab_results_table(self):
         """ClinicalTable with lab_results type including history and panel."""
-        import json
         rows_data = [
             {
                 "test": "Hemoglobin A1c",
@@ -105,13 +103,12 @@ class TestClinicalTable:
         table = ClinicalTable(
             type="lab_results",
             title="Recent Lab Results",
-            rows=json.dumps(rows_data),
+            rows=rows_data,
         )
         assert table.type == "lab_results"
-        parsed = json.loads(table.rows)
-        assert parsed[0]["value"] == 6.8
-        assert parsed[0]["interpretation"] == "H"
-        assert len(parsed[0]["history"]) == 2
+        assert table.rows[0]["value"] == 6.8
+        assert table.rows[0]["interpretation"] == "H"
+        assert len(table.rows[0]["history"]) == 2
 
     def test_all_eight_table_types(self):
         """All 8 clinical table types are valid."""
@@ -120,24 +117,24 @@ class TestClinicalTable:
             "allergies", "immunizations", "procedures", "encounters",
         ]
         for t in types:
-            table = ClinicalTable(type=t, title=f"Test {t}", rows="[]")
+            table = ClinicalTable(type=t, title=f"Test {t}", rows=[])
             assert table.type == t
 
     def test_invalid_table_type(self):
         """ClinicalTable rejects unknown types."""
         with pytest.raises(ValidationError) as exc_info:
-            ClinicalTable(type="diagnosis", title="Test", rows="[]")
+            ClinicalTable(type="diagnosis", title="Test", rows=[])
         assert "type" in str(exc_info.value)
 
     def test_title_max_length(self):
         """ClinicalTable title respects max_length."""
         with pytest.raises(ValidationError):
-            ClinicalTable(type="medications", title="x" * 201, rows="[]")
+            ClinicalTable(type="medications", title="x" * 201, rows=[])
 
     def test_empty_rows_allowed(self):
-        """ClinicalTable with empty JSON array string is valid."""
-        table = ClinicalTable(type="conditions", title="Conditions", rows="[]")
-        assert table.rows == "[]"
+        """ClinicalTable with empty list is valid."""
+        table = ClinicalTable(type="conditions", title="Conditions", rows=[])
+        assert table.rows == []
 
 
 class TestClinicalVisualization:
@@ -358,7 +355,6 @@ class TestAgentResponse:
         assert response.thinking is None
         assert response.insights is None
         assert response.visualizations is None
-        assert response.tables is None
         assert response.follow_ups is None
         assert response.needs_deeper_search is False
 
@@ -373,7 +369,7 @@ class TestAgentResponse:
         assert response.needs_deeper_search is True
 
     def test_full_response(self):
-        """AgentResponse with all optional fields."""
+        """AgentResponse with all optional fields (tables removed — now deterministic)."""
         response = AgentResponse(
             thinking="Let me analyze the patient's data...",
             narrative="## Summary\n\nThe patient has well-controlled diabetes.",
@@ -382,13 +378,6 @@ class TestAgentResponse:
                     type="positive",
                     title="Good Control",
                     content="HbA1c has improved.",
-                )
-            ],
-            tables=[
-                ClinicalTable(
-                    type="medications",
-                    title="Medications",
-                    rows='[{"medication": "Metformin", "status": "active"}]',
                 )
             ],
             visualizations=[
@@ -406,15 +395,14 @@ class TestAgentResponse:
         )
         assert response.thinking is not None
         assert len(response.insights) == 1
-        assert len(response.tables) == 1
-        assert response.tables[0].type == "medications"
         assert len(response.visualizations) == 1
         assert response.visualizations[0].type == "trend_chart"
         assert len(response.follow_ups) == 1
 
-    def test_no_actions_field(self):
-        """AgentResponse does not have an actions field."""
+    def test_no_actions_or_tables_field(self):
+        """AgentResponse does not have actions or tables fields (tables moved to ChatAgentResponse)."""
         assert "actions" not in AgentResponse.model_fields
+        assert "tables" not in AgentResponse.model_fields
 
     def test_empty_narrative_rejected(self):
         """AgentResponse requires non-empty narrative."""
@@ -446,30 +434,28 @@ class TestAgentResponse:
         assert response.narrative == "Parsed response"
         assert response.insights[0].type == "warning"
 
-    def test_response_with_clinical_table_from_json(self):
-        """AgentResponse with clinical table can be parsed from JSON."""
-        import json
+    def test_chat_agent_response_with_tables(self):
+        """ChatAgentResponse extends AgentResponse with deterministic tables."""
         json_data = {
             "narrative": "Here are the medications.",
             "tables": [
                 {
                     "type": "medications",
                     "title": "Current Medications",
-                    "rows": json.dumps([
+                    "rows": [
                         {
                             "medication": "Lisinopril 10 MG",
                             "status": "active",
                             "frequency": "1x daily",
                         }
-                    ]),
+                    ],
                 }
             ],
         }
-        response = AgentResponse.model_validate(json_data)
+        response = ChatAgentResponse.model_validate(json_data)
         assert len(response.tables) == 1
         assert response.tables[0].type == "medications"
-        parsed = json.loads(response.tables[0].rows)
-        assert parsed[0]["medication"] == "Lisinopril 10 MG"
+        assert response.tables[0].rows[0]["medication"] == "Lisinopril 10 MG"
 
     def test_response_with_visualization_from_json(self):
         """AgentResponse with visualization can be parsed from JSON."""

@@ -19,7 +19,7 @@ import asyncio
 import json
 import logging
 import re
-from dataclasses import dataclass
+from dataclasses import dataclass, replace
 from enum import Enum
 from typing import Literal
 
@@ -46,6 +46,7 @@ class QueryProfile:
     max_output_tokens: int
     system_prompt_mode: Literal["lightning", "quick", "deep"]
     response_schema: str
+    table_hint: str | None = None
 
 
 LIGHTNING_PROFILE = QueryProfile(
@@ -207,6 +208,39 @@ _TEMPORAL_MODIFIERS = (
 # Word boundary pattern for matching chart entities
 _WORD_BOUNDARY = re.compile(r"\b\w+\b")
 
+# Map chart entity keywords to table types for auto-attach
+_ENTITY_TO_TABLE: dict[str, str] = {
+    "medication": "medications", "medications": "medications", "meds": "medications",
+    "medicine": "medications", "medicines": "medications",
+    "drug": "medications", "drugs": "medications",
+    "prescription": "medications", "prescriptions": "medications",
+    "lab": "lab_results", "labs": "lab_results", "laboratory": "lab_results",
+    "test": "lab_results", "tests": "lab_results",
+    "result": "lab_results", "results": "lab_results",
+    "vital": "vitals", "vitals": "vitals", "bp": "vitals", "hr": "vitals",
+    "condition": "conditions", "conditions": "conditions",
+    "diagnosis": "conditions", "diagnoses": "conditions",
+    "problem": "conditions", "problems": "conditions",
+    "allergy": "allergies", "allergies": "allergies", "allergic": "allergies",
+    "immunization": "immunizations", "immunizations": "immunizations",
+    "vaccine": "immunizations", "vaccines": "immunizations",
+    "vaccination": "immunizations", "vaccinations": "immunizations",
+    "encounter": "encounters", "encounters": "encounters",
+    "visit": "encounters", "visits": "encounters",
+    "appointment": "encounters", "appointments": "encounters",
+    "procedure": "procedures", "procedures": "procedures",
+    "surgery": "procedures", "surgeries": "procedures",
+}
+
+# Multi-word entity to table type mapping
+_BIGRAM_TO_TABLE: dict[str, str] = {
+    "blood pressure": "vitals", "heart rate": "vitals",
+    "vital signs": "vitals",
+    "blood work": "lab_results", "lab results": "lab_results",
+    "test results": "lab_results",
+    "care plan": "conditions", "care plans": "conditions",
+}
+
 
 # ── Helper predicates ────────────────────────────────────────────────────────
 
@@ -301,6 +335,20 @@ def _has_non_clinical_short(words: set[str]) -> bool:
     return words <= _NON_CLINICAL_SHORTS
 
 
+def _resolve_table_hint(msg: str, words: set[str]) -> str | None:
+    """Resolve a table type hint from the matched chart entities in the message."""
+    # Check bigrams first (more specific)
+    for bigram, table_type in _BIGRAM_TO_TABLE.items():
+        if bigram in msg:
+            return table_type
+    # Check single-word entities
+    for word in words:
+        table_type = _ENTITY_TO_TABLE.get(word)
+        if table_type:
+            return table_type
+    return None
+
+
 # ── Layer 1: deterministic classification ────────────────────────────────────
 
 def _classify_layer1(message: str) -> QueryProfile | None:
@@ -357,7 +405,8 @@ def _classify_layer1(message: str) -> QueryProfile | None:
     # 6. Category data lookups → QUICK_LOOKUP (structured tables, no reasoning/tools)
     # 6a. Chart entity + lookup prefix → table rendering, no reasoning needed
     if _has_chart_entity(msg, words) and _has_lookup_prefix(msg):
-        return QUICK_LOOKUP_PROFILE
+        hint = _resolve_table_hint(msg, words)
+        return replace(QUICK_LOOKUP_PROFILE, table_hint=hint) if hint else QUICK_LOOKUP_PROFILE
 
     # 6b. Bare entity shortcut (<=30 chars after stripping punctuation)
     bare = re.sub(r"[^\w\s]", "", msg).strip()
@@ -365,7 +414,8 @@ def _classify_layer1(message: str) -> QueryProfile | None:
     if len(bare) <= 30 and _has_chart_entity(msg, words) and not any(
         bare.startswith(s) for s in _follow_up_starts
     ):
-        return QUICK_LOOKUP_PROFILE
+        hint = _resolve_table_hint(msg, words)
+        return replace(QUICK_LOOKUP_PROFILE, table_hint=hint) if hint else QUICK_LOOKUP_PROFILE
 
     # 6c. Specific-item patterns (<=100 chars) → LIGHTNING (single-value lookups)
     if len(msg) <= 100:

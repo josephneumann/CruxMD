@@ -24,12 +24,12 @@ from app.services.agent_tools import (
 
 
 class TestToolSchemas:
-    def test_three_schemas_defined(self):
-        assert len(TOOL_SCHEMAS) == 3
+    def test_four_schemas_defined(self):
+        assert len(TOOL_SCHEMAS) == 4
 
     def test_tool_names(self):
         names = {t["name"] for t in TOOL_SCHEMAS}
-        assert names == {"query_patient_data", "explore_connections", "get_patient_timeline"}
+        assert names == {"query_patient_data", "explore_connections", "get_patient_timeline", "show_clinical_table"}
 
     def test_all_schemas_have_required_fields(self):
         for schema in TOOL_SCHEMAS:

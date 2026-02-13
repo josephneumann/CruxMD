@@ -8,6 +8,8 @@ import {
   sortRows,
   columnHasData,
   EncounterClassText,
+  useResponsiveColumns,
+  type ColumnPriority,
 } from "./table-primitives";
 
 type EncSortKey = "type" | "encounterClass" | "date" | "provider" | "location" | "reason";
@@ -16,6 +18,7 @@ interface ColDef {
   key: EncSortKey;
   label: string;
   required?: boolean;
+  priority: ColumnPriority;
   render: (row: Record<string, unknown>) => ReactNode;
 }
 
@@ -24,14 +27,25 @@ const allCols: ColDef[] = [
     key: "type",
     label: "Type",
     required: true,
+    priority: 1,
     render: (row) => (
       <td className="px-3 py-2 text-sm font-medium">{String(row.type ?? "")}</td>
+    ),
+  },
+  {
+    key: "date",
+    label: "Date",
+    required: true,
+    priority: 1,
+    render: (row) => (
+      <td className="px-3 py-2 text-sm text-muted-foreground">{String(row.date ?? "")}</td>
     ),
   },
   {
     key: "encounterClass",
     label: "Class",
     required: true,
+    priority: 2,
     render: (row) => (
       <td className="px-3 py-2">
         <EncounterClassText encounterClass={(row.encounterClass as "AMB" | "EMER" | "IMP") ?? "AMB"} />
@@ -39,16 +53,9 @@ const allCols: ColDef[] = [
     ),
   },
   {
-    key: "date",
-    label: "Date",
-    required: true,
-    render: (row) => (
-      <td className="px-3 py-2 text-sm text-muted-foreground">{String(row.date ?? "")}</td>
-    ),
-  },
-  {
     key: "provider",
     label: "Provider",
+    priority: 3,
     render: (row) => (
       <td className="px-3 py-2 text-sm text-muted-foreground">{String(row.provider ?? "")}</td>
     ),
@@ -56,6 +63,7 @@ const allCols: ColDef[] = [
   {
     key: "location",
     label: "Location",
+    priority: 3,
     render: (row) => (
       <td className="px-3 py-2 text-sm text-muted-foreground">{String(row.location ?? "")}</td>
     ),
@@ -63,6 +71,7 @@ const allCols: ColDef[] = [
   {
     key: "reason",
     label: "Reason",
+    priority: 3,
     render: (row) => (
       <td className="px-3 py-2 text-sm text-muted-foreground">
         {row.reason ? String(row.reason) : <span className="italic">&mdash;</span>}
@@ -77,15 +86,17 @@ function EncCell({ col, row }: { col: ColDef; row: Record<string, unknown> }) {
 
 export function EncountersTable({ rows }: { rows: Record<string, unknown>[] }) {
   const { sortKey, sortDir, toggle } = useSortState<EncSortKey>();
+  const { containerRef, maxPriority } = useResponsiveColumns();
+
   const visibleCols = allCols.filter(
-    (col) => col.required || columnHasData(rows, col.key),
+    (col) => col.priority <= maxPriority && (col.required || columnHasData(rows, col.key)),
   );
   const sorted = sortRows(rows, sortKey, sortDir, (row, key) =>
     String(row[key] ?? ""),
   );
 
   return (
-    <CardContent className="p-0 overflow-x-auto">
+    <CardContent className="p-0 overflow-x-auto" ref={containerRef}>
       <table className="w-full">
         <thead>
           <tr className="border-b bg-muted/30">

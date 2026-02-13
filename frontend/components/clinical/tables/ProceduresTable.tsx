@@ -2,7 +2,14 @@
 
 import type { ReactNode } from "react";
 import { CardContent } from "@/components/ui/card";
-import { SortHeader, useSortState, sortRows, columnHasData } from "./table-primitives";
+import {
+  SortHeader,
+  useSortState,
+  sortRows,
+  columnHasData,
+  useResponsiveColumns,
+  type ColumnPriority,
+} from "./table-primitives";
 
 type ProcSortKey = "procedure" | "date" | "location" | "reason";
 
@@ -10,6 +17,7 @@ interface ColDef {
   key: ProcSortKey;
   label: string;
   required?: boolean;
+  priority: ColumnPriority;
   render: (row: Record<string, unknown>) => ReactNode;
 }
 
@@ -18,6 +26,7 @@ const allCols: ColDef[] = [
     key: "procedure",
     label: "Procedure",
     required: true,
+    priority: 1,
     render: (row) => (
       <td className="px-3 py-2 text-sm font-medium">{String(row.procedure ?? "")}</td>
     ),
@@ -26,6 +35,7 @@ const allCols: ColDef[] = [
     key: "date",
     label: "Date",
     required: true,
+    priority: 1,
     render: (row) => (
       <td className="px-3 py-2 text-sm text-muted-foreground">{String(row.date ?? "")}</td>
     ),
@@ -33,6 +43,7 @@ const allCols: ColDef[] = [
   {
     key: "location",
     label: "Location",
+    priority: 3,
     render: (row) => (
       <td className="px-3 py-2 text-sm text-muted-foreground">{String(row.location ?? "")}</td>
     ),
@@ -40,6 +51,7 @@ const allCols: ColDef[] = [
   {
     key: "reason",
     label: "Reason",
+    priority: 3,
     render: (row) => (
       <td className="px-3 py-2 text-sm text-muted-foreground">
         {row.reason ? String(row.reason) : <span className="italic">&mdash;</span>}
@@ -54,15 +66,17 @@ function ProcCell({ col, row }: { col: ColDef; row: Record<string, unknown> }) {
 
 export function ProceduresTable({ rows }: { rows: Record<string, unknown>[] }) {
   const { sortKey, sortDir, toggle } = useSortState<ProcSortKey>();
+  const { containerRef, maxPriority } = useResponsiveColumns();
+
   const visibleCols = allCols.filter(
-    (col) => col.required || columnHasData(rows, col.key),
+    (col) => col.priority <= maxPriority && (col.required || columnHasData(rows, col.key)),
   );
   const sorted = sortRows(rows, sortKey, sortDir, (row, key) =>
     String(row[key] ?? ""),
   );
 
   return (
-    <CardContent className="p-0 overflow-x-auto">
+    <CardContent className="p-0 overflow-x-auto" ref={containerRef}>
       <table className="w-full">
         <thead>
           <tr className="border-b bg-muted/30">

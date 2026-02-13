@@ -19,6 +19,7 @@ import {
   sortRows,
   RangeBar,
   SparklineWithDelta,
+  useResponsiveColumns,
 } from "./table-primitives";
 
 type VitalSortKey = "vital" | "value" | "date";
@@ -36,13 +37,15 @@ const vitalIcons: Record<string, React.ComponentType<{ className?: string }>> = 
 
 export function VitalsTable({ rows }: { rows: Record<string, unknown>[] }) {
   const { sortKey, sortDir, toggle } = useSortState<VitalSortKey>();
+  const { containerRef, maxPriority } = useResponsiveColumns();
+
   const sorted = sortRows(rows, sortKey, sortDir, (row, key) => {
     if (key === "value") return Number(row.numericValue ?? 0);
     return String(row[key] ?? "");
   });
 
   return (
-    <CardContent className="p-0 overflow-x-auto">
+    <CardContent className="p-0 overflow-x-auto" ref={containerRef}>
       <table className="w-full">
         <thead>
           <tr className="border-b bg-muted/30">
@@ -58,14 +61,16 @@ export function VitalsTable({ rows }: { rows: Record<string, unknown>[] }) {
               direction={sortKey === "value" ? sortDir : null}
               onClick={() => toggle("value")}
             />
-            <th className={TH}>Reference Range</th>
-            <th className={TH}>Trend</th>
-            <SortHeader
-              label="Date"
-              active={sortKey === "date"}
-              direction={sortKey === "date" ? sortDir : null}
-              onClick={() => toggle("date")}
-            />
+            {maxPriority >= 2 && <th className={TH}>Reference Range</th>}
+            {maxPriority >= 3 && <th className={TH}>Trend</th>}
+            {maxPriority >= 3 && (
+              <SortHeader
+                label="Date"
+                active={sortKey === "date"}
+                direction={sortKey === "date" ? sortDir : null}
+                onClick={() => toggle("date")}
+              />
+            )}
           </tr>
         </thead>
         <tbody className="divide-y">
@@ -86,6 +91,7 @@ export function VitalsTable({ rows }: { rows: Record<string, unknown>[] }) {
 
             return (
               <tr key={`${vital}-${i}`}>
+                {/* P1: Vital name */}
                 <td className="px-3 py-2.5 text-sm font-medium">
                   <div className="flex items-center gap-2">
                     {VitalIcon && (
@@ -94,6 +100,7 @@ export function VitalsTable({ rows }: { rows: Record<string, unknown>[] }) {
                     {vital}
                   </div>
                 </td>
+                {/* P1: Value + unit */}
                 <td className="px-3 py-2.5 text-sm whitespace-nowrap">
                   <span
                     className={`tabular-nums ${isCritical ? "text-[#C24E42] font-medium" : isAbnormal ? "text-[#D9A036] font-medium" : ""}`}
@@ -104,28 +111,37 @@ export function VitalsTable({ rows }: { rows: Record<string, unknown>[] }) {
                     </span>
                   </span>
                 </td>
-                <td className="px-3 py-2.5">
-                  {hasRange && (
-                    <RangeBar
-                      value={Number(row.numericValue ?? 0)}
-                      low={Number(row.rangeLow)}
-                      high={Number(row.rangeHigh)}
-                      interpretation={interpretation!}
-                    />
-                  )}
-                </td>
-                <td className="px-3 py-2.5">
-                  {hasHistory && (
-                    <SparklineWithDelta
-                      data={row.history as HistoryPoint[]}
-                      interpretation={interpretation!}
-                      unit={String(row.unit ?? "")}
-                    />
-                  )}
-                </td>
-                <td className="px-3 py-2.5 text-sm text-muted-foreground">
-                  {String(row.date ?? "")}
-                </td>
+                {/* P2: Reference range */}
+                {maxPriority >= 2 && (
+                  <td className="px-3 py-2.5">
+                    {hasRange && (
+                      <RangeBar
+                        value={Number(row.numericValue ?? 0)}
+                        low={Number(row.rangeLow)}
+                        high={Number(row.rangeHigh)}
+                        interpretation={interpretation!}
+                      />
+                    )}
+                  </td>
+                )}
+                {/* P3: Trend sparkline */}
+                {maxPriority >= 3 && (
+                  <td className="px-3 py-2.5">
+                    {hasHistory && (
+                      <SparklineWithDelta
+                        data={row.history as HistoryPoint[]}
+                        interpretation={interpretation!}
+                        unit={String(row.unit ?? "")}
+                      />
+                    )}
+                  </td>
+                )}
+                {/* P3: Date */}
+                {maxPriority >= 3 && (
+                  <td className="px-3 py-2.5 text-sm text-muted-foreground">
+                    {String(row.date ?? "")}
+                  </td>
+                )}
               </tr>
             );
           })}

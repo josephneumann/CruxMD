@@ -2,6 +2,7 @@
 
 from app.schemas.agent import (
     AgentResponse,
+    ChatAgentResponse,
     ClinicalTable,
     ClinicalVisualization,
     FollowUp,
@@ -39,6 +40,7 @@ from app.schemas.task import (
 
 __all__ = [
     "AgentResponse",
+    "ChatAgentResponse",
     "ClinicalTable",
     "ClinicalVisualization",
     "FollowUp",

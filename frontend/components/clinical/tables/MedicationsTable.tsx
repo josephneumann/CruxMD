@@ -8,6 +8,8 @@ import {
   sortRows,
   columnHasData,
   MedStatusBadge,
+  useResponsiveColumns,
+  type ColumnPriority,
 } from "./table-primitives";
 
 type MedSortKey = "medication" | "frequency" | "reason" | "status" | "authoredOn" | "requester";
@@ -17,6 +19,8 @@ interface ColDef {
   label: string;
   /** Always show regardless of data presence */
   required?: boolean;
+  /** Column priority: 1=always, 2=medium+, 3=wide only */
+  priority: ColumnPriority;
   render: (row: Record<string, unknown>) => ReactNode;
 }
 
@@ -25,13 +29,26 @@ const allCols: ColDef[] = [
     key: "medication",
     label: "Medication",
     required: true,
+    priority: 1,
     render: (row) => (
       <td className="px-3 py-2 text-sm font-medium">{String(row.medication ?? "")}</td>
     ),
   },
   {
+    key: "status",
+    label: "Status",
+    required: true,
+    priority: 1,
+    render: (row) => (
+      <td className="px-3 py-2">
+        <MedStatusBadge status={(row.status as "active" | "completed") ?? "active"} />
+      </td>
+    ),
+  },
+  {
     key: "frequency",
     label: "Frequency",
+    priority: 2,
     render: (row) => (
       <td className="px-3 py-2 text-sm">
         {row.frequency ? String(row.frequency) : <span className="text-muted-foreground italic">&mdash;</span>}
@@ -41,23 +58,15 @@ const allCols: ColDef[] = [
   {
     key: "reason",
     label: "Reason",
+    priority: 2,
     render: (row) => (
       <td className="px-3 py-2 text-sm text-muted-foreground">{String(row.reason ?? "")}</td>
     ),
   },
   {
-    key: "status",
-    label: "Status",
-    required: true,
-    render: (row) => (
-      <td className="px-3 py-2">
-        <MedStatusBadge status={(row.status as "active" | "completed") ?? "active"} />
-      </td>
-    ),
-  },
-  {
     key: "authoredOn",
     label: "Prescribed",
+    priority: 3,
     render: (row) => (
       <td className="px-3 py-2 text-sm text-muted-foreground">{String(row.authoredOn ?? "")}</td>
     ),
@@ -65,6 +74,7 @@ const allCols: ColDef[] = [
   {
     key: "requester",
     label: "Requester",
+    priority: 3,
     render: (row) => (
       <td className="px-3 py-2 text-sm text-muted-foreground">{String(row.requester ?? "")}</td>
     ),
@@ -81,10 +91,11 @@ function medAccessor(row: Record<string, unknown>, key: string): string {
 
 export function MedicationsTable({ rows }: { rows: Record<string, unknown>[] }) {
   const { sortKey, sortDir, toggle } = useSortState<MedSortKey>();
+  const { containerRef, maxPriority } = useResponsiveColumns();
 
-  // Only show columns that have data (or are required)
+  // Only show columns that have data (or are required) AND fit the current width
   const visibleCols = allCols.filter(
-    (col) => col.required || columnHasData(rows, col.key),
+    (col) => col.priority <= maxPriority && (col.required || columnHasData(rows, col.key)),
   );
 
   const activeMeds = rows.filter((m) => m.status === "active");
@@ -93,7 +104,7 @@ export function MedicationsTable({ rows }: { rows: Record<string, unknown>[] }) 
   const sortedCompleted = sortRows(completedMeds, sortKey, sortDir, medAccessor);
 
   return (
-    <CardContent className="p-0 overflow-x-auto">
+    <CardContent className="p-0 overflow-x-auto" ref={containerRef}>
       <table className="w-full">
         <thead>
           <tr className="border-b bg-muted/30">

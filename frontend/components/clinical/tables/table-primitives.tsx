@@ -1,6 +1,6 @@
 "use client";
 
-import { useState } from "react";
+import { useEffect, useRef, useState } from "react";
 import { useTheme } from "next-themes";
 import {
   ChevronDown,
@@ -48,6 +48,43 @@ export const TH =
 /** Returns true if at least one row has a non-null, non-empty value for `key`. */
 export function columnHasData(rows: Record<string, unknown>[], key: string): boolean {
   return rows.some((row) => row[key] != null && row[key] !== "");
+}
+
+// -- Responsive column priority -----------------------------------------------
+
+/** Column priority: 1=always visible, 2=medium+, 3=wide only */
+export type ColumnPriority = 1 | 2 | 3;
+
+/** Width breakpoints for priority filtering */
+const PRIORITY_BREAKPOINTS = { compact: 400, medium: 550 } as const;
+
+/**
+ * Hook that observes container width and returns which priority levels are visible.
+ * Attach the returned ref to the table's wrapping <div>.
+ */
+export function useResponsiveColumns(): {
+  containerRef: React.RefObject<HTMLDivElement | null>;
+  maxPriority: ColumnPriority;
+} {
+  const containerRef = useRef<HTMLDivElement | null>(null);
+  const [maxPriority, setMaxPriority] = useState<ColumnPriority>(3);
+
+  useEffect(() => {
+    const el = containerRef.current;
+    if (!el) return;
+
+    const ro = new ResizeObserver(([entry]) => {
+      const w = entry.contentRect.width;
+      if (w < PRIORITY_BREAKPOINTS.compact) setMaxPriority(1);
+      else if (w < PRIORITY_BREAKPOINTS.medium) setMaxPriority(2);
+      else setMaxPriority(3);
+    });
+
+    ro.observe(el);
+    return () => ro.disconnect();
+  }, []);
+
+  return { containerRef, maxPriority };
 }
 
 // -- Collapsible card wrapper -------------------------------------------------

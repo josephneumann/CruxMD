@@ -850,38 +850,9 @@ def build_system_prompt_quick(
     format_section = (
         "## Response Format\n"
         "Provide your response as a structured JSON object with:\n"
-        "- narrative: Main response in markdown (concise, data-focused). "
-        "When you include a table, keep the narrative to 1 sentence — the table carries the detail. "
-        "Do NOT list the same data in both narrative and table.\n"
+        "- narrative: Main response in markdown (concise, data-focused)\n"
         "- insights: Clinical insights if relevant (info/warning/critical/positive)\n"
-        "- tables: Clinical data tables when presenting structured data (see Table Types below)\n"
-        "- follow_ups: 2-3 SHORT follow-up questions (under 80 chars each)\n"
-        "\n"
-        "## Table Types\n"
-        "When your response includes structured clinical data, ALWAYS include a typed table.\n"
-        "Each table has type, title, and rows. IMPORTANT: rows is a JSON-encoded STRING "
-        "(not a native array). Example: {\"type\": \"medications\", \"title\": \"Active Medications\", "
-        "\"rows\": \"[{\\\"medication\\\": \\\"Lisinopril 10 MG\\\", ...}]\"}\n"
-        "Use the row keys exactly as specified:\n"
-        "\n"
-        "medications: medication (full RxNorm string e.g. \"Lisinopril 10 MG Oral Tablet\"), "
-        "frequency (e.g. \"1x daily\" or null), reason, status (active/completed), authoredOn, requester\n"
-        "lab_results: test, value (number), unit, rangeLow (number), rangeHigh (number), "
-        "interpretation (N/H/L/HH/LL — HL7 FHIR codes), date, history (array of {value: number, date: string} "
-        "with last 6 readings). Optional: panel (string — group name e.g. \"Complete Blood Count (CBC)\"; "
-        "rows sharing the same panel value render as a collapsible group).\n"
-        "vitals: vital (LOINC display), value (display string e.g. \"128/82\"), "
-        "numericValue (number — systolic for BP), unit, loinc, date. "
-        "Optional: history (array of {value, date}), rangeLow (number), rangeHigh (number), "
-        "interpretation (N/H/L/HH/LL). Only include range/history for vitals with clinical ranges "
-        "(BP, HR, RR, BMI, Temp).\n"
-        "conditions: condition, clinicalStatus (active/resolved), onsetDate, abatementDate (null for active)\n"
-        "allergies: allergen, category (medication/food/environment), criticality (high/low), "
-        "clinicalStatus (active/inactive), onsetDate\n"
-        "immunizations: vaccine (CVX display), date, location\n"
-        "procedures: procedure (SNOMED display), date, location, reason (null if unknown)\n"
-        "encounters: type (SNOMED display), encounterClass (AMB/EMER/IMP), date, provider, "
-        "location, reason (null if unknown)"
+        "- follow_ups: 2-3 SHORT follow-up questions (under 80 chars each)"
     )
 
     return "\n\n".join([
@@ -1021,39 +992,10 @@ def build_system_prompt_deep(
         "## Response Format\n"
         "Provide your response as a structured JSON object with:\n"
         "- thinking: Your reasoning process (optional, for transparency)\n"
-        "- narrative: Main response in markdown format. "
-        "When you include a table, keep the narrative to 1-2 sentences — the table carries the detail. "
-        "Do NOT list the same data in both narrative and table.\n"
+        "- narrative: Main response in markdown format\n"
         "- insights: Important clinical insights to highlight (info, warning, critical, positive)\n"
-        "- tables: Clinical data tables when presenting structured data (see Table Types below)\n"
         "- visualizations: Charts when data warrants visual trending (see Visualization Types below)\n"
         "- follow_ups: 2-3 SHORT follow-up questions (under 80 chars each) displayed as clickable chips\n"
-        "\n"
-        "## Table Types\n"
-        "When your response includes structured clinical data, include a typed table.\n"
-        "Each table has type, title, and rows. IMPORTANT: rows is a JSON-encoded STRING "
-        "(not a native array). Example: {\"type\": \"medications\", \"title\": \"Active Medications\", "
-        "\"rows\": \"[{\\\"medication\\\": \\\"Lisinopril 10 MG\\\", ...}]\"}\n"
-        "Use the row keys exactly as specified:\n"
-        "\n"
-        "medications: medication (full RxNorm string e.g. \"Lisinopril 10 MG Oral Tablet\"), "
-        "frequency (e.g. \"1x daily\" or null), reason, status (active/completed), authoredOn, requester\n"
-        "lab_results: test, value (number), unit, rangeLow (number), rangeHigh (number), "
-        "interpretation (N/H/L/HH/LL — HL7 FHIR codes), date, history (array of {value: number, date: string} "
-        "with last 6 readings). Optional: panel (string — group name e.g. \"Complete Blood Count (CBC)\"; "
-        "rows sharing the same panel value render as a collapsible group).\n"
-        "vitals: vital (LOINC display), value (display string e.g. \"128/82\"), "
-        "numericValue (number — systolic for BP), unit, loinc, date. "
-        "Optional: history (array of {value, date}), rangeLow (number), rangeHigh (number), "
-        "interpretation (N/H/L/HH/LL). Only include range/history for vitals with clinical ranges "
-        "(BP, HR, RR, BMI, Temp).\n"
-        "conditions: condition, clinicalStatus (active/resolved), onsetDate, abatementDate (null for active)\n"
-        "allergies: allergen, category (medication/food/environment), criticality (high/low), "
-        "clinicalStatus (active/inactive), onsetDate\n"
-        "immunizations: vaccine (CVX display), date, location\n"
-        "procedures: procedure (SNOMED display), date, location, reason (null if unknown)\n"
-        "encounters: type (SNOMED display), encounterClass (AMB/EMER/IMP), date, provider, "
-        "location, reason (null if unknown)\n"
         "\n"
         "## Visualization Types\n"
         "\n"
@@ -1110,6 +1052,8 @@ class AgentService:
             print(f"[{insight.type}] {insight.title}")
     """
 
+    generated_tables: list[dict[str, Any]]
+
     def __init__(
         self,
         client: AsyncOpenAI | None = None,
@@ -1139,6 +1083,7 @@ class AgentService:
                 )
             self._client = AsyncOpenAI(api_key=settings.openai_api_key)
 
+        self.generated_tables = []
         self._model = model
         self._reasoning_effort = reasoning_effort
         self._max_output_tokens = max_output_tokens
@@ -1230,6 +1175,7 @@ class AgentService:
                     patient_id=patient_id,
                     graph=graph,
                     db=db,
+                    generated_tables=self.generated_tables,
                 )
                 exec_ms = (time.perf_counter() - exec_start) * 1000
                 result_len = len(result)
@@ -1324,6 +1270,7 @@ class AgentService:
         if not message or not message.strip():
             raise ValueError("message cannot be empty")
 
+        self.generated_tables = []
         t0 = time.perf_counter()
         input_messages = self._build_input_messages(system_prompt, message, history)
 
@@ -1448,6 +1395,7 @@ class AgentService:
         if not message or not message.strip():
             raise ValueError("message cannot be empty")
 
+        self.generated_tables = []
         t0 = time.perf_counter()
         input_messages = self._build_input_messages(system_prompt, message, history)
 
@@ -1584,6 +1532,7 @@ class AgentService:
                     patient_id=patient_id,
                     graph=graph,
                     db=db,
+                    generated_tables=self.generated_tables,
                 )
                 exec_ms = (time.perf_counter() - exec_start) * 1000
                 logger.info(

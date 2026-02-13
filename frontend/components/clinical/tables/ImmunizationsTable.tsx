@@ -1,36 +1,46 @@
 "use client";
 
 import { CardContent } from "@/components/ui/card";
-import { SortHeader, useSortState, sortRows } from "./table-primitives";
+import { SortHeader, useSortState, sortRows, useResponsiveColumns } from "./table-primitives";
 
 type ImmSortKey = "vaccine" | "date" | "location";
 
-const cols: { key: ImmSortKey; label: string }[] = [
-  { key: "vaccine", label: "Vaccine" },
-  { key: "date", label: "Date" },
-  { key: "location", label: "Location" },
-];
-
 export function ImmunizationsTable({ rows }: { rows: Record<string, unknown>[] }) {
   const { sortKey, sortDir, toggle } = useSortState<ImmSortKey>();
+  const { containerRef, maxPriority } = useResponsiveColumns();
+
   const sorted = sortRows(rows, sortKey, sortDir, (row, key) =>
     String(row[key] ?? ""),
   );
 
   return (
-    <CardContent className="p-0 overflow-x-auto">
+    <CardContent className="p-0 overflow-x-auto" ref={containerRef}>
       <table className="w-full">
         <thead>
           <tr className="border-b bg-muted/30">
-            {cols.map((col) => (
+            {/* P1: Vaccine */}
+            <SortHeader
+              label="Vaccine"
+              active={sortKey === "vaccine"}
+              direction={sortKey === "vaccine" ? sortDir : null}
+              onClick={() => toggle("vaccine")}
+            />
+            {/* P1: Date */}
+            <SortHeader
+              label="Date"
+              active={sortKey === "date"}
+              direction={sortKey === "date" ? sortDir : null}
+              onClick={() => toggle("date")}
+            />
+            {/* P2: Location */}
+            {maxPriority >= 2 && (
               <SortHeader
-                key={col.key}
-                label={col.label}
-                active={sortKey === col.key}
-                direction={sortKey === col.key ? sortDir : null}
-                onClick={() => toggle(col.key)}
+                label="Location"
+                active={sortKey === "location"}
+                direction={sortKey === "location" ? sortDir : null}
+                onClick={() => toggle("location")}
               />
-            ))}
+            )}
           </tr>
         </thead>
         <tbody className="divide-y">
@@ -38,7 +48,9 @@ export function ImmunizationsTable({ rows }: { rows: Record<string, unknown>[] }
             <tr key={`${row.vaccine}-${i}`}>
               <td className="px-3 py-2 text-sm font-medium">{String(row.vaccine ?? "")}</td>
               <td className="px-3 py-2 text-sm text-muted-foreground">{String(row.date ?? "")}</td>
-              <td className="px-3 py-2 text-sm text-muted-foreground">{String(row.location ?? "")}</td>
+              {maxPriority >= 2 && (
+                <td className="px-3 py-2 text-sm text-muted-foreground">{String(row.location ?? "")}</td>
+              )}
             </tr>
           ))}
         </tbody>

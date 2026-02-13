@@ -54,23 +54,13 @@ const tableRenderers: Record<
   encounters: EncountersTable,
 };
 
-function parseRows(rows: string | Record<string, unknown>[]): Record<string, unknown>[] {
-  if (Array.isArray(rows)) return rows;
-  try {
-    const parsed = JSON.parse(rows);
-    return Array.isArray(parsed) ? parsed : [];
-  } catch {
-    return [];
-  }
-}
-
 export function ClinicalTable({ table }: { table: ClinicalTableData }) {
   const config = tableConfig[table.type];
   const TableRenderer = tableRenderers[table.type];
 
   if (!config || !TableRenderer) return null;
 
-  const rows = parseRows(table.rows);
+  const rows = table.rows;
   if (rows.length === 0) return null;
 
   return (
