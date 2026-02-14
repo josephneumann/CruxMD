@@ -41,7 +41,7 @@ export function useTableColors() {
 // -- Table header cell --------------------------------------------------------
 
 export const TH =
-  "text-left px-3 py-2 text-xs font-medium text-muted-foreground uppercase tracking-wider";
+  "text-left text-xs font-medium text-muted-foreground uppercase tracking-wider";
 
 // -- Column visibility helper -------------------------------------------------
 
@@ -56,7 +56,17 @@ export function columnHasData(rows: Record<string, unknown>[], key: string): boo
 export type ColumnPriority = 1 | 2 | 3;
 
 /** Width breakpoints for priority filtering */
-const PRIORITY_BREAKPOINTS = { compact: 400, medium: 550 } as const;
+const PRIORITY_BREAKPOINTS = { compact: 500, medium: 650 } as const;
+
+/**
+ * Responsive table class: apply to the `<table>` element.
+ * Scales text and cell padding for compact screens.
+ */
+export function tableClass(maxPriority: ColumnPriority): string {
+  return maxPriority === 1
+    ? "w-full text-xs [&_td]:px-2 [&_td]:py-1.5 [&_th]:px-2 [&_th]:py-1.5"
+    : "w-full text-sm [&_td]:px-3 [&_td]:py-2 [&_th]:px-3 [&_th]:py-2";
+}
 
 /**
  * Hook that observes container width and returns which priority levels are visible.
@@ -107,7 +117,7 @@ export function CollapsibleTableCard({
   const [expanded, setExpanded] = useState(defaultExpanded);
   const Chevron = expanded ? ChevronDown : ChevronRight;
   return (
-    <Card className="py-0 gap-0">
+    <Card className="py-0 gap-0 overflow-hidden">
       <div
         className={`flex items-center gap-2 px-4 py-2 cursor-pointer select-none hover:bg-muted/20 transition-colors ${expanded ? "border-b" : ""}`}
         onClick={() => setExpanded(!expanded)}
@@ -234,8 +244,8 @@ export function RangeBar({
       : c.rangeNormal;
 
   return (
-    <div className="flex items-center gap-2.5 min-w-[160px]">
-      <div className="relative flex-1 h-2">
+    <div className="min-w-[120px]">
+      <div className="relative h-2">
         <div
           className="absolute inset-0 rounded-full"
           style={{ backgroundColor: c.rangeBg }}
@@ -258,9 +268,9 @@ export function RangeBar({
           }}
         />
       </div>
-      <span className="text-[11px] text-muted-foreground tabular-nums whitespace-nowrap">
+      <div className="text-[10px] text-muted-foreground/60 tabular-nums text-center mt-0.5">
         {low}&ndash;{high}
-      </span>
+      </div>
     </div>
   );
 }
@@ -325,8 +335,8 @@ export function SparklineWithDelta({
   const sinceDate = data[0].date;
 
   return (
-    <div className="flex items-center gap-2">
-      <div className="w-[72px] h-[28px] shrink-0">
+    <div>
+      <div className="w-full h-[28px]">
         <ResponsiveContainer width="100%" height="100%">
           <LineChart
             data={data}
@@ -351,12 +361,11 @@ export function SparklineWithDelta({
           </LineChart>
         </ResponsiveContainer>
       </div>
-      <div className="text-[11px] leading-tight whitespace-nowrap">
+      <div className="text-[10px] text-center mt-0.5 whitespace-nowrap">
         <span className={`font-medium ${deltaColor}`}>
           {arrow} {Math.abs(pctChange)}%
         </span>
-        <br />
-        <span className="text-muted-foreground">since {sinceDate}</span>
+        <span className="text-muted-foreground/60"> since {sinceDate}</span>
       </div>
     </div>
   );

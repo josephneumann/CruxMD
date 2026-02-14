@@ -59,6 +59,41 @@ def _clean_patient_names(resource: dict[str, Any]) -> dict[str, Any]:
     return resource
 
 
+def _strip_display_digits(s: str) -> str:
+    """Strip trailing digits from each word in a display name string.
+
+    "Dr. Duane703 Koelpin146" → "Dr. Duane Koelpin"
+    """
+    return re.sub(r"(\D)\d+", r"\1", s).strip()
+
+
+def _clean_reference_displays(resource: dict[str, Any]) -> dict[str, Any]:
+    """Recursively clean Synthea numeric suffixes from all reference.display
+    and HumanName fields across any FHIR resource type.
+
+    Targets:
+    - reference objects: {"reference": "...", "display": "Dr. Duane703 Koelpin146"}
+    - HumanName objects in practitioner/participant arrays
+    """
+    def _walk(obj: Any) -> None:
+        if isinstance(obj, dict):
+            # Clean reference.display fields (have both "reference" and "display")
+            if "reference" in obj and "display" in obj and isinstance(obj["display"], str):
+                obj["display"] = _strip_display_digits(obj["display"])
+            # Clean HumanName objects (have "family" or "given")
+            if "family" in obj or "given" in obj:
+                _strip_numbers_from_name(obj)
+            # Recurse into all values
+            for v in obj.values():
+                _walk(v)
+        elif isinstance(obj, list):
+            for item in obj:
+                _walk(item)
+
+    _walk(resource)
+    return resource
+
+
 def _extract_patient_sex(entries: list[dict[str, Any]]) -> str | None:
     """Extract patient gender from the Patient resource in a bundle."""
     for entry in entries:
@@ -129,6 +164,7 @@ async def load_bundle(
         resource = entry.get("resource", {})
         if resource and resource.get("resourceType"):
             _clean_patient_names(resource)
+            _clean_reference_displays(resource)
             resources_data.append(resource)
 
     if not resources_data:

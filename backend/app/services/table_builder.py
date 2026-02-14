@@ -11,7 +11,9 @@ Reuses extraction patterns from:
 """
 
 import logging
+import re
 import uuid
+from datetime import datetime
 from typing import Any
 
 from sqlalchemy import DateTime, func, select
@@ -68,6 +70,60 @@ def _extract_status(resource: dict[str, Any], field: str = "status") -> str:
         codings = val.get("coding", [])
         return codings[0].get("code", "unknown") if codings else "unknown"
     return str(val)
+
+
+# Regex for SNOMED suffixes: "(finding)", "(disorder)", "(procedure)", etc.
+_SNOMED_SUFFIX_RE = re.compile(
+    r"\s*\("
+    r"(?:finding|disorder|procedure|situation|morphologic abnormality|"
+    r"observable entity|body structure|substance|event|regime/therapy|"
+    r"physical object|qualifier value)"
+    r"\)\s*$",
+    re.IGNORECASE,
+)
+
+
+def _clean_display(name: str) -> str:
+    """Strip SNOMED semantic tag suffixes from display names."""
+    return _SNOMED_SUFFIX_RE.sub("", name).strip()
+
+
+# Small words that should stay lowercase in title case
+_TITLE_LOWER = frozenset({"for", "of", "the", "and", "in", "at", "to", "a", "an", "on", "or"})
+
+
+def _title_case(s: str) -> str:
+    """Convert ALL-CAPS or lowercase string to title case.
+
+    Preserves acronyms (words <= 3 chars that are all caps) and handles
+    small words (for, of, the, etc.) correctly.
+    """
+    if not s or not s.isupper():
+        return s
+    words = s.lower().split()
+    result = []
+    for i, w in enumerate(words):
+        if i == 0 or w not in _TITLE_LOWER:
+            result.append(w.capitalize())
+        else:
+            result.append(w)
+    return " ".join(result)
+
+
+def _format_date(iso: str) -> str:
+    """Format ISO date string to 'Mon DD, YYYY'. Returns original if unparseable."""
+    if not iso:
+        return ""
+    try:
+        dt = datetime.fromisoformat(iso.replace("Z", "+00:00"))
+        return dt.strftime("%b %d, %Y").replace(" 0", " ")
+    except (ValueError, TypeError):
+        # Try date-only format
+        try:
+            dt = datetime.strptime(iso[:10], "%Y-%m-%d")
+            return dt.strftime("%b %d, %Y").replace(" 0", " ")
+        except (ValueError, TypeError):
+            return iso
 
 
 # =============================================================================
@@ -148,9 +204,9 @@ async def build_medications_table(
         rows.append({
             "medication": med_display,
             "frequency": frequency,
-            "reason": reason,
+            "reason": _clean_display(reason) if reason else None,
             "status": _extract_status(med),
-            "authoredOn": (med.get("authoredOn") or "")[:10],
+            "authoredOn": _format_date((med.get("authoredOn") or "")[:10]),
             "requester": requester,
         })
 
@@ -242,7 +298,8 @@ async def build_lab_results_table(
             interp_code, ref_range_tuple = interpret_observation(latest)
             if interp_code and ref_range_tuple:
                 interpretation = interp_code
-                range_low, range_high = ref_range_tuple
+                range_low = ref_range_tuple.get("low")
+                range_high = ref_range_tuple.get("high")
 
         # Build history (oldest → newest for sparkline)
         history: list[dict[str, Any]] = []
@@ -413,7 +470,8 @@ async def build_vitals_table(
                 interp_code, ref_range_tuple = interpret_observation(latest)
                 if interp_code and ref_range_tuple:
                     interpretation = interp_code
-                    range_low, range_high = ref_range_tuple
+                    range_low = ref_range_tuple.get("low")
+                    range_high = ref_range_tuple.get("high")
 
             # History (only for ranged vitals)
             history = []
@@ -479,10 +537,11 @@ async def build_conditions_table(
     rows: list[dict[str, Any]] = []
     for cond in resources:
         rows.append({
-            "condition": _display_name(cond),
+            "condition": _clean_display(_display_name(cond)),
             "clinicalStatus": _extract_status(cond, "clinicalStatus"),
-            "onsetDate": (cond.get("onsetDateTime") or "")[:10],
-            "abatementDate": (cond.get("abatementDateTime") or "")[:10] or None,
+            "verificationStatus": _extract_status(cond, "verificationStatus"),
+            "onsetDate": _format_date((cond.get("onsetDateTime") or "")[:10]),
+            "abatementDate": _format_date((cond.get("abatementDateTime") or "")[:10]) or None,
         })
 
     title = "Active Conditions" if status == "active" else _DEFAULT_TITLES["conditions"]
@@ -519,11 +578,11 @@ async def build_allergies_table(
         )
 
         rows.append({
-            "allergen": _display_name(allergy),
+            "allergen": _clean_display(_display_name(allergy)),
             "category": category,
             "criticality": allergy.get("criticality", "low"),
             "clinicalStatus": _extract_status(allergy, "clinicalStatus"),
-            "onsetDate": (allergy.get("onsetDateTime") or "")[:10] or None,
+            "onsetDate": _format_date((allergy.get("onsetDateTime") or "")[:10]) or None,
         })
 
     # Sort high criticality first
@@ -556,26 +615,26 @@ async def build_immunizations_table(
     if not resources:
         return None
 
-    # Dedup by vaccine code
-    seen: set[str] = set()
     rows: list[dict[str, Any]] = []
     for imm in resources:
         vaccine_name = _display_name(imm, "vaccineCode")
-        if vaccine_name in seen:
-            continue
-        seen.add(vaccine_name)
 
-        # Extract location from encounter or performer
+        # Extract location: try location.display first, then performer[0].actor.display
         location = None
-        performer_list = imm.get("performer", [])
-        if performer_list:
-            actor = performer_list[0].get("actor", {})
-            location = actor.get("display") if isinstance(actor, dict) else str(actor)
+        loc_obj = imm.get("location")
+        if isinstance(loc_obj, dict):
+            location = loc_obj.get("display")
+        if not location:
+            performer_list = imm.get("performer", [])
+            if performer_list:
+                actor = performer_list[0].get("actor", {})
+                location = actor.get("display") if isinstance(actor, dict) else str(actor)
 
         rows.append({
             "vaccine": vaccine_name,
-            "date": (imm.get("occurrenceDateTime") or "")[:10],
-            "location": location,
+            "date": _format_date((imm.get("occurrenceDateTime") or "")[:10]),
+            "status": imm.get("status", "unknown"),
+            "location": _title_case(location) if location else None,
         })
 
     return {"type": "immunizations", "title": _DEFAULT_TITLES["immunizations"], "rows": rows}
@@ -638,10 +697,10 @@ async def build_procedures_table(
                 reason = ref.get("display") if isinstance(ref, dict) else str(ref)
 
         rows.append({
-            "procedure": _display_name(proc),
-            "date": date_str[:10],
-            "location": location,
-            "reason": reason,
+            "procedure": _clean_display(_display_name(proc)),
+            "date": _format_date(date_str[:10]),
+            "location": _title_case(location) if location else None,
+            "reason": _clean_display(reason) if reason else None,
         })
 
     return {"type": "procedures", "title": _DEFAULT_TITLES["procedures"], "rows": rows}
@@ -713,19 +772,12 @@ async def build_encounters_table(
             if isinstance(loc, dict):
                 location = loc.get("display")
 
-        # Reason
-        reason = None
-        reason_codes = enc.get("reasonCode", [])
-        if reason_codes:
-            reason = _display_name({"code": reason_codes[0]})
-
         rows.append({
-            "type": type_display,
+            "type": _clean_display(type_display),
             "encounterClass": class_code.upper() if class_code else "AMB",
-            "date": date_str,
+            "date": _format_date(date_str),
             "provider": provider,
-            "location": location,
-            "reason": reason,
+            "location": _title_case(location) if location else None,
         })
 
     return {"type": "encounters", "title": _DEFAULT_TITLES["encounters"], "rows": rows}

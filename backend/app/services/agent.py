@@ -665,7 +665,7 @@ def _build_patient_summary_section(
             summary_parts.append("\n### Recently Resolved Conditions (last 6 months)")
             summary_parts.append(_format_tier1_conditions(tier1_resolved, tier=tier))
 
-    # Tier 1: Allergies — table
+    # Tier 1: Allergies
     tier1_allergies = compiled_summary.get("tier1_allergies", [])
     allergy_lines = _format_tier1_section(
         "Allergies", tier1_allergies,
@@ -687,7 +687,7 @@ def _build_patient_summary_section(
             if unlinked_lines:
                 summary_parts.append(unlinked_lines)
 
-    # Tier 1: Immunizations — table
+    # Tier 1: Immunizations
     tier1_immunizations = compiled_summary.get("tier1_immunizations", [])
     if tier1_immunizations:
         imm_lines = _format_tier1_section(

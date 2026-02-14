@@ -72,14 +72,14 @@ QUICK_PROFILE = QueryProfile(
 )
 
 QUICK_LOOKUP_PROFILE = QueryProfile(
-    tier=QueryTier.QUICK,
-    model=None,
+    tier=QueryTier.LIGHTNING,
+    model="gpt-4o-mini",
     reasoning=False,
     reasoning_effort="low",
     include_tools=False,
-    max_output_tokens=4096,
-    system_prompt_mode="quick",
-    response_schema="full",
+    max_output_tokens=2048,
+    system_prompt_mode="lightning",
+    response_schema="lightning",
 )
 
 DEEP_PROFILE = QueryProfile(

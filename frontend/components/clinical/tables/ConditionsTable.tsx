@@ -1,42 +1,54 @@
 "use client";
 
+import { useState } from "react";
+import { ChevronDown, ChevronRight } from "lucide-react";
 import { CardContent } from "@/components/ui/card";
 import {
   SortHeader,
   useSortState,
   sortRows,
-  ConditionStatusText,
   useResponsiveColumns,
+  tableClass,
+  type ColumnPriority,
 } from "./table-primitives";
 
-type CondSortKey = "condition" | "clinicalStatus" | "onsetDate" | "abatementDate";
+type CondSortKey = "condition" | "verificationStatus" | "onsetDate" | "abatementDate";
 
 function condAccessor(row: Record<string, unknown>, key: string): string {
   return String(row[key] ?? "");
 }
+
+const VERIFICATION_COLORS: Record<string, string> = {
+  confirmed: "text-emerald-600 dark:text-emerald-400",
+  unconfirmed: "text-amber-600 dark:text-amber-400",
+  provisional: "text-amber-600 dark:text-amber-400",
+  differential: "text-sky-600 dark:text-sky-400",
+  refuted: "text-muted-foreground line-through",
+  "entered-in-error": "text-muted-foreground line-through",
+};
 
 function CondRow({
   row,
   maxPriority,
 }: {
   row: Record<string, unknown>;
-  maxPriority: 1 | 2 | 3;
+  maxPriority: ColumnPriority;
 }) {
+  const verification = String(row.verificationStatus ?? "");
+  const colorClass = VERIFICATION_COLORS[verification] ?? "text-muted-foreground";
   return (
     <tr>
-      {/* P1: Condition name */}
-      <td className="px-3 py-2 text-sm font-medium">{String(row.condition ?? "")}</td>
-      {/* P1: Status */}
-      <td className="px-3 py-2">
-        <ConditionStatusText status={(row.clinicalStatus as "active" | "resolved") ?? "active"} />
-      </td>
-      {/* P2: Onset date */}
+      <td className="font-medium">{String(row.condition ?? "")}</td>
       {maxPriority >= 2 && (
-        <td className="px-3 py-2 text-sm text-muted-foreground">{String(row.onsetDate ?? "")}</td>
+        <td>
+          <span className={colorClass}>{verification || "\u2014"}</span>
+        </td>
       )}
-      {/* P3: Resolved date */}
+      {maxPriority >= 2 && (
+        <td className="text-muted-foreground">{String(row.onsetDate ?? "")}</td>
+      )}
       {maxPriority >= 3 && (
-        <td className="px-3 py-2 text-sm text-muted-foreground">
+        <td className="text-muted-foreground">
           {row.abatementDate ? String(row.abatementDate) : <span className="italic">&mdash;</span>}
         </td>
       )}
@@ -48,16 +60,30 @@ export function ConditionsTable({ rows }: { rows: Record<string, unknown>[] }) {
   const { sortKey, sortDir, toggle } = useSortState<CondSortKey>();
   const { containerRef, maxPriority } = useResponsiveColumns();
 
-  const colCount = 2 + (maxPriority >= 2 ? 1 : 0) + (maxPriority >= 3 ? 1 : 0);
+  const colCount =
+    1 +
+    (maxPriority >= 2 ? 2 : 0) + // verification + onset
+    (maxPriority >= 3 ? 1 : 0);  // abatement
 
   const activeConds = rows.filter((c) => c.clinicalStatus === "active");
   const resolvedConds = rows.filter((c) => c.clinicalStatus === "resolved");
   const sortedActive = sortRows(activeConds, sortKey, sortDir, condAccessor);
   const sortedResolved = sortRows(resolvedConds, sortKey, sortDir, condAccessor);
 
+  // Active expanded by default, resolved collapsed
+  const [expanded, setExpanded] = useState<Set<string>>(() => new Set(["active"]));
+  const toggleGroup = (group: string) => {
+    setExpanded((prev) => {
+      const next = new Set(prev);
+      if (next.has(group)) next.delete(group);
+      else next.add(group);
+      return next;
+    });
+  };
+
   return (
     <CardContent className="p-0 overflow-x-auto" ref={containerRef}>
-      <table className="w-full">
+      <table className={tableClass(maxPriority)}>
         <thead>
           <tr className="border-b bg-muted/30">
             <SortHeader
@@ -66,12 +92,14 @@ export function ConditionsTable({ rows }: { rows: Record<string, unknown>[] }) {
               direction={sortKey === "condition" ? sortDir : null}
               onClick={() => toggle("condition")}
             />
-            <SortHeader
-              label="Status"
-              active={sortKey === "clinicalStatus"}
-              direction={sortKey === "clinicalStatus" ? sortDir : null}
-              onClick={() => toggle("clinicalStatus")}
-            />
+            {maxPriority >= 2 && (
+              <SortHeader
+                label="Verification"
+                active={sortKey === "verificationStatus"}
+                direction={sortKey === "verificationStatus" ? sortDir : null}
+                onClick={() => toggle("verificationStatus")}
+              />
+            )}
             {maxPriority >= 2 && (
               <SortHeader
                 label="Onset"
@@ -90,26 +118,64 @@ export function ConditionsTable({ rows }: { rows: Record<string, unknown>[] }) {
             )}
           </tr>
         </thead>
-        <tbody className="divide-y">
-          {sortedActive.map((row, i) => (
-            <CondRow key={`active-${i}`} row={row} maxPriority={maxPriority} />
-          ))}
-        </tbody>
-        {sortedResolved.length > 0 && (
-          <tbody className="divide-y">
-            <tr>
-              <td colSpan={colCount} className="px-3 py-1.5 bg-muted/20">
-                <span className="text-xs text-muted-foreground uppercase tracking-wider">
-                  Resolved
-                </span>
-              </td>
-            </tr>
-            {sortedResolved.map((row, i) => (
+        <tbody>
+          {sortedActive.length > 0 && (
+            <StatusGroup
+              label="Active"
+              count={sortedActive.length}
+              colCount={colCount}
+              isExpanded={expanded.has("active")}
+              onToggle={() => toggleGroup("active")}
+            />
+          )}
+          {expanded.has("active") &&
+            sortedActive.map((row, i) => (
+              <CondRow key={`active-${i}`} row={row} maxPriority={maxPriority} />
+            ))}
+          {sortedResolved.length > 0 && (
+            <StatusGroup
+              label="Resolved"
+              count={sortedResolved.length}
+              colCount={colCount}
+              isExpanded={expanded.has("resolved")}
+              onToggle={() => toggleGroup("resolved")}
+            />
+          )}
+          {expanded.has("resolved") &&
+            sortedResolved.map((row, i) => (
               <CondRow key={`resolved-${i}`} row={row} maxPriority={maxPriority} />
             ))}
-          </tbody>
-        )}
+        </tbody>
       </table>
     </CardContent>
+  );
+}
+
+function StatusGroup({
+  label,
+  count,
+  colCount,
+  isExpanded,
+  onToggle,
+}: {
+  label: string;
+  count: number;
+  colCount: number;
+  isExpanded: boolean;
+  onToggle: () => void;
+}) {
+  const Chevron = isExpanded ? ChevronDown : ChevronRight;
+  return (
+    <tr className="bg-muted/20 cursor-pointer hover:bg-muted/40" onClick={onToggle}>
+      <td colSpan={colCount}>
+        <div className="flex items-center gap-1.5">
+          <Chevron className="size-3.5 text-muted-foreground" />
+          <span className="text-xs font-medium text-muted-foreground uppercase tracking-wide">
+            {label}
+          </span>
+          <span className="text-xs text-muted-foreground/60">({count})</span>
+        </div>
+      </td>
+    </tr>
   );
 }

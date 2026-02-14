@@ -1,7 +1,16 @@
 "use client";
 
+import { useState } from "react";
+import { ChevronDown, ChevronRight } from "lucide-react";
 import { CardContent } from "@/components/ui/card";
-import { SortHeader, useSortState, sortRows, useResponsiveColumns } from "./table-primitives";
+import {
+  SortHeader,
+  useSortState,
+  sortRows,
+  useResponsiveColumns,
+  tableClass,
+  type ColumnPriority,
+} from "./table-primitives";
 
 type ImmSortKey = "vaccine" | "date" | "location";
 
@@ -9,30 +18,58 @@ export function ImmunizationsTable({ rows }: { rows: Record<string, unknown>[] }
   const { sortKey, sortDir, toggle } = useSortState<ImmSortKey>();
   const { containerRef, maxPriority } = useResponsiveColumns();
 
-  const sorted = sortRows(rows, sortKey, sortDir, (row, key) =>
-    String(row[key] ?? ""),
-  );
+  const colCount =
+    2 + // vaccine + date always
+    (maxPriority >= 2 ? 1 : 0); // location
+
+  // Group by vaccine name
+  const vaccineMap = new Map<string, Record<string, unknown>[]>();
+  for (const row of rows) {
+    const name = String(row.vaccine ?? "Unknown");
+    if (!vaccineMap.has(name)) vaccineMap.set(name, []);
+    vaccineMap.get(name)!.push(row);
+  }
+
+  // Sort groups alphabetically
+  const groupKeys = [...vaccineMap.keys()].sort((a, b) => a.localeCompare(b));
+
+  // Sort rows within each group by date descending (most recent first)
+  const sortedGroups = groupKeys.map((name) => {
+    const groupRows = vaccineMap.get(name)!;
+    const sorted = sortKey
+      ? sortRows(groupRows, sortKey, sortDir, (row, key) => String(row[key] ?? ""))
+      : [...groupRows].sort((a, b) => String(b.date ?? "").localeCompare(String(a.date ?? "")));
+    return { name, rows: sorted };
+  });
+
+  // All groups expanded by default
+  const [expanded, setExpanded] = useState<Set<string>>(() => new Set(groupKeys));
+  const toggleGroup = (group: string) => {
+    setExpanded((prev) => {
+      const next = new Set(prev);
+      if (next.has(group)) next.delete(group);
+      else next.add(group);
+      return next;
+    });
+  };
 
   return (
     <CardContent className="p-0 overflow-x-auto" ref={containerRef}>
-      <table className="w-full">
+      <table className={tableClass(maxPriority)}>
         <thead>
           <tr className="border-b bg-muted/30">
-            {/* P1: Vaccine */}
             <SortHeader
               label="Vaccine"
               active={sortKey === "vaccine"}
               direction={sortKey === "vaccine" ? sortDir : null}
               onClick={() => toggle("vaccine")}
             />
-            {/* P1: Date */}
             <SortHeader
               label="Date"
               active={sortKey === "date"}
               direction={sortKey === "date" ? sortDir : null}
               onClick={() => toggle("date")}
             />
-            {/* P2: Location */}
             {maxPriority >= 2 && (
               <SortHeader
                 label="Location"
@@ -43,18 +80,63 @@ export function ImmunizationsTable({ rows }: { rows: Record<string, unknown>[] }
             )}
           </tr>
         </thead>
-        <tbody className="divide-y">
-          {sorted.map((row, i) => (
-            <tr key={`${row.vaccine}-${i}`}>
-              <td className="px-3 py-2 text-sm font-medium">{String(row.vaccine ?? "")}</td>
-              <td className="px-3 py-2 text-sm text-muted-foreground">{String(row.date ?? "")}</td>
-              {maxPriority >= 2 && (
-                <td className="px-3 py-2 text-sm text-muted-foreground">{String(row.location ?? "")}</td>
-              )}
-            </tr>
+        <tbody>
+          {sortedGroups.map(({ name, rows: groupRows }) => (
+            <VaccineGroup
+              key={name}
+              name={name}
+              rows={groupRows}
+              colCount={colCount}
+              maxPriority={maxPriority}
+              isExpanded={expanded.has(name)}
+              onToggle={() => toggleGroup(name)}
+            />
           ))}
         </tbody>
       </table>
     </CardContent>
+  );
+}
+
+function VaccineGroup({
+  name,
+  rows,
+  colCount,
+  maxPriority,
+  isExpanded,
+  onToggle,
+}: {
+  name: string;
+  rows: Record<string, unknown>[];
+  colCount: number;
+  maxPriority: ColumnPriority;
+  isExpanded: boolean;
+  onToggle: () => void;
+}) {
+  const Chevron = isExpanded ? ChevronDown : ChevronRight;
+  return (
+    <>
+      <tr className="bg-muted/20 cursor-pointer hover:bg-muted/40" onClick={onToggle}>
+        <td colSpan={colCount}>
+          <div className="flex items-center gap-1.5">
+            <Chevron className="size-3.5 text-muted-foreground" />
+            <span className="text-xs font-medium text-muted-foreground uppercase tracking-wide">
+              {name}
+            </span>
+            <span className="text-xs text-muted-foreground/60">({rows.length})</span>
+          </div>
+        </td>
+      </tr>
+      {isExpanded &&
+        rows.map((row, i) => (
+          <tr key={`${name}-${i}`}>
+            <td className="font-medium">{String(row.vaccine ?? "")}</td>
+            <td className="text-muted-foreground">{String(row.date ?? "")}</td>
+            {maxPriority >= 2 && (
+              <td className="text-muted-foreground">{String(row.location ?? "")}</td>
+            )}
+          </tr>
+        ))}
+    </>
   );
 }

@@ -8,6 +8,7 @@ import {
   sortRows,
   columnHasData,
   useResponsiveColumns,
+  tableClass,
   type ColumnPriority,
 } from "./table-primitives";
 
@@ -28,7 +29,7 @@ const allCols: ColDef[] = [
     required: true,
     priority: 1,
     render: (row) => (
-      <td className="px-3 py-2 text-sm font-medium">{String(row.procedure ?? "")}</td>
+      <td className="font-medium">{String(row.procedure ?? "")}</td>
     ),
   },
   {
@@ -37,7 +38,7 @@ const allCols: ColDef[] = [
     required: true,
     priority: 1,
     render: (row) => (
-      <td className="px-3 py-2 text-sm text-muted-foreground">{String(row.date ?? "")}</td>
+      <td className="text-muted-foreground">{String(row.date ?? "")}</td>
     ),
   },
   {
@@ -45,7 +46,7 @@ const allCols: ColDef[] = [
     label: "Location",
     priority: 3,
     render: (row) => (
-      <td className="px-3 py-2 text-sm text-muted-foreground">{String(row.location ?? "")}</td>
+      <td className="text-muted-foreground">{String(row.location ?? "")}</td>
     ),
   },
   {
@@ -53,7 +54,7 @@ const allCols: ColDef[] = [
     label: "Reason",
     priority: 3,
     render: (row) => (
-      <td className="px-3 py-2 text-sm text-muted-foreground">
+      <td className="text-muted-foreground">
         {row.reason ? String(row.reason) : <span className="italic">&mdash;</span>}
       </td>
     ),
@@ -77,7 +78,7 @@ export function ProceduresTable({ rows }: { rows: Record<string, unknown>[] }) {
 
   return (
     <CardContent className="p-0 overflow-x-auto" ref={containerRef}>
-      <table className="w-full">
+      <table className={tableClass(maxPriority)}>
         <thead>
           <tr className="border-b bg-muted/30">
             {visibleCols.map((col) => (

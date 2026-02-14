@@ -229,7 +229,7 @@ function AgentMessageInner({
     : "Reasoning";
 
   return (
-    <div className="mb-8 space-y-3">
+    <div className="mb-8 space-y-3 min-w-0">
       {/* Thinking section — Claude-style "Thought for Xs" */}
       {(reasoningText || toolCalls.length > 0) && (
         <button

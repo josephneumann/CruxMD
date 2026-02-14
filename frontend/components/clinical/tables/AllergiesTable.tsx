@@ -8,6 +8,7 @@ import {
   CriticalityText,
   AllergyStatusText,
   useResponsiveColumns,
+  tableClass,
 } from "./table-primitives";
 
 type AllergySortKey = "allergen" | "category" | "criticality" | "clinicalStatus" | "onsetDate";
@@ -22,24 +23,21 @@ export function AllergiesTable({ rows }: { rows: Record<string, unknown>[] }) {
 
   return (
     <CardContent className="p-0 overflow-x-auto" ref={containerRef}>
-      <table className="w-full">
+      <table className={tableClass(maxPriority)}>
         <thead>
           <tr className="border-b bg-muted/30">
-            {/* P1: Allergen */}
             <SortHeader
               label="Allergen"
               active={sortKey === "allergen"}
               direction={sortKey === "allergen" ? sortDir : null}
               onClick={() => toggle("allergen")}
             />
-            {/* P1: Criticality */}
             <SortHeader
               label="Criticality"
               active={sortKey === "criticality"}
               direction={sortKey === "criticality" ? sortDir : null}
               onClick={() => toggle("criticality")}
             />
-            {/* P2: Category */}
             {maxPriority >= 2 && (
               <SortHeader
                 label="Category"
@@ -48,7 +46,6 @@ export function AllergiesTable({ rows }: { rows: Record<string, unknown>[] }) {
                 onClick={() => toggle("category")}
               />
             )}
-            {/* P3: Status */}
             {maxPriority >= 3 && (
               <SortHeader
                 label="Status"
@@ -57,7 +54,6 @@ export function AllergiesTable({ rows }: { rows: Record<string, unknown>[] }) {
                 onClick={() => toggle("clinicalStatus")}
               />
             )}
-            {/* P3: Onset */}
             {maxPriority >= 3 && (
               <SortHeader
                 label="Onset"
@@ -71,22 +67,22 @@ export function AllergiesTable({ rows }: { rows: Record<string, unknown>[] }) {
         <tbody className="divide-y">
           {sorted.map((row, i) => (
             <tr key={`${row.allergen}-${i}`}>
-              <td className="px-3 py-2 text-sm font-medium">{String(row.allergen ?? "")}</td>
-              <td className="px-3 py-2">
+              <td className="font-medium">{String(row.allergen ?? "")}</td>
+              <td>
                 <CriticalityText criticality={(row.criticality as "high" | "low") ?? "low"} />
               </td>
               {maxPriority >= 2 && (
-                <td className="px-3 py-2 text-sm text-muted-foreground capitalize">
+                <td className="text-muted-foreground capitalize">
                   {String(row.category ?? "")}
                 </td>
               )}
               {maxPriority >= 3 && (
-                <td className="px-3 py-2">
+                <td>
                   <AllergyStatusText status={(row.clinicalStatus as "active" | "inactive") ?? "active"} />
                 </td>
               )}
               {maxPriority >= 3 && (
-                <td className="px-3 py-2 text-sm text-muted-foreground">{String(row.onsetDate ?? "")}</td>
+                <td className="text-muted-foreground">{String(row.onsetDate ?? "")}</td>
               )}
             </tr>
           ))}

@@ -37,6 +37,53 @@ router = APIRouter(prefix="/chat", tags=["chat"])
 MAX_MESSAGE_LENGTH = 10000
 MAX_CONVERSATION_HISTORY = 50
 
+# ---------------------------------------------------------------------------
+# Canned responses for category lookups with deterministic tables.
+# When a table_hint is set, the table IS the answer — no LLM call needed.
+# ---------------------------------------------------------------------------
+_TABLE_FOLLOW_UPS: dict[str, list[dict[str, str]]] = {
+    "medications": [
+        {"question": "Are there any drug interactions to watch for?"},
+        {"question": "Show me recent lab results"},
+        {"question": "What conditions are being treated?"},
+    ],
+    "lab_results": [
+        {"question": "Are any results outside the normal range?"},
+        {"question": "Show me the A1c trend over time"},
+        {"question": "What medications is the patient on?"},
+    ],
+    "vitals": [
+        {"question": "How has blood pressure changed over time?"},
+        {"question": "Show me recent lab results"},
+        {"question": "What medications is the patient on?"},
+    ],
+    "conditions": [
+        {"question": "What medications treat these conditions?"},
+        {"question": "Show me recent lab results"},
+        {"question": "Any recent procedures?"},
+    ],
+    "allergies": [
+        {"question": "What medications is the patient on?"},
+        {"question": "Are there any drug interactions to watch for?"},
+        {"question": "Show me the conditions list"},
+    ],
+    "immunizations": [
+        {"question": "Are any immunizations overdue?"},
+        {"question": "Show me the conditions list"},
+        {"question": "What medications is the patient on?"},
+    ],
+    "procedures": [
+        {"question": "Show me recent encounters"},
+        {"question": "What conditions are being treated?"},
+        {"question": "Show me recent lab results"},
+    ],
+    "encounters": [
+        {"question": "What happened at the most recent visit?"},
+        {"question": "Show me recent lab results"},
+        {"question": "What medications is the patient on?"},
+    ],
+}
+
 
 def _format_profile_summary(profile: dict) -> str | None:
     """Format a brief summary from patient profile fields.
@@ -474,56 +521,82 @@ async def chat_stream(
             return enriched
 
         try:
-            # Lightning tier: buffer response, check for miss before streaming
-            if chat_ctx.query_profile.tier == QueryTier.LIGHTNING:
-                lightning_response = await chat_ctx.agent.generate_response(
-                    system_prompt=chat_ctx.system_prompt,
-                    patient_id=chat_ctx.patient_id,
-                    message=request.message,
-                    history=chat_ctx.history,
-                    graph=chat_ctx.graph,
-                    db=db,
-                    query_profile=chat_ctx.query_profile,
+            # Table-only shortcut: when table_hint is set, the table IS the
+            # answer. Skip the LLM entirely — zero latency, zero duplication.
+            if chat_ctx.query_profile.table_hint:
+                table = await build_table_for_type(
+                    chat_ctx.query_profile.table_hint,
+                    patient_id=request.patient_id, db=db,
                 )
-                if lightning_response.needs_deeper_search:
+                if table:
+                    follow_ups = _TABLE_FOLLOW_UPS.get(
+                        chat_ctx.query_profile.table_hint, [],
+                    )
+                    canned = {
+                        "narrative": table.get("title", "Results"),
+                        "tables": [table],
+                        "follow_ups": follow_ups,
+                    }
+                    final_response_json = json.dumps(canned)
+                    await event_queue.put(("done", final_response_json))
                     logger.info(
-                        "Lightning miss (stream) for %r, upgrading to Quick",
-                        request.message[:80],
+                        "Table-only shortcut for %r (%d rows)",
+                        chat_ctx.query_profile.table_hint,
+                        len(table.get("rows", [])),
                     )
-                    quick_prompt = chat_ctx.build_prompt_for(QUICK_PROFILE)
-                    raw_done = await _stream_to_queue(
-                        chat_ctx.agent.generate_response_stream(
-                            system_prompt=quick_prompt,
-                            patient_id=chat_ctx.patient_id,
-                            message=request.message,
-                            history=chat_ctx.history,
-                            graph=chat_ctx.graph,
-                            db=db,
-                            query_profile=QUICK_PROFILE,
-                        )
-                    )
-                    if raw_done:
-                        final_response_json = await _inject_tables_and_emit(raw_done)
-                else:
-                    # Lightning hit — inject tables and emit
-                    raw_json = lightning_response.model_dump_json()
-                    final_response_json = await _inject_tables_and_emit(raw_json)
-            else:
-                # Normal Quick/Deep streaming path
-                raw_done = await _stream_to_queue(
-                    chat_ctx.agent.generate_response_stream(
+
+            # LLM path — only if table shortcut didn't resolve
+            if not final_response_json:
+                if chat_ctx.query_profile.tier == QueryTier.LIGHTNING:
+                    # Lightning tier: buffer response, check for miss
+                    lightning_response = await chat_ctx.agent.generate_response(
                         system_prompt=chat_ctx.system_prompt,
                         patient_id=chat_ctx.patient_id,
                         message=request.message,
                         history=chat_ctx.history,
-                        reasoning_boost=request.reasoning_boost,
                         graph=chat_ctx.graph,
                         db=db,
                         query_profile=chat_ctx.query_profile,
                     )
-                )
-                if raw_done:
-                    final_response_json = await _inject_tables_and_emit(raw_done)
+                    if lightning_response.needs_deeper_search:
+                        logger.info(
+                            "Lightning miss (stream) for %r, upgrading to Quick",
+                            request.message[:80],
+                        )
+                        quick_prompt = chat_ctx.build_prompt_for(QUICK_PROFILE)
+                        raw_done = await _stream_to_queue(
+                            chat_ctx.agent.generate_response_stream(
+                                system_prompt=quick_prompt,
+                                patient_id=chat_ctx.patient_id,
+                                message=request.message,
+                                history=chat_ctx.history,
+                                graph=chat_ctx.graph,
+                                db=db,
+                                query_profile=QUICK_PROFILE,
+                            )
+                        )
+                        if raw_done:
+                            final_response_json = await _inject_tables_and_emit(raw_done)
+                    else:
+                        # Lightning hit — inject tables and emit
+                        raw_json = lightning_response.model_dump_json()
+                        final_response_json = await _inject_tables_and_emit(raw_json)
+                else:
+                    # Normal Quick/Deep streaming path
+                    raw_done = await _stream_to_queue(
+                        chat_ctx.agent.generate_response_stream(
+                            system_prompt=chat_ctx.system_prompt,
+                            patient_id=chat_ctx.patient_id,
+                            message=request.message,
+                            history=chat_ctx.history,
+                            reasoning_boost=request.reasoning_boost,
+                            graph=chat_ctx.graph,
+                            db=db,
+                            query_profile=chat_ctx.query_profile,
+                        )
+                    )
+                    if raw_done:
+                        final_response_json = await _inject_tables_and_emit(raw_done)
 
         except ValueError as e:
             logger.error("ValueError in chat stream: %s", e, exc_info=True)

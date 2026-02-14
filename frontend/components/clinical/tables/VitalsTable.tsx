@@ -20,6 +20,7 @@ import {
   RangeBar,
   SparklineWithDelta,
   useResponsiveColumns,
+  tableClass,
 } from "./table-primitives";
 
 type VitalSortKey = "vital" | "value" | "date";
@@ -46,7 +47,7 @@ export function VitalsTable({ rows }: { rows: Record<string, unknown>[] }) {
 
   return (
     <CardContent className="p-0 overflow-x-auto" ref={containerRef}>
-      <table className="w-full">
+      <table className={tableClass(maxPriority)}>
         <thead>
           <tr className="border-b bg-muted/30">
             <SortHeader
@@ -91,8 +92,7 @@ export function VitalsTable({ rows }: { rows: Record<string, unknown>[] }) {
 
             return (
               <tr key={`${vital}-${i}`}>
-                {/* P1: Vital name */}
-                <td className="px-3 py-2.5 text-sm font-medium">
+                <td className="font-medium">
                   <div className="flex items-center gap-2">
                     {VitalIcon && (
                       <VitalIcon className="size-3.5 text-muted-foreground" />
@@ -100,8 +100,7 @@ export function VitalsTable({ rows }: { rows: Record<string, unknown>[] }) {
                     {vital}
                   </div>
                 </td>
-                {/* P1: Value + unit */}
-                <td className="px-3 py-2.5 text-sm whitespace-nowrap">
+                <td className="whitespace-nowrap">
                   <span
                     className={`tabular-nums ${isCritical ? "text-[#C24E42] font-medium" : isAbnormal ? "text-[#D9A036] font-medium" : ""}`}
                   >
@@ -111,9 +110,8 @@ export function VitalsTable({ rows }: { rows: Record<string, unknown>[] }) {
                     </span>
                   </span>
                 </td>
-                {/* P2: Reference range */}
                 {maxPriority >= 2 && (
-                  <td className="px-3 py-2.5">
+                  <td>
                     {hasRange && (
                       <RangeBar
                         value={Number(row.numericValue ?? 0)}
@@ -124,9 +122,8 @@ export function VitalsTable({ rows }: { rows: Record<string, unknown>[] }) {
                     )}
                   </td>
                 )}
-                {/* P3: Trend sparkline */}
                 {maxPriority >= 3 && (
-                  <td className="px-3 py-2.5">
+                  <td>
                     {hasHistory && (
                       <SparklineWithDelta
                         data={row.history as HistoryPoint[]}
@@ -136,9 +133,8 @@ export function VitalsTable({ rows }: { rows: Record<string, unknown>[] }) {
                     )}
                   </td>
                 )}
-                {/* P3: Date */}
                 {maxPriority >= 3 && (
-                  <td className="px-3 py-2.5 text-sm text-muted-foreground">
+                  <td className="text-muted-foreground">
                     {String(row.date ?? "")}
                   </td>
                 )}

@@ -623,13 +623,13 @@ class TestQueryProfileValues:
         assert QUICK_PROFILE.response_schema == "full"
 
     def test_quick_lookup_profile_values(self):
-        assert QUICK_LOOKUP_PROFILE.tier == QueryTier.QUICK
-        assert QUICK_LOOKUP_PROFILE.model is None
+        assert QUICK_LOOKUP_PROFILE.tier == QueryTier.LIGHTNING
+        assert QUICK_LOOKUP_PROFILE.model == "gpt-4o-mini"
         assert QUICK_LOOKUP_PROFILE.reasoning is False
         assert QUICK_LOOKUP_PROFILE.include_tools is False
-        assert QUICK_LOOKUP_PROFILE.max_output_tokens == 4096
-        assert QUICK_LOOKUP_PROFILE.system_prompt_mode == "quick"
-        assert QUICK_LOOKUP_PROFILE.response_schema == "full"
+        assert QUICK_LOOKUP_PROFILE.max_output_tokens == 2048
+        assert QUICK_LOOKUP_PROFILE.system_prompt_mode == "lightning"
+        assert QUICK_LOOKUP_PROFILE.response_schema == "lightning"
 
     def test_deep_profile_values(self):
         assert DEEP_PROFILE.tier == QueryTier.DEEP
