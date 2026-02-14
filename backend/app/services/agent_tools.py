@@ -76,6 +76,44 @@ SHOW_CLINICAL_TABLE_SCHEMA: dict[str, Any] = {
     "strict": True,
 }
 
+SHOW_CLINICAL_CHART_SCHEMA: dict[str, Any] = {
+    "type": "function",
+    "name": "show_clinical_chart",
+    "description": (
+        "Display a clinical chart to the user. Use for trending lab values, "
+        "vital signs over time, or encounter timelines. The chart is generated "
+        "deterministically from the patient record — you do NOT need to "
+        "populate the data."
+    ),
+    "parameters": {
+        "type": "object",
+        "properties": {
+            "chart_type": {
+                "type": "string",
+                "enum": ["trend_chart", "encounter_timeline"],
+                "description": "Type of clinical chart to display.",
+            },
+            "loinc_codes": {
+                "type": ["array", "null"],
+                "items": {"type": "string"},
+                "description": (
+                    "LOINC codes to trend (for trend_chart). "
+                    "E.g., ['4548-4'] for HbA1c. Optional."
+                ),
+            },
+            "time_range": {
+                "type": ["string", "null"],
+                "description": (
+                    "Time range like '1y', '6m', '3m'. Optional."
+                ),
+            },
+        },
+        "required": ["chart_type", "loinc_codes", "time_range"],
+        "additionalProperties": False,
+    },
+    "strict": True,
+}
+
 TOOL_SCHEMAS: list[dict[str, Any]] = [
     {
         "type": "function",
@@ -225,6 +263,7 @@ TOOL_SCHEMAS: list[dict[str, Any]] = [
         "strict": True,
     },
     SHOW_CLINICAL_TABLE_SCHEMA,
+    SHOW_CLINICAL_CHART_SCHEMA,
 ]
 
 
@@ -235,6 +274,7 @@ async def execute_tool(
     graph: KnowledgeGraph,
     db: AsyncSession,
     generated_tables: list[dict[str, Any]] | None = None,
+    generated_visualizations: list[dict[str, Any]] | None = None,
 ) -> str:
     """Execute a tool by name with JSON-encoded arguments.
 
@@ -247,6 +287,9 @@ async def execute_tool(
         generated_tables: Optional side-channel list. When show_clinical_table
             is called, the generated table dict is appended here so it can
             be attached to the final API response.
+        generated_visualizations: Optional side-channel list. When
+            show_clinical_chart is called, the generated visualization dict
+            is appended here so it can be attached to the final API response.
 
     Returns:
         Tool result as a JSON string.
@@ -257,6 +300,12 @@ async def execute_tool(
     if name == "show_clinical_table":
         return await _execute_show_clinical_table(
             args, patient_id, db, generated_tables,
+        )
+
+    # Handle show_clinical_chart specially — generates chart via side channel
+    if name == "show_clinical_chart":
+        return await _execute_show_clinical_chart(
+            args, patient_id, db, generated_visualizations,
         )
 
     handlers = {
@@ -336,6 +385,52 @@ async def _execute_show_clinical_table(
     return json.dumps({
         "displayed": True,
         "message": f"Table displayed: {table['title']} ({row_count} rows)",
+    })
+
+
+async def _execute_show_clinical_chart(
+    args: dict[str, Any],
+    patient_id: str,
+    db: AsyncSession,
+    generated_visualizations: list[dict[str, Any]] | None,
+) -> str:
+    """Execute show_clinical_chart: build chart and store in side channel."""
+    import uuid
+    from app.services.chart_builder import build_chart_for_type
+
+    chart_type = args.get("chart_type", "")
+    try:
+        chart = await build_chart_for_type(
+            chart_type=chart_type,
+            patient_id=uuid.UUID(patient_id),
+            db=db,
+            loinc_codes=args.get("loinc_codes"),
+            time_range=args.get("time_range"),
+        )
+    except Exception as e:
+        logger.error("show_clinical_chart failed: %s", e)
+        return json.dumps({"error": f"Failed to generate {chart_type} chart: {e}"})
+
+    if chart is None:
+        return json.dumps({
+            "displayed": False,
+            "message": f"No data found for {chart_type} chart.",
+        })
+
+    # Store in side channel for attachment to final response
+    if generated_visualizations is not None:
+        generated_visualizations.append(chart)
+
+    title = chart.get("title", chart_type)
+    data_points = 0
+    for series in chart.get("series", []):
+        data_points += len(series.get("data_points", []))
+    for event in chart.get("events", []):
+        data_points += 1
+
+    return json.dumps({
+        "displayed": True,
+        "message": f"Chart displayed: {title} ({data_points} data points)",
     })
 
 

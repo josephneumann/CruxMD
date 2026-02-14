@@ -610,8 +610,8 @@ class TestToolSchemas:
     """Tests for TOOL_SCHEMAS definitions."""
 
     def test_all_tools_defined(self):
-        """Test that all 4 tool schemas are defined."""
-        assert len(TOOL_SCHEMAS) == 4
+        """Test that all 5 tool schemas are defined."""
+        assert len(TOOL_SCHEMAS) == 5
 
     def test_tool_names(self):
         """Test that tool names match the function names."""
@@ -621,6 +621,7 @@ class TestToolSchemas:
             "explore_connections",
             "get_patient_timeline",
             "show_clinical_table",
+            "show_clinical_chart",
         }
 
     def test_all_schemas_have_required_fields(self):
@@ -2539,8 +2540,7 @@ class TestLightningModelRouting:
         assert result.needs_deeper_search is False
         # Optional fields should be None
         assert result.insights is None
-        assert result.visualizations is None
-        # tables and actions fields were removed from AgentResponse
+        # tables, visualizations, and actions fields were removed from AgentResponse
 
     @pytest.mark.asyncio
     async def test_lightning_wraps_needs_deeper_search_true(

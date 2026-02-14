@@ -1,8 +1,9 @@
 """LLM Agent Service for clinical reasoning with structured output.
 
 This is the brain of the chat system - it takes patient context and user messages,
-reasons about them using GPT-5.2, and returns structured responses with insights,
-visualizations, and follow-up suggestions.
+reasons about them using GPT-5.2, and returns structured responses with insights
+and follow-up suggestions. Visualizations are generated deterministically by
+backend code (chart_builder.py), not by the LLM.
 
 Uses the OpenAI Responses API with Pydantic structured outputs for type-safe
 response parsing.
@@ -940,10 +941,10 @@ def build_system_prompt_deep(
     tool_section = (
         "## Tools\n"
         "\n"
-        "You have three tools to retrieve additional patient data on demand. "
-        "Use them when the pre-compiled summary does not contain enough detail "
-        "to fully answer the question. You can call multiple tools in a single "
-        "round and make multiple rounds of calls.\n"
+        "You have tools to retrieve additional patient data and display "
+        "visual elements on demand. Use them when the pre-compiled summary "
+        "does not contain enough detail to fully answer the question. You can "
+        "call multiple tools in a single round and make multiple rounds of calls.\n"
         "\n"
         "**Do NOT guess or fabricate clinical data — if you need it, call a tool.**\n"
         "\n"
@@ -964,6 +965,17 @@ def build_system_prompt_deep(
         "Get the patient's encounter timeline, optionally filtered by date range. "
         "Shows encounters chronologically with associated events.\n"
         "- Use for: understanding visit history, what happened when, clinical notes\n"
+        "\n"
+        "### show_clinical_table\n"
+        "Display a clinical data table (medications, labs, vitals, conditions, etc.). "
+        "The table is built deterministically — you only specify the type and optional filters.\n"
+        "\n"
+        "### show_clinical_chart\n"
+        "Display a clinical chart (trend_chart for lab/vital trends, encounter_timeline "
+        "for visit history). The chart is built deterministically — you specify the type "
+        "and optionally LOINC codes and time range.\n"
+        "- Use for: trending lab values over time (e.g., HbA1c, creatinine), "
+        "vital sign trends, or encounter timeline views\n"
         "\n"
         "### Important: Understanding enrichment fields in the summary\n"
         "\n"
@@ -994,26 +1006,7 @@ def build_system_prompt_deep(
         "- thinking: Your reasoning process (optional, for transparency)\n"
         "- narrative: Main response in markdown format\n"
         "- insights: Important clinical insights to highlight (info, warning, critical, positive)\n"
-        "- visualizations: Charts when data warrants visual trending (see Visualization Types below)\n"
-        "- follow_ups: 2-3 SHORT follow-up questions (under 80 chars each) displayed as clickable chips\n"
-        "\n"
-        "## Visualization Types\n"
-        "\n"
-        "trend_chart: For lab/vital trends over time.\n"
-        "  Required: title, series (name, unit, data_points with date+value)\n"
-        "  Header: current_value (latest reading), trend_summary (e.g., \"↓ 21% · Above Target\"), "
-        "trend_status (positive/warning/critical/neutral)\n"
-        "  Optional: reference_lines (value, label) for target thresholds\n"
-        "  Optional: range_bands (y1, y2, severity, label?) for clinical staging zones "
-        "(e.g., KDIGO eGFR bands, ADA HbA1c ranges). Severity: normal (green), warning (amber), "
-        "critical (red).\n"
-        "  Optional: medications (drug, segments with label+flex+active) for medication timeline "
-        "aligned below chart — include when treatment changes correlate with the trend.\n"
-        "  Auto-rendering: Single series without range_bands → area chart. With range_bands → "
-        "line chart + colored zones. 2+ series → multi-line with legend.\n"
-        "\n"
-        "encounter_timeline: For chronological encounter view.\n"
-        "  Provide events (date, title, detail, category where category is AMB/EMER/IMP)."
+        "- follow_ups: 2-3 SHORT follow-up questions (under 80 chars each) displayed as clickable chips"
     )
 
     # ── Assemble ─────────────────────────────────────────────────────────────
@@ -1053,6 +1046,7 @@ class AgentService:
     """
 
     generated_tables: list[dict[str, Any]]
+    generated_visualizations: list[dict[str, Any]]
 
     def __init__(
         self,
@@ -1084,6 +1078,7 @@ class AgentService:
             self._client = AsyncOpenAI(api_key=settings.openai_api_key)
 
         self.generated_tables = []
+        self.generated_visualizations = []
         self._model = model
         self._reasoning_effort = reasoning_effort
         self._max_output_tokens = max_output_tokens
@@ -1176,6 +1171,7 @@ class AgentService:
                     graph=graph,
                     db=db,
                     generated_tables=self.generated_tables,
+                    generated_visualizations=self.generated_visualizations,
                 )
                 exec_ms = (time.perf_counter() - exec_start) * 1000
                 result_len = len(result)
@@ -1271,6 +1267,7 @@ class AgentService:
             raise ValueError("message cannot be empty")
 
         self.generated_tables = []
+        self.generated_visualizations = []
         t0 = time.perf_counter()
         input_messages = self._build_input_messages(system_prompt, message, history)
 
@@ -1396,6 +1393,7 @@ class AgentService:
             raise ValueError("message cannot be empty")
 
         self.generated_tables = []
+        self.generated_visualizations = []
         t0 = time.perf_counter()
         input_messages = self._build_input_messages(system_prompt, message, history)
 
@@ -1533,6 +1531,7 @@ class AgentService:
                     graph=graph,
                     db=db,
                     generated_tables=self.generated_tables,
+                    generated_visualizations=self.generated_visualizations,
                 )
                 exec_ms = (time.perf_counter() - exec_start) * 1000
                 logger.info(

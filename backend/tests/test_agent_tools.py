@@ -24,12 +24,12 @@ from app.services.agent_tools import (
 
 
 class TestToolSchemas:
-    def test_four_schemas_defined(self):
-        assert len(TOOL_SCHEMAS) == 4
+    def test_five_schemas_defined(self):
+        assert len(TOOL_SCHEMAS) == 5
 
     def test_tool_names(self):
         names = {t["name"] for t in TOOL_SCHEMAS}
-        assert names == {"query_patient_data", "explore_connections", "get_patient_timeline", "show_clinical_table"}
+        assert names == {"query_patient_data", "explore_connections", "get_patient_timeline", "show_clinical_table", "show_clinical_chart"}
 
     def test_all_schemas_have_required_fields(self):
         for schema in TOOL_SCHEMAS:
@@ -66,6 +66,14 @@ class TestToolSchemas:
         assert "start_date" in props
         assert "end_date" in props
         assert "include_notes" in props
+
+    def test_show_clinical_chart_parameters(self):
+        schema = next(s for s in TOOL_SCHEMAS if s["name"] == "show_clinical_chart")
+        props = schema["parameters"]["properties"]
+        assert "chart_type" in props
+        assert "loinc_codes" in props
+        assert "time_range" in props
+        assert props["chart_type"]["enum"] == ["trend_chart", "encounter_timeline"]
 
 
 # =============================================================================
@@ -153,6 +161,29 @@ class TestExecuteTool:
         parsed = json.loads(result)
         assert parsed["total"] == 0
         assert "No encounters found" in parsed["message"]
+
+    @pytest.mark.asyncio
+    @patch("app.services.agent_tools._execute_show_clinical_chart", new_callable=AsyncMock)
+    async def test_dispatches_show_clinical_chart(self, mock_chart):
+        mock_chart.return_value = json.dumps({
+            "displayed": True,
+            "message": "Chart displayed: HbA1c Trend (5 data points)",
+        })
+
+        result = await execute_tool(
+            name="show_clinical_chart",
+            arguments=json.dumps({
+                "chart_type": "trend_chart",
+                "loinc_codes": ["4548-4"],
+                "time_range": "1y",
+            }),
+            patient_id="p-1",
+            graph=AsyncMock(),
+            db=AsyncMock(),
+        )
+        parsed = json.loads(result)
+        assert parsed["displayed"] is True
+        assert "Chart displayed" in parsed["message"]
 
 
 # =============================================================================

@@ -354,7 +354,6 @@ class TestAgentResponse:
         assert response.narrative == "Here is the patient summary."
         assert response.thinking is None
         assert response.insights is None
-        assert response.visualizations is None
         assert response.follow_ups is None
         assert response.needs_deeper_search is False
 
@@ -369,7 +368,7 @@ class TestAgentResponse:
         assert response.needs_deeper_search is True
 
     def test_full_response(self):
-        """AgentResponse with all optional fields (tables removed — now deterministic)."""
+        """AgentResponse with all optional fields (tables and visualizations removed — now deterministic)."""
         response = AgentResponse(
             thinking="Let me analyze the patient's data...",
             narrative="## Summary\n\nThe patient has well-controlled diabetes.",
@@ -380,29 +379,17 @@ class TestAgentResponse:
                     content="HbA1c has improved.",
                 )
             ],
-            visualizations=[
-                ClinicalVisualization(
-                    type="trend_chart",
-                    title="HbA1c Trend",
-                    series=[TrendSeries(
-                        name="HbA1c",
-                        unit="%",
-                        data_points=[TrendPoint(date="Jan", value=7.2)],
-                    )],
-                )
-            ],
             follow_ups=[FollowUp(question="What about blood pressure?")],
         )
         assert response.thinking is not None
         assert len(response.insights) == 1
-        assert len(response.visualizations) == 1
-        assert response.visualizations[0].type == "trend_chart"
         assert len(response.follow_ups) == 1
 
-    def test_no_actions_or_tables_field(self):
-        """AgentResponse does not have actions or tables fields (tables moved to ChatAgentResponse)."""
+    def test_no_actions_tables_or_visualizations_field(self):
+        """AgentResponse does not have actions, tables, or visualizations fields (moved to ChatAgentResponse)."""
         assert "actions" not in AgentResponse.model_fields
         assert "tables" not in AgentResponse.model_fields
+        assert "visualizations" not in AgentResponse.model_fields
 
     def test_empty_narrative_rejected(self):
         """AgentResponse requires non-empty narrative."""
@@ -457,8 +444,8 @@ class TestAgentResponse:
         assert response.tables[0].type == "medications"
         assert response.tables[0].rows[0]["medication"] == "Lisinopril 10 MG"
 
-    def test_response_with_visualization_from_json(self):
-        """AgentResponse with visualization can be parsed from JSON."""
+    def test_chat_agent_response_with_visualizations(self):
+        """ChatAgentResponse extends AgentResponse with deterministic visualizations."""
         json_data = {
             "narrative": "Here is the trend.",
             "visualizations": [
@@ -481,7 +468,7 @@ class TestAgentResponse:
                 }
             ],
         }
-        response = AgentResponse.model_validate(json_data)
+        response = ChatAgentResponse.model_validate(json_data)
         assert len(response.visualizations) == 1
         assert response.visualizations[0].current_value == "7.2%"
         assert len(response.visualizations[0].series[0].data_points) == 2
