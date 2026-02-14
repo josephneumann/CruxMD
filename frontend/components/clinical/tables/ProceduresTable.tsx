@@ -27,16 +27,23 @@ export function ProceduresTable({ rows }: { rows: Record<string, unknown>[] }) {
   if (showReason) colCount++;
 
   // Group by year — extract from formatted date like "Sep 17, 2025"
+  const currentYear = new Date().getFullYear();
+  const cutoff = currentYear - 5;
   const yearMap = new Map<string, Record<string, unknown>[]>();
   for (const row of rows) {
     const date = String(row.date ?? "");
     const yearMatch = date.match(/\d{4}/);
-    const year = yearMatch ? yearMatch[0] : "Unknown";
-    if (!yearMap.has(year)) yearMap.set(year, []);
-    yearMap.get(year)!.push(row);
+    const rawYear = yearMatch ? yearMatch[0] : "Unknown";
+    const groupKey = rawYear !== "Unknown" && Number(rawYear) < cutoff ? "Older" : rawYear;
+    if (!yearMap.has(groupKey)) yearMap.set(groupKey, []);
+    yearMap.get(groupKey)!.push(row);
   }
 
-  const sortedYears = [...yearMap.keys()].sort((a, b) => b.localeCompare(a));
+  const sortedYears = [...yearMap.keys()].sort((a, b) => {
+    if (a === "Older") return 1;
+    if (b === "Older") return -1;
+    return b.localeCompare(a);
+  });
 
   const sortedGroups = sortedYears.map((year) => ({
     year,

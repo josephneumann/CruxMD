@@ -367,7 +367,7 @@ async def build_vitals_table(
         if loinc:
             by_loinc.setdefault(loinc, []).append(obs)
 
-    # LOINC codes with clinical ranges (display ranges/history for these)
+    # LOINC codes with clinical ranges (display reference ranges for these)
     _RANGED_LOINCS = {
         "85354-9",   # Blood pressure
         "8867-4",    # Heart rate
@@ -377,6 +377,8 @@ async def build_vitals_table(
         "29463-7",   # Body weight
         "8302-2",    # Body height
     }
+    # Subset: LOINCs that also get trend history (excludes one-off vitals like temp)
+    _TRENDED_LOINCS = _RANGED_LOINCS - {"8310-5"}
 
     # Friendly display names for verbose FHIR vital names
     _VITAL_DISPLAY_NAMES: dict[str, str] = {
@@ -524,9 +526,9 @@ async def build_vitals_table(
                     range_low = ref_range_tuple.get("low")
                     range_high = ref_range_tuple.get("high")
 
-            # History (only for ranged vitals)
+            # History (only for trended vitals — excludes one-off readings like temp)
             history = []
-            if loinc_code in _RANGED_LOINCS:
+            if loinc_code in _TRENDED_LOINCS:
                 for obs in reversed(observations):
                     obs_vq = obs.get("valueQuantity", {})
                     obs_val = obs_vq.get("value")
