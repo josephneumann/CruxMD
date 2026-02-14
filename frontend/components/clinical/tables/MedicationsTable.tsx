@@ -55,7 +55,7 @@ function MedRow({
         </td>
       )}
       {maxPriority >= 3 && showAuthoredOn && (
-        <td className="text-muted-foreground">{String(row.authoredOn ?? "")}</td>
+        <td className="text-muted-foreground whitespace-nowrap">{String(row.authoredOn ?? "")}</td>
       )}
       {maxPriority >= 3 && showRequester && (
         <td className="text-muted-foreground">{String(row.requester ?? "")}</td>

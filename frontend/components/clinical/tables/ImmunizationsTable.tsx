@@ -42,8 +42,8 @@ export function ImmunizationsTable({ rows }: { rows: Record<string, unknown>[] }
     return { name, rows: sorted };
   });
 
-  // All groups expanded by default
-  const [expanded, setExpanded] = useState<Set<string>>(() => new Set(groupKeys));
+  // All groups collapsed by default
+  const [expanded, setExpanded] = useState<Set<string>>(() => new Set());
   const toggleGroup = (group: string) => {
     setExpanded((prev) => {
       const next = new Set(prev);
@@ -123,7 +123,9 @@ function VaccineGroup({
             <span className="text-xs font-medium text-muted-foreground uppercase tracking-wide">
               {name}
             </span>
-            <span className="text-xs text-muted-foreground/60">({rows.length})</span>
+            <span className="text-xs text-muted-foreground/60">
+              ({rows.length}) &middot; Last: {String(rows[0]?.date ?? "")}
+            </span>
           </div>
         </td>
       </tr>
@@ -131,7 +133,7 @@ function VaccineGroup({
         rows.map((row, i) => (
           <tr key={`${name}-${i}`}>
             <td className="font-medium">{String(row.vaccine ?? "")}</td>
-            <td className="text-muted-foreground">{String(row.date ?? "")}</td>
+            <td className="text-muted-foreground whitespace-nowrap">{String(row.date ?? "")}</td>
             {maxPriority >= 2 && (
               <td className="text-muted-foreground">{String(row.location ?? "")}</td>
             )}

@@ -45,10 +45,10 @@ function CondRow({
         </td>
       )}
       {maxPriority >= 2 && (
-        <td className="text-muted-foreground">{String(row.onsetDate ?? "")}</td>
+        <td className="text-muted-foreground whitespace-nowrap">{String(row.onsetDate ?? "")}</td>
       )}
       {maxPriority >= 3 && (
-        <td className="text-muted-foreground">
+        <td className="text-muted-foreground whitespace-nowrap">
           {row.abatementDate ? String(row.abatementDate) : <span className="italic">&mdash;</span>}
         </td>
       )}

@@ -136,6 +136,7 @@ _CHART_ENTITIES = frozenset({
     "vital", "vitals", "bp", "hr",
     # Immunizations
     "immunization", "immunizations", "vaccine", "vaccines", "vaccination", "vaccinations",
+    "shot", "shots",
     # Encounters
     "visit", "visits", "encounter", "encounters", "appointment", "appointments",
     # Procedures
@@ -225,6 +226,7 @@ _ENTITY_TO_TABLE: dict[str, str] = {
     "immunization": "immunizations", "immunizations": "immunizations",
     "vaccine": "immunizations", "vaccines": "immunizations",
     "vaccination": "immunizations", "vaccinations": "immunizations",
+    "shot": "immunizations", "shots": "immunizations",
     "encounter": "encounters", "encounters": "encounters",
     "visit": "encounters", "visits": "encounters",
     "appointment": "encounters", "appointments": "encounters",

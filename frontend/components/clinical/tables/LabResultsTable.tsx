@@ -6,6 +6,7 @@ import { CardContent } from "@/components/ui/card";
 import type { HL7Interpretation, HistoryPoint } from "@/lib/types";
 import {
   TH,
+  CELL_PLACEHOLDER,
   SortHeader,
   useSortState,
   sortRows,
@@ -78,23 +79,29 @@ function LabResultRow({
       </td>
       {maxPriority >= 2 && (
         <td>
-          {row.history.length > 0 && (
+          {row.history.length > 0 ? (
             <SparklineWithDelta
               data={row.history}
               interpretation={row.interpretation}
               unit={row.unit}
             />
+          ) : (
+            CELL_PLACEHOLDER
           )}
         </td>
       )}
       {maxPriority >= 3 && (
         <td>
-          <RangeBar
-            value={row.value}
-            low={row.rangeLow}
-            high={row.rangeHigh}
-            interpretation={row.interpretation}
-          />
+          {row.rangeLow || row.rangeHigh ? (
+            <RangeBar
+              value={row.value}
+              low={row.rangeLow}
+              high={row.rangeHigh}
+              interpretation={row.interpretation}
+            />
+          ) : (
+            CELL_PLACEHOLDER
+          )}
         </td>
       )}
     </tr>

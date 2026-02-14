@@ -374,6 +374,16 @@ async def build_vitals_table(
         "9279-1",    # Respiratory rate
         "39156-5",   # BMI
         "8310-5",    # Body temperature
+        "29463-7",   # Body weight
+        "8302-2",    # Body height
+    }
+
+    # Friendly display names for verbose FHIR vital names
+    _VITAL_DISPLAY_NAMES: dict[str, str] = {
+        "85354-9": "Blood Pressure",
+        "72514-3": "Pain Severity",
+        "39156-5": "BMI",
+        "59576-9": "BMI Percentile",
     }
 
     rows: list[dict[str, Any]] = []
@@ -381,13 +391,15 @@ async def build_vitals_table(
         latest = observations[0]
         code_obj = latest.get("code", {})
         codings = code_obj.get("coding", [])
-        vital_name = codings[0].get("display", "Unknown") if codings else "Unknown"
+        vital_name = _VITAL_DISPLAY_NAMES.get(loinc_code) or (
+            codings[0].get("display", "Unknown") if codings else "Unknown"
+        )
 
-        # Handle BP specially (component observation)
+        # Handle BP specially — component observation with child rows
         if loinc_code == "85354-9":
-            components = latest.get("component", [])
+            latest_comps = latest.get("component", [])
             sys_val = dia_val = None
-            for comp in components:
+            for comp in latest_comps:
                 comp_code = comp.get("code", {}).get("coding", [{}])[0].get("code")
                 comp_vq = comp.get("valueQuantity", {})
                 if comp_code == "8480-6":  # Systolic
@@ -396,43 +408,82 @@ async def build_vitals_table(
                     dia_val = comp_vq.get("value")
 
             value_display = f"{sys_val}/{dia_val}" if sys_val and dia_val else str(sys_val or dia_val or "")
-            numeric_value = sys_val
 
-            # Interpret BP components
-            interpretation = None
-            range_low = None
-            range_high = None
-            if sys_val is not None:
-                # Use component interpretation
-                interpret_component_observation(latest)
-                interp_list = latest.get("interpretation", [])
-                if interp_list and isinstance(interp_list, list):
-                    interp_codings = interp_list[0].get("coding", []) if isinstance(interp_list[0], dict) else []
-                    if interp_codings:
-                        interpretation = interp_codings[0].get("code")
+            # Interpret components
+            interpret_component_observation(latest)
 
-            # BP history
-            history: list[dict[str, Any]] = []
-            for obs in reversed(observations):
-                obs_comps = obs.get("component", [])
-                for comp in obs_comps:
-                    if comp.get("code", {}).get("coding", [{}])[0].get("code") == "8480-6":
-                        obs_sys = comp.get("valueQuantity", {}).get("value")
-                        obs_date = (obs.get("effectiveDateTime") or "")[:10]
-                        if obs_sys is not None:
-                            history.append({"value": obs_sys, "date": obs_date})
+            # Build per-component child rows
+            _BP_COMPONENTS = [
+                ("8480-6", "Systolic"),
+                ("8462-4", "Diastolic"),
+            ]
+            _INTERP_SEVERITY = {"LL": 4, "HH": 4, "L": 3, "H": 3, "A": 2, "N": 1}
+            worst_interp = "N"
+            child_rows: list[dict[str, Any]] = []
+
+            for comp_loinc, comp_name in _BP_COMPONENTS:
+                # Latest value + interpretation from component
+                comp_val = None
+                comp_interp = "N"
+                comp_range_low = None
+                comp_range_high = None
+                for comp in latest.get("component", []):
+                    if comp.get("code", {}).get("coding", [{}])[0].get("code") == comp_loinc:
+                        comp_val = comp.get("valueQuantity", {}).get("value")
+                        # Component interpretation
+                        ci = comp.get("interpretation", [])
+                        if ci and isinstance(ci, list):
+                            codings = ci[0].get("coding", []) if isinstance(ci[0], dict) else []
+                            if codings:
+                                comp_interp = codings[0].get("code", "N")
+                        # Component reference range
+                        crr = comp.get("referenceRange", [])
+                        if crr and isinstance(crr, list):
+                            rr = crr[0]
+                            low_obj = rr.get("low", {})
+                            high_obj = rr.get("high", {})
+                            if isinstance(low_obj, dict):
+                                comp_range_low = low_obj.get("value")
+                            if isinstance(high_obj, dict):
+                                comp_range_high = high_obj.get("value")
+                        break
+
+                if _INTERP_SEVERITY.get(comp_interp, 0) > _INTERP_SEVERITY.get(worst_interp, 0):
+                    worst_interp = comp_interp
+
+                # History for this component (oldest → newest)
+                comp_history: list[dict[str, Any]] = []
+                for obs in reversed(observations):
+                    for c in obs.get("component", []):
+                        if c.get("code", {}).get("coding", [{}])[0].get("code") == comp_loinc:
+                            v = c.get("valueQuantity", {}).get("value")
+                            d = (obs.get("effectiveDateTime") or "")[:10]
+                            if v is not None:
+                                comp_history.append({"value": v, "date": d})
+
+                child_rows.append({
+                    "vital": comp_name,
+                    "value": str(comp_val) if comp_val is not None else "",
+                    "numericValue": comp_val,
+                    "unit": "mmHg",
+                    "rangeLow": comp_range_low,
+                    "rangeHigh": comp_range_high,
+                    "history": comp_history,
+                    "interpretation": comp_interp,
+                })
 
             rows.append({
                 "vital": vital_name,
                 "value": value_display,
-                "numericValue": numeric_value,
+                "numericValue": sys_val,
                 "unit": "mmHg",
                 "loinc": loinc_code,
                 "date": (latest.get("effectiveDateTime") or "")[:10],
-                "history": history if loinc_code in _RANGED_LOINCS else [],
-                "rangeLow": range_low,
-                "rangeHigh": range_high,
-                "interpretation": interpretation,
+                "history": [],
+                "rangeLow": None,
+                "rangeHigh": None,
+                "interpretation": worst_interp,
+                "components": child_rows,
             })
         else:
             # Standard vital

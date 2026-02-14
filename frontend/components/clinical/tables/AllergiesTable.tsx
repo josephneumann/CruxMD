@@ -82,7 +82,7 @@ export function AllergiesTable({ rows }: { rows: Record<string, unknown>[] }) {
                 </td>
               )}
               {maxPriority >= 3 && (
-                <td className="text-muted-foreground">{String(row.onsetDate ?? "")}</td>
+                <td className="text-muted-foreground whitespace-nowrap">{String(row.onsetDate ?? "")}</td>
               )}
             </tr>
           ))}

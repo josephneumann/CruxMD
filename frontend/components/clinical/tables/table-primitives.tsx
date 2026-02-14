@@ -43,6 +43,13 @@ export function useTableColors() {
 export const TH =
   "text-left text-xs font-medium text-muted-foreground uppercase tracking-wider";
 
+/** Centered dot placeholder for empty data cells (no range, no trend, etc.) */
+export const CELL_PLACEHOLDER = (
+  <div className="flex justify-center">
+    <span className="size-1.5 rounded-full bg-muted-foreground/20" />
+  </div>
+);
+
 // -- Column visibility helper -------------------------------------------------
 
 /** Returns true if at least one row has a non-null, non-empty value for `key`. */
