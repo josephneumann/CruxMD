@@ -29,10 +29,10 @@ from app.services.query_classifier import (
 
 
 def _is_quick_lookup(profile: QueryProfile | None) -> bool:
-    """Check if profile matches QUICK_LOOKUP_PROFILE (ignoring table_hint)."""
+    """Check if profile matches QUICK_LOOKUP_PROFILE (ignoring table_hint/chart_hint)."""
     if profile is None:
         return False
-    return replace(profile, table_hint=None) == QUICK_LOOKUP_PROFILE
+    return replace(profile, table_hint=None, chart_hint=None) == QUICK_LOOKUP_PROFILE
 
 
 # =============================================================================
@@ -139,23 +139,34 @@ class TestLayer1QuickPath:
         "What tests were done in the past year?",
         "Labs before the surgery",
         "Medications during 2024",
-        "What was the blood pressure this month?",
         "Show encounters over the last year",
         "What labs after March?",
-        "BP readings this year",
     ])
     def test_temporal_modifier_with_entity(self, msg: str):
         assert _classify_layer1(msg) == QUICK_PROFILE
 
+    @pytest.mark.parametrize("msg", [
+        "What was the blood pressure this month?",
+        "BP readings this year",
+    ])
+    def test_temporal_bp_gets_chart_shortcut(self, msg: str):
+        result = _classify_layer1(msg)
+        assert _is_quick_lookup(result)
+        assert result.chart_hint is not None
+
     # Trending / tracking (retrieval verbs + chart entity)
     @pytest.mark.parametrize("msg", [
         "Trend the A1c results",
-        "Track the blood pressure over time",
         "Filter medications by active status",
         "Sort labs by date",
     ])
     def test_retrieval_verb_with_entity(self, msg: str):
         assert _classify_layer1(msg) == QUICK_PROFILE
+
+    def test_retrieval_verb_bp_gets_chart_shortcut(self):
+        result = _classify_layer1("Track the blood pressure over time")
+        assert _is_quick_lookup(result)
+        assert result.chart_hint is not None
 
     # Focused retrieval patterns
     @pytest.mark.parametrize("msg", [
@@ -163,13 +174,17 @@ class TestLayer1QuickPath:
         "Find the most recent A1c",
         "Look up the HbA1c history",
         "Pull up the recent vitals",
-        "Get the last blood pressure",
         "Find latest labs",
         "Find recent observations",
         "Get the most recent A1c",
     ])
     def test_focused_retrieval_patterns(self, msg: str):
         assert _classify_layer1(msg) == QUICK_PROFILE
+
+    def test_focused_retrieval_bp_gets_chart_shortcut(self):
+        result = _classify_layer1("Get the last blood pressure")
+        assert _is_quick_lookup(result)
+        assert result.chart_hint is not None
 
     # History of specific item (temporal modifier)
     @pytest.mark.parametrize("msg", [
@@ -335,11 +350,11 @@ class TestLayer1HasHistoryIgnored:
     async def test_has_history_no_longer_upgrades(self, msg: str, expected: QueryProfile):
         """Classification is stable regardless of has_history."""
         # Normalize table_hint since auto-detect sets it for QUICK_LOOKUP profiles
-        assert replace(_classify_layer1(msg), table_hint=None) == replace(expected, table_hint=None)
+        assert replace(_classify_layer1(msg), table_hint=None, chart_hint=None) == replace(expected, table_hint=None, chart_hint=None)
         result_with = await classify_query(msg, has_history=True)
-        assert replace(result_with, table_hint=None) == replace(expected, table_hint=None)
+        assert replace(result_with, table_hint=None, chart_hint=None) == replace(expected, table_hint=None, chart_hint=None)
         result_without = await classify_query(msg, has_history=False)
-        assert replace(result_without, table_hint=None) == replace(expected, table_hint=None)
+        assert replace(result_without, table_hint=None, chart_hint=None) == replace(expected, table_hint=None, chart_hint=None)
 
 
 # =============================================================================
@@ -394,6 +409,20 @@ class TestLayer1EdgeCases:
     def test_clinical_shorthand_bp(self):
         assert _is_quick_lookup(_classify_layer1("bp"))
         assert _is_quick_lookup(_classify_layer1("bp?"))
+
+    def test_bp_gets_chart_hint_not_table_hint(self):
+        """BP should resolve to chart_hint (trend chart), not table_hint (vitals table)."""
+        result = _classify_layer1("bp")
+        assert result is not None
+        assert result.table_hint is None
+        assert result.chart_hint is not None
+        assert result.chart_hint["chart_type"] == "trend_chart"
+        assert "85354-9" in result.chart_hint["loinc_codes"]
+        # Same for "blood pressure"
+        result2 = _classify_layer1("show blood pressure")
+        assert result2 is not None
+        assert result2.table_hint is None
+        assert result2.chart_hint is not None
 
     def test_clinical_shorthand_hr(self):
         assert _is_quick_lookup(_classify_layer1("hr"))
@@ -585,7 +614,7 @@ class TestClassifyQueryAsync:
         """Queries that Layer 1 resolves deterministically."""
         result = await classify_query(msg)
         # Normalize table_hint since auto-detect sets it for QUICK_LOOKUP profiles
-        assert replace(result, table_hint=None) == replace(expected, table_hint=None)
+        assert replace(result, table_hint=None, chart_hint=None) == replace(expected, table_hint=None, chart_hint=None)
 
     @pytest.mark.asyncio
     async def test_has_history_does_not_upgrade_deep(self):

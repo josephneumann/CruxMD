@@ -853,7 +853,15 @@ def build_system_prompt_quick(
         "Provide your response as a structured JSON object with:\n"
         "- narrative: Main response in markdown (concise, data-focused)\n"
         "- insights: Clinical insights if relevant (info/warning/critical/positive)\n"
-        "- follow_ups: 2-3 SHORT follow-up questions (under 80 chars each)"
+        "- follow_ups: 2-3 SHORT follow-up questions (under 80 chars each)\n"
+        "\n"
+        "## IMPORTANT: Use Visual Tools\n"
+        "When the user asks about trends, changes over time, or historical data for labs or vitals, "
+        "you MUST call `show_clinical_chart` with chart_type='trend_chart' and the relevant LOINC codes. "
+        "Do NOT write out data points in the narrative — the chart shows the data visually.\n"
+        "When the user asks for a list of clinical data (medications, labs, conditions, etc.), "
+        "call `show_clinical_table` with the appropriate type. "
+        "Keep the narrative to 1-2 sentences summarizing the key finding when a chart or table is shown."
     )
 
     return "\n\n".join([
@@ -1006,7 +1014,15 @@ def build_system_prompt_deep(
         "- thinking: Your reasoning process (optional, for transparency)\n"
         "- narrative: Main response in markdown format\n"
         "- insights: Important clinical insights to highlight (info, warning, critical, positive)\n"
-        "- follow_ups: 2-3 SHORT follow-up questions (under 80 chars each) displayed as clickable chips"
+        "- follow_ups: 2-3 SHORT follow-up questions (under 80 chars each) displayed as clickable chips\n"
+        "\n"
+        "## IMPORTANT: Use Visual Tools\n"
+        "When the user asks about trends, changes over time, or historical data for labs or vitals, "
+        "you MUST call `show_clinical_chart` with chart_type='trend_chart' and the relevant LOINC codes. "
+        "Do NOT write out data points in the narrative — the chart shows the data visually.\n"
+        "When the user asks for a list of clinical data (medications, labs, conditions, etc.), "
+        "call `show_clinical_table` with the appropriate type. "
+        "Keep the narrative to 1-2 sentences summarizing the key finding when a chart or table is shown."
     )
 
     # ── Assemble ─────────────────────────────────────────────────────────────

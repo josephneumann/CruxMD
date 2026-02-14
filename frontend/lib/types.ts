@@ -115,6 +115,7 @@ export interface TrendSeries {
 export interface ReferenceLine {
   value: number;
   label: string;
+  series_name?: string;
 }
 
 /** Background color zone for clinical ranges */
@@ -163,6 +164,7 @@ export interface ClinicalVisualization {
   reference_lines?: ReferenceLine[];
   range_bands?: RangeBand[];
   medications?: MedTimelineRow[];
+  y_min?: number;
   // encounter_timeline fields
   events?: TimelineEvent[];
 }

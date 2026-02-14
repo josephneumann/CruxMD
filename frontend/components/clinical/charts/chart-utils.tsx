@@ -79,29 +79,26 @@ export function MultiMedTimeline({ rows }: { rows: MedTimelineRow[] }) {
       </p>
       <div className="space-y-px">
         {rows.map((row, ri) => (
-          <div key={ri} className="flex items-center gap-1">
-            <span className="text-[10px] text-muted-foreground w-16 shrink-0 truncate text-right">
-              {row.drug}
-            </span>
-            <div className="flex gap-px flex-1">
-              {row.segments.map((seg, si) => (
-                <div
-                  key={si}
-                  className="relative h-5 rounded-sm text-[10px] flex items-center px-1.5 truncate overflow-hidden"
-                  style={{ flex: seg.flex }}
-                >
-                  {seg.active && (
-                    <div
-                      className="absolute inset-0 rounded-sm"
-                      style={{ backgroundColor: c.chart1, opacity: 0.2 }}
-                    />
-                  )}
-                  {seg.label && (
-                    <span className="relative text-[10px] font-medium">{seg.label}</span>
-                  )}
-                </div>
-              ))}
-            </div>
+          <div key={ri} className="flex gap-px">
+            {row.segments.map((seg, si) => (
+              <div
+                key={si}
+                className="relative h-5 rounded-sm text-[10px] flex items-center px-1.5 overflow-hidden"
+                style={{ flex: seg.flex }}
+              >
+                {seg.active && (
+                  <div
+                    className="absolute inset-0 rounded-sm"
+                    style={{ backgroundColor: c.chart1, opacity: 0.2 }}
+                  />
+                )}
+                {seg.active && (
+                  <span className="relative text-[10px] font-medium truncate">
+                    {row.drug}
+                  </span>
+                )}
+              </div>
+            ))}
           </div>
         ))}
       </div>

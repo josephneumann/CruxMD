@@ -21,7 +21,7 @@ import logging
 import re
 from dataclasses import dataclass, replace
 from enum import Enum
-from typing import Literal
+from typing import Any, Literal
 
 from openai import AsyncOpenAI
 
@@ -47,6 +47,7 @@ class QueryProfile:
     system_prompt_mode: Literal["lightning", "quick", "deep"]
     response_schema: str
     table_hint: str | None = None
+    chart_hint: dict[str, Any] | None = None  # e.g. {"chart_type": "trend_chart", "loinc_codes": ["85354-9"]}
 
 
 LIGHTNING_PROFILE = QueryProfile(
@@ -218,7 +219,7 @@ _ENTITY_TO_TABLE: dict[str, str] = {
     "lab": "lab_results", "labs": "lab_results", "laboratory": "lab_results",
     "test": "lab_results", "tests": "lab_results",
     "result": "lab_results", "results": "lab_results",
-    "vital": "vitals", "vitals": "vitals", "bp": "vitals", "hr": "vitals",
+    "vital": "vitals", "vitals": "vitals", "hr": "vitals",
     "condition": "conditions", "conditions": "conditions",
     "diagnosis": "conditions", "diagnoses": "conditions",
     "problem": "conditions", "problems": "conditions",
@@ -236,11 +237,20 @@ _ENTITY_TO_TABLE: dict[str, str] = {
 
 # Multi-word entity to table type mapping
 _BIGRAM_TO_TABLE: dict[str, str] = {
-    "blood pressure": "vitals", "heart rate": "vitals",
+    "heart rate": "vitals",
     "vital signs": "vitals",
     "blood work": "lab_results", "lab results": "lab_results",
     "test results": "lab_results",
     "care plan": "conditions", "care plans": "conditions",
+}
+
+# Keywords that should trigger a chart instead of a table
+_ENTITY_TO_CHART: dict[str, dict[str, Any]] = {
+    "bp": {"chart_type": "trend_chart", "loinc_codes": ["85354-9"]},
+}
+
+_BIGRAM_TO_CHART: dict[str, dict[str, Any]] = {
+    "blood pressure": {"chart_type": "trend_chart", "loinc_codes": ["85354-9"]},
 }
 
 
@@ -337,6 +347,18 @@ def _has_non_clinical_short(words: set[str]) -> bool:
     return words <= _NON_CLINICAL_SHORTS
 
 
+def _resolve_chart_hint(msg: str, words: set[str]) -> dict[str, Any] | None:
+    """Resolve a chart hint from keywords that should show a chart instead of a table."""
+    for bigram, chart_def in _BIGRAM_TO_CHART.items():
+        if bigram in msg:
+            return chart_def
+    for word in words:
+        chart_def = _ENTITY_TO_CHART.get(word)
+        if chart_def:
+            return chart_def
+    return None
+
+
 def _resolve_table_hint(msg: str, words: set[str]) -> str | None:
     """Resolve a table type hint from the matched chart entities in the message."""
     # Check bigrams first (more specific)
@@ -394,19 +416,32 @@ def _classify_layer1(message: str) -> QueryProfile | None:
     # 5. QUICK signals
     # 5a. Focused retrieval patterns
     if _has_focused_retrieval_pattern(msg):
+        # Chart-hint entities get the chart shortcut even with "trend" prefix
+        chart = _resolve_chart_hint(msg, words)
+        if chart:
+            return replace(QUICK_LOOKUP_PROFILE, chart_hint=chart)
         return QUICK_PROFILE
 
     # 5b. Temporal modifiers + entity
     if _has_temporal_modifier(msg) and _has_chart_entity(msg, words):
+        chart = _resolve_chart_hint(msg, words)
+        if chart:
+            return replace(QUICK_LOOKUP_PROFILE, chart_hint=chart)
         return QUICK_PROFILE
 
     # 5c. Retrieval verbs + entity
     if _has_retrieval_verb_with_entity(msg, words):
+        chart = _resolve_chart_hint(msg, words)
+        if chart:
+            return replace(QUICK_LOOKUP_PROFILE, chart_hint=chart)
         return QUICK_PROFILE
 
-    # 6. Category data lookups → QUICK_LOOKUP (structured tables, no reasoning/tools)
-    # 6a. Chart entity + lookup prefix → table rendering, no reasoning needed
+    # 6. Category data lookups → QUICK_LOOKUP (structured tables/charts, no reasoning/tools)
+    # 6a. Chart entity + lookup prefix → table or chart rendering, no reasoning needed
     if _has_chart_entity(msg, words) and _has_lookup_prefix(msg):
+        chart = _resolve_chart_hint(msg, words)
+        if chart:
+            return replace(QUICK_LOOKUP_PROFILE, chart_hint=chart)
         hint = _resolve_table_hint(msg, words)
         return replace(QUICK_LOOKUP_PROFILE, table_hint=hint) if hint else QUICK_LOOKUP_PROFILE
 
@@ -416,6 +451,9 @@ def _classify_layer1(message: str) -> QueryProfile | None:
     if len(bare) <= 30 and _has_chart_entity(msg, words) and not any(
         bare.startswith(s) for s in _follow_up_starts
     ):
+        chart = _resolve_chart_hint(msg, words)
+        if chart:
+            return replace(QUICK_LOOKUP_PROFILE, chart_hint=chart)
         hint = _resolve_table_hint(msg, words)
         return replace(QUICK_LOOKUP_PROFILE, table_hint=hint) if hint else QUICK_LOOKUP_PROFILE
 

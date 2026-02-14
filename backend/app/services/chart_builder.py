@@ -31,6 +31,48 @@ logger = logging.getLogger(__name__)
 # Chart type to builder function mapping (populated at module level below)
 CHART_TYPES = frozenset({"trend_chart", "encounter_timeline"})
 
+# Friendly display names for common lab LOINCs
+_LAB_DISPLAY_NAMES: dict[str, str] = {
+    "2093-3": "Total Cholesterol",
+    "18262-6": "LDL Cholesterol",
+    "13457-7": "LDL Cholesterol",
+    "2085-9": "HDL Cholesterol",
+    "2571-8": "Triglycerides",
+    "4548-4": "HbA1c",
+    "33914-3": "eGFR",
+    "69405-9": "eGFR",
+    "2160-0": "Creatinine",
+    "3094-0": "BUN",
+    "2345-7": "Glucose",
+    "14749-6": "Fasting Glucose",
+    "718-7": "Hemoglobin",
+    "4544-3": "Hematocrit",
+    "6690-2": "WBC",
+    "789-8": "RBC",
+    "777-3": "Platelets",
+    "39156-5": "BMI",
+    "29463-7": "Body Weight",
+    "8302-2": "Body Height",
+    "8867-4": "Heart Rate",
+    "9279-1": "Respiratory Rate",
+    "8310-5": "Body Temperature",
+    "85354-9": "Blood Pressure",
+    "8480-6": "Systolic BP",
+    "8462-4": "Diastolic BP",
+}
+
+# LOINC codes that are component observations (BP) — need special extraction
+_COMPONENT_LOINC = "85354-9"  # Blood Pressure parent observation
+_BP_SYSTOLIC_LOINC = "8480-6"
+_BP_DIASTOLIC_LOINC = "8462-4"
+
+# Panel groupings — when all LOINCs in a set are requested, use the panel name
+_PANEL_NAMES: dict[frozenset[str], str] = {
+    frozenset({"2093-3", "18262-6", "2085-9", "2571-8"}): "Lipid Panel",
+    frozenset({"2093-3", "13457-7", "2085-9", "2571-8"}): "Lipid Panel",
+    frozenset({"2093-3", "18262-6", "2085-9"}): "Lipid Panel",
+}
+
 # Regex for SNOMED suffixes (reused from table_builder)
 _SNOMED_SUFFIX_RE = re.compile(
     r"\s*\("
@@ -210,6 +252,61 @@ def _compute_trend_summary(
 
 
 # =============================================================================
+# BP Component Observation Helper
+# =============================================================================
+
+
+def _build_bp_component_series(
+    observations: list[dict[str, Any]],
+) -> list[dict[str, Any]]:
+    """Extract systolic and diastolic series from BP component observations.
+
+    BP (LOINC 85354-9) stores values in component[].valueQuantity, not
+    valueQuantity on the parent. Each component has its own LOINC code:
+    - 8480-6 = Systolic
+    - 8462-4 = Diastolic
+    """
+    sys_points: list[dict[str, Any]] = []
+    dia_points: list[dict[str, Any]] = []
+    unit = "mmHg"
+
+    for obs in observations:
+        date_str = (obs.get("effectiveDateTime") or "")[:10]
+        if not date_str:
+            continue
+        for comp in obs.get("component", []):
+            comp_code = (
+                comp.get("code", {}).get("coding", [{}])[0].get("code", "")
+            )
+            vq = comp.get("valueQuantity", {})
+            value = vq.get("value")
+            if value is None:
+                continue
+            unit = vq.get("unit", unit)
+            if comp_code == _BP_SYSTOLIC_LOINC:
+                sys_points.append({"date": date_str, "value": value})
+            elif comp_code == _BP_DIASTOLIC_LOINC:
+                dia_points.append({"date": date_str, "value": value})
+
+    result = []
+    if sys_points:
+        result.append({
+            "name": "Systolic",
+            "unit": unit,
+            "data_points": sys_points,
+            "_loinc": _BP_SYSTOLIC_LOINC,
+        })
+    if dia_points:
+        result.append({
+            "name": "Diastolic",
+            "unit": unit,
+            "data_points": dia_points,
+            "_loinc": _BP_DIASTOLIC_LOINC,
+        })
+    return result
+
+
+# =============================================================================
 # Trend Chart Builder
 # =============================================================================
 
@@ -283,11 +380,46 @@ async def build_trend_chart(
         if not observations:
             continue
 
+        # Blood Pressure: component observation — extract systolic + diastolic
+        if loinc_code == _COMPONENT_LOINC:
+            bp_series = _build_bp_component_series(observations)
+            for bp_s in bp_series:
+                if not bp_s["data_points"]:
+                    continue
+                bp_ref = get_reference_range(bp_s["_loinc"])
+                bp_trend, bp_status = _compute_trend_summary(
+                    bp_s["data_points"], bp_ref
+                )
+                if current_value_str is None:
+                    latest = bp_s["data_points"][-1]["value"]
+                    current_value_str = f"{latest} {bp_s['unit']}".strip()
+                    overall_trend_summary = bp_trend
+                    overall_trend_status = bp_status
+                # Add reference lines for each BP component
+                if bp_ref:
+                    low = bp_ref.get("low")
+                    high = bp_ref.get("high")
+                    name = bp_s["name"]
+                    if high is not None:
+                        all_reference_lines.append({
+                            "value": high,
+                            "label": str(int(high)),
+                            "series_name": name,
+                        })
+                series.append({
+                    "name": bp_s["name"],
+                    "unit": bp_s["unit"],
+                    "data_points": bp_s["data_points"],
+                })
+            chart_title_parts.append("Blood Pressure")
+            continue
+
         # Extract series name and unit from first observation
         first_obs = observations[0]
         code_obj = first_obs.get("code", {})
         codings = code_obj.get("coding", [])
-        series_name = codings[0].get("display", "Unknown") if codings else "Unknown"
+        raw_name = codings[0].get("display", "Unknown") if codings else "Unknown"
+        series_name = _LAB_DISPLAY_NAMES.get(loinc_code, raw_name)
         unit = first_obs.get("valueQuantity", {}).get("unit", "")
 
         # Build data points (chronological — already sorted by query)
@@ -309,24 +441,24 @@ async def build_trend_chart(
         # Get reference range for this LOINC
         ref_range = get_reference_range(loinc_code)
 
-        # Add reference lines from clinical ranges
-        if ref_range and loinc_code not in _RANGE_BANDS_BY_LOINC:
-            low = ref_range.get("low")
-            high = ref_range.get("high")
-            if low is not None:
-                all_reference_lines.append({
-                    "value": low,
-                    "label": f"Low ({low} {unit})" if unit else f"Low ({low})",
-                })
-            if high is not None:
-                all_reference_lines.append({
-                    "value": high,
-                    "label": f"High ({high} {unit})" if unit else f"High ({high})",
-                })
-
-        # Add range bands for well-known staging
-        if loinc_code in _RANGE_BANDS_BY_LOINC and all_range_bands is None:
-            all_range_bands = _RANGE_BANDS_BY_LOINC[loinc_code]
+        # Reference lines / range bands only for single-series charts
+        # (multi-series with different units makes reference lines meaningless)
+        if len(loinc_codes) == 1:
+            if loinc_code in _RANGE_BANDS_BY_LOINC:
+                all_range_bands = _RANGE_BANDS_BY_LOINC[loinc_code]
+            elif ref_range:
+                low = ref_range.get("low")
+                high = ref_range.get("high")
+                if low is not None:
+                    all_reference_lines.append({
+                        "value": low,
+                        "label": f"Low ({low} {unit})" if unit else f"Low ({low})",
+                    })
+                if high is not None:
+                    all_reference_lines.append({
+                        "value": high,
+                        "label": f"High ({high} {unit})" if unit else f"High ({high})",
+                    })
 
         # Compute current value + trend summary
         latest_value = data_points[-1]["value"]
@@ -351,11 +483,19 @@ async def build_trend_chart(
     if not series:
         return None
 
-    # Build title
-    if len(chart_title_parts) == 1:
+    # Strip internal keys from series (e.g., _loinc from BP components)
+    for s in series:
+        s.pop("_loinc", None)
+
+    # Build title — use panel name if all LOINCs match a known panel
+    requested_set = frozenset(loinc_codes)
+    panel_name = _PANEL_NAMES.get(requested_set)
+    if panel_name:
+        title = f"{panel_name} Trend"
+    elif len(chart_title_parts) == 1:
         title = f"{chart_title_parts[0]} Trend"
     else:
-        title = " & ".join(chart_title_parts[:3])
+        title = " & ".join(chart_title_parts[:3]) + " Trend"
         if len(chart_title_parts) > 3:
             title += f" (+{len(chart_title_parts) - 3} more)"
 
@@ -372,6 +512,11 @@ async def build_trend_chart(
     else:
         subtitle = None
 
+    # Y-axis minimum hint — BP readings waste space starting at 0
+    y_min: int | None = None
+    if _COMPONENT_LOINC in loinc_codes:
+        y_min = 40
+
     viz: dict[str, Any] = {
         "type": "trend_chart",
         "title": title,
@@ -384,6 +529,7 @@ async def build_trend_chart(
         "range_bands": all_range_bands,
         "medications": medications,
         "events": None,
+        "y_min": y_min,
     }
     return viz
 
@@ -456,43 +602,63 @@ async def _build_medication_timeline(
     if not meds:
         return None
 
-    total_days = (trend_end - trend_start).days or 1
-    timeline_rows: list[dict[str, Any]] = []
-    seen_drugs: set[str] = set()
-
+    # Group MedicationRequest entries by drug name.
+    # Synthea re-prescribes at each encounter, so same drug appears many times.
+    # Use earliest authoredOn as start, latest authoredOn as end.
+    # If latest entry is "active", extend bar to trend_end.
+    drug_spans: dict[str, dict[str, Any]] = {}
     for med in meds:
-        # Drug name
         drug = _display_name(med, "medicationCodeableConcept")
-        if drug in seen_drugs or drug == "Unknown":
+        if drug == "Unknown":
             continue
-
-        # Parse authored date
         authored_str = med.get("authoredOn", "")
         try:
-            med_start = datetime.strptime(authored_str[:10], "%Y-%m-%d")
+            authored_dt = datetime.strptime(authored_str[:10], "%Y-%m-%d")
         except (ValueError, TypeError):
             continue
-
-        # Determine if medication overlaps trend period
         status = med.get("status", "")
-        is_active = status in ("active", "completed")
+        if drug not in drug_spans:
+            drug_spans[drug] = {
+                "start": authored_dt,
+                "end": authored_dt,
+                "is_active": status == "active",
+            }
+        else:
+            span = drug_spans[drug]
+            span["start"] = min(span["start"], authored_dt)
+            if authored_dt > span["end"]:
+                span["end"] = authored_dt
+                # Latest entry determines active status
+                span["is_active"] = status == "active"
 
-        if med_start > trend_end:
-            continue  # started after trend window
+    total_days = (trend_end - trend_start).days or 1
+    timeline_rows: list[dict[str, Any]] = []
 
-        # Build segments: before medication, during medication
+    for drug, span in drug_spans.items():
+        med_start: datetime = span["start"]
+        # Active meds extend to trend end; completed meds end at last renewal
+        med_end: datetime = trend_end if span["is_active"] else span["end"]
+
+        # Skip meds that don't overlap the trend window
+        if med_start > trend_end or med_end < trend_start:
+            continue
+
+        # Clamp to trend window
+        bar_start = max(med_start, trend_start)
+        bar_end = min(med_end, trend_end)
+
+        # Build segments: gap before bar, active bar, gap after bar
         segments: list[dict[str, Any]] = []
-        if med_start > trend_start:
-            before_days = (med_start - trend_start).days
-            before_flex = max(1, round((before_days / total_days) * 100))
-            segments.append({"label": "", "flex": before_flex, "active": False})
+        gap_before = (bar_start - trend_start).days
+        bar_days = (bar_end - bar_start).days
+        gap_after = (trend_end - bar_end).days
 
-        active_start = max(med_start, trend_start)
-        active_days = (trend_end - active_start).days
-        active_flex = max(1, round((active_days / total_days) * 100))
-        segments.append({"label": status, "flex": active_flex, "active": is_active})
+        if gap_before > 0:
+            segments.append({"label": "", "flex": max(1, round((gap_before / total_days) * 100)), "active": False})
+        segments.append({"label": "", "flex": max(1, round((bar_days / total_days) * 100)), "active": True})
+        if gap_after > 0:
+            segments.append({"label": "", "flex": max(1, round((gap_after / total_days) * 100)), "active": False})
 
-        seen_drugs.add(drug)
         timeline_rows.append({"drug": drug, "segments": segments})
 
     return timeline_rows if timeline_rows else None

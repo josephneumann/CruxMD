@@ -251,7 +251,7 @@ class TestBuildTrendChart:
         result = await build_trend_chart(pid, db_session, loinc_codes=["4548-4"])
         assert result is not None
         assert result["type"] == "trend_chart"
-        assert "Hemoglobin A1c" in result["title"]
+        assert "HbA1c" in result["title"]
         assert len(result["series"]) == 1
         assert len(result["series"][0]["data_points"]) == 1
         assert result["series"][0]["data_points"][0]["value"] == 6.2
@@ -374,6 +374,118 @@ class TestBuildTrendChart:
         assert result["subtitle"] is not None
         assert "Jan" in result["subtitle"]
         assert "Jul" in result["subtitle"]
+
+
+def _make_bp_observation(
+    systolic: float,
+    diastolic: float,
+    date: str,
+    *,
+    fhir_id: str | None = None,
+) -> dict:
+    """Create a minimal BP component observation for testing."""
+    return {
+        "resourceType": "Observation",
+        "id": fhir_id or f"bp-{date}",
+        "status": "final",
+        "category": [{"coding": [{"code": "vital-signs"}]}],
+        "code": {
+            "coding": [
+                {
+                    "system": "http://loinc.org",
+                    "code": "85354-9",
+                    "display": "Blood pressure panel",
+                }
+            ]
+        },
+        "effectiveDateTime": f"{date}T00:00:00Z",
+        "component": [
+            {
+                "code": {
+                    "coding": [
+                        {
+                            "system": "http://loinc.org",
+                            "code": "8480-6",
+                            "display": "Systolic blood pressure",
+                        }
+                    ]
+                },
+                "valueQuantity": {"value": systolic, "unit": "mmHg"},
+            },
+            {
+                "code": {
+                    "coding": [
+                        {
+                            "system": "http://loinc.org",
+                            "code": "8462-4",
+                            "display": "Diastolic blood pressure",
+                        }
+                    ]
+                },
+                "valueQuantity": {"value": diastolic, "unit": "mmHg"},
+            },
+        ],
+    }
+
+
+@pytest.mark.asyncio
+class TestBPComponentChart:
+    """Test Blood Pressure component observation handling."""
+
+    async def test_bp_produces_two_series(self, db_session: AsyncSession):
+        """BP LOINC 85354-9 should produce Systolic + Diastolic series."""
+        pid = uuid.uuid4()
+        observations = [
+            _make_bp_observation(120, 80, "2024-01-15"),
+            _make_bp_observation(125, 82, "2024-04-15"),
+            _make_bp_observation(130, 85, "2024-07-15"),
+        ]
+        await _seed_resources(db_session, pid, observations)
+
+        result = await build_trend_chart(pid, db_session, loinc_codes=["85354-9"])
+        assert result is not None
+        assert result["type"] == "trend_chart"
+        assert "Blood Pressure" in result["title"]
+        assert len(result["series"]) == 2
+
+        names = {s["name"] for s in result["series"]}
+        assert names == {"Systolic", "Diastolic"}
+
+        # Each series should have 3 data points
+        for s in result["series"]:
+            assert len(s["data_points"]) == 3
+            assert s["unit"] == "mmHg"
+
+    async def test_bp_no_internal_loinc_key(self, db_session: AsyncSession):
+        """Series dicts should not contain internal _loinc key."""
+        pid = uuid.uuid4()
+        observations = [_make_bp_observation(120, 80, "2024-01-15")]
+        await _seed_resources(db_session, pid, observations)
+
+        result = await build_trend_chart(pid, db_session, loinc_codes=["85354-9"])
+        assert result is not None
+        for s in result["series"]:
+            assert "_loinc" not in s
+
+    async def test_bp_reference_lines(self, db_session: AsyncSession):
+        """BP chart should include color-matched reference lines for systolic and diastolic."""
+        pid = uuid.uuid4()
+        observations = [
+            _make_bp_observation(120, 80, "2024-01-15"),
+            _make_bp_observation(130, 85, "2024-07-15"),
+        ]
+        await _seed_resources(db_session, pid, observations)
+
+        result = await build_trend_chart(pid, db_session, loinc_codes=["85354-9"])
+        assert result is not None
+        ref_lines = result.get("reference_lines") or []
+        # Should have reference lines with series_name for color matching
+        series_names = {r.get("series_name") for r in ref_lines}
+        assert "Systolic" in series_names
+        assert "Diastolic" in series_names
+        # Labels should be just numeric values (not verbose)
+        for rl in ref_lines:
+            assert rl["label"].isdigit()
 
 
 @pytest.mark.asyncio

@@ -45,6 +45,7 @@ export function TrendChart({ viz }: { viz: ClinicalVisualization }) {
   const isMulti = series.length > 1;
   const hasRangeBands = rangeBands.length > 0;
   const seriesNames = series.map((s) => s.name);
+  const yDomain: [number | string, number | string] = [viz.y_min ?? "auto", "auto"];
 
   // Build unified data array keyed by date
   const dataMap = new Map<string, Record<string, unknown>>();
@@ -107,7 +108,7 @@ export function TrendChart({ viz }: { viz: ClinicalVisualization }) {
                 </defs>
                 <CartesianGrid strokeDasharray="6 4" stroke={c.grid} vertical={false} />
                 <XAxis dataKey="date" axisLine={false} tickLine={false} tick={{ fill: c.tick, fontSize: 12 }} />
-                <YAxis axisLine={false} tickLine={false} tick={{ fill: c.tick, fontSize: 12 }} />
+                <YAxis domain={yDomain} axisLine={false} tickLine={false} tick={{ fill: c.tick, fontSize: 12 }} />
                 <Tooltip content={<ChartTooltip />} />
                 <Area
                   type="monotone"
@@ -141,18 +142,34 @@ export function TrendChart({ viz }: { viz: ClinicalVisualization }) {
                 ))}
                 <CartesianGrid strokeDasharray="6 4" stroke={c.grid} vertical={false} />
                 <XAxis dataKey="date" axisLine={false} tickLine={false} tick={{ fill: c.tick, fontSize: 12 }} />
-                <YAxis axisLine={false} tickLine={false} tick={{ fill: c.tick, fontSize: 12 }} />
+                <YAxis domain={yDomain} axisLine={false} tickLine={false} tick={{ fill: c.tick, fontSize: 12 }} />
                 <Tooltip content={<ChartTooltip />} />
                 {/* Reference lines */}
-                {referenceLines.map((rl, i) => (
-                  <RechartReferenceLine
-                    key={`ref-${i}`}
-                    y={rl.value}
-                    stroke={c.chart5}
-                    strokeDasharray="6 4"
-                    label={{ value: rl.label, position: "insideTopRight" as const, fill: c.chart5, fontSize: 11 }}
-                  />
-                ))}
+                {referenceLines.map((rl, i) => {
+                  // Color-match to series when series_name is provided
+                  const seriesIdx = rl.series_name
+                    ? series.findIndex((s) => s.name === rl.series_name)
+                    : -1;
+                  const lineColor =
+                    seriesIdx >= 0
+                      ? multiColors[seriesIdx % multiColors.length]
+                      : c.chart5;
+                  return (
+                    <RechartReferenceLine
+                      key={`ref-${i}`}
+                      y={rl.value}
+                      stroke={lineColor}
+                      strokeDasharray="6 4"
+                      strokeOpacity={0.6}
+                      label={{
+                        value: rl.label,
+                        position: "right" as const,
+                        fill: lineColor,
+                        fontSize: 10,
+                      }}
+                    />
+                  );
+                })}
                 {/* Data lines */}
                 {isMulti ? (
                   series.map((s, i) => (

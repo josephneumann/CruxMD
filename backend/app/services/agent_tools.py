@@ -94,17 +94,24 @@ SHOW_CLINICAL_CHART_SCHEMA: dict[str, Any] = {
                 "description": "Type of clinical chart to display.",
             },
             "loinc_codes": {
-                "type": ["array", "null"],
+                "type": "array",
                 "items": {"type": "string"},
                 "description": (
-                    "LOINC codes to trend (for trend_chart). "
-                    "E.g., ['4548-4'] for HbA1c. Optional."
+                    "LOINC codes to trend (REQUIRED for trend_chart). "
+                    "Common codes: Weight=29463-7, BMI=39156-5, "
+                    "BP=85354-9, Heart Rate=8867-4, Resp Rate=9279-1, "
+                    "Cholesterol=2093-3, LDL=18262-6, HDL=2085-9, "
+                    "Triglycerides=2571-8, HbA1c=4548-4, eGFR=33914-3, "
+                    "Creatinine=2160-0, Glucose=2345-7, Hemoglobin=718-7, "
+                    "WBC=6690-2, Platelets=777-3. "
+                    "Always provide at least one LOINC code."
                 ),
             },
             "time_range": {
                 "type": ["string", "null"],
                 "description": (
-                    "Time range like '1y', '6m', '3m'. Optional."
+                    "Time range filter like '1y', '6m', '3m'. "
+                    "Pass null to show ALL available data (recommended default)."
                 ),
             },
         },
@@ -399,6 +406,11 @@ async def _execute_show_clinical_chart(
     from app.services.chart_builder import build_chart_for_type
 
     chart_type = args.get("chart_type", "")
+    loinc_codes = args.get("loinc_codes")
+    logger.info(
+        "show_clinical_chart called: chart_type=%s, loinc_codes=%s, time_range=%s",
+        chart_type, loinc_codes, args.get("time_range"),
+    )
     try:
         chart = await build_chart_for_type(
             chart_type=chart_type,
@@ -423,9 +435,9 @@ async def _execute_show_clinical_chart(
 
     title = chart.get("title", chart_type)
     data_points = 0
-    for series in chart.get("series", []):
-        data_points += len(series.get("data_points", []))
-    for event in chart.get("events", []):
+    for series in (chart.get("series") or []):
+        data_points += len(series.get("data_points") or [])
+    for event in (chart.get("events") or []):
         data_points += 1
 
     return json.dumps({
